@@ -1,0 +1,69 @@
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Window controls
+  toggleWindow: () => ipcRenderer.invoke('toggle-window'),
+  pinWindow: (isPinned: boolean) => ipcRenderer.invoke('pin-window', isPinned),
+
+  // Settings
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (settings: any) => ipcRenderer.invoke('update-settings', settings),
+
+  // Tasks
+  getTasks: () => ipcRenderer.invoke('get-tasks'),
+  addTask: (task: any) => ipcRenderer.invoke('add-task', task),
+  updateTask: (id: string, updates: any) => ipcRenderer.invoke('update-task', id, updates),
+  deleteTask: (id: string) => ipcRenderer.invoke('delete-task', id),
+
+  // OAuth
+  startOAuthFlow: (provider: string) => ipcRenderer.invoke('start-oauth', provider),
+  getOAuthTokens: (provider: string) => ipcRenderer.invoke('get-oauth-tokens', provider),
+  saveOAuthTokens: (provider: string, tokens: any) => ipcRenderer.invoke('save-oauth-tokens', provider, tokens),
+
+  // Integrations
+  syncCalendar: () => ipcRenderer.invoke('sync-calendar'),
+  syncGmail: () => ipcRenderer.invoke('sync-gmail'),
+  syncSlack: () => ipcRenderer.invoke('sync-slack'),
+  getSmartSuggestions: () => ipcRenderer.invoke('get-smart-suggestions'),
+
+  // Jira
+  jiraIsConfigured: () => ipcRenderer.invoke('jira-is-configured'),
+  jiraTestConnection: () => ipcRenderer.invoke('jira-test-connection'),
+  jiraGetProjects: () => ipcRenderer.invoke('jira-get-projects'),
+  jiraGetIssueTypes: (projectKey: string) => ipcRenderer.invoke('jira-get-issue-types', projectKey),
+  jiraCreateIssue: (request: any) => ipcRenderer.invoke('jira-create-issue', request),
+  jiraGetMyIssues: () => ipcRenderer.invoke('jira-get-my-issues'),
+});
+
+// Type definitions for TypeScript
+export interface ElectronAPI {
+  toggleWindow: () => Promise<void>;
+  pinWindow: (isPinned: boolean) => Promise<void>;
+  getSettings: () => Promise<any>;
+  updateSettings: (settings: any) => Promise<void>;
+  getTasks: () => Promise<any[]>;
+  addTask: (task: any) => Promise<any>;
+  updateTask: (id: string, updates: any) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
+  startOAuthFlow: (provider: string) => Promise<any>;
+  getOAuthTokens: (provider: string) => Promise<any>;
+  saveOAuthTokens: (provider: string, tokens: any) => Promise<void>;
+  syncCalendar: () => Promise<any>;
+  syncGmail: () => Promise<any>;
+  syncSlack: () => Promise<any>;
+  getSmartSuggestions: () => Promise<any[]>;
+  jiraIsConfigured: () => Promise<boolean>;
+  jiraTestConnection: () => Promise<{ success: boolean; error?: string }>;
+  jiraGetProjects: () => Promise<any[]>;
+  jiraGetIssueTypes: (projectKey: string) => Promise<any[]>;
+  jiraCreateIssue: (request: any) => Promise<{ key: string; url: string }>;
+  jiraGetMyIssues: () => Promise<any[]>;
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+  }
+}

@@ -1,0 +1,181 @@
+import { useState, useEffect } from 'react';
+
+interface Integration {
+  id: 'google' | 'slack';
+  name: string;
+  description: string;
+  icon: JSX.Element;
+  connected: boolean;
+}
+
+interface IntegrationsProps {
+  onClose: () => void;
+}
+
+export default function Integrations({ onClose }: IntegrationsProps) {
+  const [integrations, setIntegrations] = useState<Integration[]>([
+    {
+      id: 'google',
+      name: 'Google',
+      description: 'Calendar & Gmail',
+      icon: (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+      ),
+      connected: false,
+    },
+    {
+      id: 'slack',
+      name: 'Slack',
+      description: 'Messages & mentions',
+      icon: (
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+        </svg>
+      ),
+      connected: false,
+    },
+  ]);
+
+  const [isConnecting, setIsConnecting] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkConnections();
+  }, []);
+
+  const checkConnections = async () => {
+    try {
+      const googleTokens = await window.electronAPI.getOAuthTokens('google');
+      const slackTokens = await window.electronAPI.getOAuthTokens('slack');
+
+      setIntegrations(prev => prev.map(integration => ({
+        ...integration,
+        connected: integration.id === 'google' ? !!googleTokens.accessToken : !!slackTokens.accessToken,
+      })));
+    } catch (error) {
+      console.error('Failed to check connections:', error);
+    }
+  };
+
+  const handleConnect = async (integrationId: 'google' | 'slack') => {
+    setIsConnecting(integrationId);
+
+    try {
+      const result = await window.electronAPI.startOAuthFlow(integrationId);
+
+      if (result.code) {
+        // In a real implementation, you would exchange the code for tokens here
+        // For now, we'll mark it as connected
+        setIntegrations(prev => prev.map(integration =>
+          integration.id === integrationId ? { ...integration, connected: true } : integration
+        ));
+      }
+    } catch (error) {
+      console.error(`Failed to connect ${integrationId}:`, error);
+    } finally {
+      setIsConnecting(null);
+    }
+  };
+
+  const handleDisconnect = async (integrationId: 'google' | 'slack') => {
+    try {
+      // Clear stored tokens
+      await window.electronAPI.saveOAuthTokens(integrationId, {
+        accessToken: null,
+        refreshToken: null,
+        expiresAt: null,
+      });
+
+      setIntegrations(prev => prev.map(integration =>
+        integration.id === integrationId ? { ...integration, connected: false } : integration
+      ));
+    } catch (error) {
+      console.error(`Failed to disconnect ${integrationId}:`, error);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center animate-fade-in z-50">
+      <div className="bg-dark-surface border border-dark-border rounded-xl w-full max-w-md mx-4 animate-slide-in">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-dark-border flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-dark-text-primary">Integrations</h2>
+          <button
+            onClick={onClose}
+            className="text-dark-text-muted hover:text-dark-text-primary transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-dark-text-secondary">
+            Connect your accounts to get smart task suggestions from your calendar, emails, and messages.
+          </p>
+
+          <div className="space-y-3">
+            {integrations.map(integration => (
+              <div
+                key={integration.id}
+                className="bg-dark-bg border border-dark-border rounded-lg p-4 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-dark-text-primary">
+                    {integration.icon}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-dark-text-primary">
+                      {integration.name}
+                    </h3>
+                    <p className="text-xs text-dark-text-muted">
+                      {integration.description}
+                    </p>
+                  </div>
+                </div>
+
+                {integration.connected ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-dark-accent-success flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Connected
+                    </span>
+                    <button
+                      onClick={() => handleDisconnect(integration.id)}
+                      className="text-xs text-dark-text-muted hover:text-dark-accent-danger transition-colors"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleConnect(integration.id)}
+                    disabled={isConnecting === integration.id}
+                    className="px-3 py-1.5 bg-dark-accent-primary hover:bg-dark-accent-primary/90
+                             text-white text-sm rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {isConnecting === integration.id ? 'Connecting...' : 'Connect'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-4 border-t border-dark-border">
+            <p className="text-xs text-dark-text-muted">
+              Your credentials are stored securely on your device and never sent to external servers.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
