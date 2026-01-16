@@ -20,14 +20,17 @@ interface TokenData {
 
 export class GmailService {
   private oauth2Client: any;
-  private clientId: string;
-  private clientSecret: string;
-  private redirectUri: string;
+  // @ts-ignore - stored for future use
+  private _clientId: string;
+  // @ts-ignore - stored for future use
+  private _clientSecret: string;
+  // @ts-ignore - stored for future use
+  private _redirectUri: string;
 
   constructor(clientId: string, clientSecret: string, redirectUri: string) {
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-    this.redirectUri = redirectUri;
+    this._clientId = clientId;
+    this._clientSecret = clientSecret;
+    this._redirectUri = redirectUri;
 
     this.oauth2Client = new google.auth.OAuth2(
       clientId,

@@ -39,6 +39,8 @@ const integrationManager = new IntegrationManager(
   process.env.GOOGLE_CLIENT_SECRET || '',
   process.env.SLACK_CLIENT_ID || '',
   process.env.SLACK_CLIENT_SECRET || '',
+  process.env.ZOOM_CLIENT_ID || '',
+  process.env.ZOOM_CLIENT_SECRET || '',
   process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'
 );
 
@@ -123,7 +125,7 @@ function createWindow() {
 
   // Hide instead of close
   mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
+    if (!(app as any).isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -253,7 +255,7 @@ app.on('will-quit', () => {
 });
 
 app.on('before-quit', () => {
-  app.isQuitting = true;
+  (app as any).isQuitting = true;
 });
 
 // IPC Handlers
@@ -411,7 +413,7 @@ ipcMain.handle('delete-task', (_event, id: string) => {
 });
 
 // OAuth Handlers
-ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack') => {
+ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom') => {
   return new Promise((resolve, reject) => {
     let authWindow: BrowserWindow | null = new BrowserWindow({
       width: 500,
@@ -438,8 +440,9 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack') => {
     );
 
     const authUrls = {
-      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}&response_type=code&scope=https://www.googleapis.com/auth/calendar.readonly%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent`,
+      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent`,
       slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,chat:write,users:read,im:read&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}`,
+      zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}&response_type=code`,
     };
 
     authWindow.loadURL(authUrls[provider]);
@@ -457,6 +460,8 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack') => {
               await integrationManager.connectGoogle(code);
             } else if (provider === 'slack') {
               await integrationManager.connectSlack(code);
+            } else if (provider === 'zoom') {
+              await integrationManager.connectZoom(code);
             }
             resolve({ code, provider, success: true });
           } catch (error) {
@@ -518,6 +523,44 @@ ipcMain.handle('sync-gmail', async () => {
   } catch (error: any) {
     console.error('Failed to sync Gmail:', error);
     return [];
+  }
+});
+
+// RSVP handler
+ipcMain.handle('calendar-update-rsvp', async (_event, eventId: string, status: string) => {
+  try {
+    await integrationManager.updateEventRSVP(eventId, status as 'accepted' | 'declined' | 'tentative');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Failed to update RSVP:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Event creation handler
+ipcMain.handle('calendar-create-event', async (_event, request: any) => {
+  try {
+    const event = await integrationManager.createCalendarEvent(request);
+    return { success: true, event };
+  } catch (error: any) {
+    console.error('Failed to create event:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Zoom configuration check
+ipcMain.handle('zoom-is-configured', async () => {
+  return integrationManager.isZoomConfigured();
+});
+
+// Zoom meeting creation
+ipcMain.handle('zoom-create-meeting', async (_event, request: any) => {
+  try {
+    const meeting = await integrationManager.createZoomMeeting(request);
+    return { success: true, meeting };
+  } catch (error: any) {
+    console.error('Failed to create Zoom meeting:', error);
+    return { success: false, error: error.message };
   }
 });
 

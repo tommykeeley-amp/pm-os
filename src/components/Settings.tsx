@@ -22,13 +22,13 @@ interface UserSettings {
 
   // Customization Settings
   showDeclinedMeetings?: boolean;
+  primaryTimezone?: string;
+  secondaryTimezone?: string;
 }
 
 export default function Settings({ onClose }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>({});
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'personal' | 'jira' | 'confluence' | 'integrations' | 'customizations'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'integrations' | 'customizations'>('personal');
 
   // Integrations state
   const [integrations, setIntegrations] = useState([
@@ -87,24 +87,16 @@ export default function Settings({ onClose }: SettingsProps) {
     }
   };
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    setSaveMessage('');
+  const handleChange = async (field: keyof UserSettings, value: string | boolean) => {
+    const updatedSettings = { ...settings, [field]: value };
+    setSettings(updatedSettings);
 
+    // Auto-save settings
     try {
-      await window.electronAPI.saveUserSettings(settings);
-      setSaveMessage('Settings saved successfully!');
-      setTimeout(() => setSaveMessage(''), 3000);
+      await window.electronAPI.saveUserSettings(updatedSettings);
     } catch (error) {
       console.error('Failed to save settings:', error);
-      setSaveMessage('Failed to save settings');
-    } finally {
-      setIsSaving(false);
     }
-  };
-
-  const handleChange = (field: keyof UserSettings, value: string | boolean) => {
-    setSettings({ ...settings, [field]: value });
   };
 
   const handleConnect = async (integrationId: 'google' | 'slack') => {
@@ -154,11 +146,15 @@ export default function Settings({ onClose }: SettingsProps) {
           </svg>
           <span className="text-sm font-medium">Back</span>
         </button>
-        <h2 className="text-lg font-semibold text-dark-text-primary">Settings</h2>
       </div>
 
+        {/* Page Title */}
+        <div className="px-6 pt-6 pb-4">
+          <h1 className="text-2xl font-bold text-dark-text-primary">Settings</h1>
+        </div>
+
         {/* Tabs */}
-        <div className="px-6 pt-4 flex gap-2 border-b border-dark-border">
+        <div className="px-6 flex gap-2 border-b border-dark-border">
           <button
             onClick={() => setActiveTab('personal')}
             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
@@ -180,26 +176,6 @@ export default function Settings({ onClose }: SettingsProps) {
             Integrations
           </button>
           <button
-            onClick={() => setActiveTab('jira')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeTab === 'jira'
-                ? 'text-dark-accent-primary border-dark-accent-primary'
-                : 'text-dark-text-secondary border-transparent hover:text-dark-text-primary'
-            }`}
-          >
-            Jira
-          </button>
-          <button
-            onClick={() => setActiveTab('confluence')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeTab === 'confluence'
-                ? 'text-dark-accent-primary border-dark-accent-primary'
-                : 'text-dark-text-secondary border-transparent hover:text-dark-text-primary'
-            }`}
-          >
-            Confluence
-          </button>
-          <button
             onClick={() => setActiveTab('customizations')}
             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
               activeTab === 'customizations'
@@ -213,16 +189,6 @@ export default function Settings({ onClose }: SettingsProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {saveMessage && (
-            <div className={`p-3 rounded-lg ${
-              saveMessage.includes('success')
-                ? 'bg-dark-accent-success/10 border border-dark-accent-success/20 text-dark-accent-success'
-                : 'bg-dark-accent-danger/10 border border-dark-accent-danger/20 text-dark-accent-danger'
-            }`}>
-              <p className="text-sm">{saveMessage}</p>
-            </div>
-          )}
-
           {/* Personal Tab */}
           {activeTab === 'personal' && (
             <div className="space-y-4">
@@ -315,12 +281,9 @@ export default function Settings({ onClose }: SettingsProps) {
                           Configured
                         </span>
                       ) : (
-                        <button
-                          onClick={() => setActiveTab('jira')}
-                          className="text-xs text-dark-accent-primary hover:text-dark-accent-primary/80 transition-colors"
-                        >
-                          Configure →
-                        </button>
+                        <span className="text-xs text-dark-text-muted">
+                          Not configured
+                        </span>
                       )
                     ) : (
                       integration.connected ? (
@@ -357,143 +320,144 @@ export default function Settings({ onClose }: SettingsProps) {
                   Your credentials are stored securely on your device and never sent to external servers.
                 </p>
               </div>
-            </div>
-          )}
 
-          {/* Jira Tab */}
-          {activeTab === 'jira' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Jira Domain
-                </label>
-                <input
-                  type="text"
-                  value={settings.jiraDomain || ''}
-                  onChange={(e) => handleChange('jiraDomain', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="yourcompany.atlassian.net"
-                />
-                <p className="text-xs text-dark-text-muted mt-1">
-                  Your Atlassian/Jira domain (without https://)
-                </p>
+              {/* Jira Configuration Section */}
+              <div className="pt-6 border-t border-dark-border">
+                <h3 className="text-base font-semibold text-dark-text-primary mb-4">Jira Configuration</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Jira Domain
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.jiraDomain || ''}
+                      onChange={(e) => handleChange('jiraDomain', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="yourcompany.atlassian.net"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Your Atlassian/Jira domain (without https://)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Jira Email
+                    </label>
+                    <input
+                      type="email"
+                      value={settings.jiraEmail || ''}
+                      onChange={(e) => handleChange('jiraEmail', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="your.email@company.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Jira API Token
+                    </label>
+                    <input
+                      type="password"
+                      value={settings.jiraApiToken || ''}
+                      onChange={(e) => handleChange('jiraApiToken', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="••••••••••••••••"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Generate from{' '}
+                      <a
+                        href="https://id.atlassian.com/manage-profile/security/api-tokens"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-dark-accent-primary hover:underline"
+                      >
+                        Atlassian API Tokens
+                      </a>
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Default Project Key
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.jiraDefaultProject || ''}
+                      onChange={(e) => handleChange('jiraDefaultProject', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="PROJ"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Default project key for creating tickets (e.g., AMP, PROJ)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Default Issue Type
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.jiraDefaultIssueType || ''}
+                      onChange={(e) => handleChange('jiraDefaultIssueType', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="Task"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Default issue type for creating tickets (e.g., Task, Epic, Bug)
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Jira Email
-                </label>
-                <input
-                  type="email"
-                  value={settings.jiraEmail || ''}
-                  onChange={(e) => handleChange('jiraEmail', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="your.email@company.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Jira API Token
-                </label>
-                <input
-                  type="password"
-                  value={settings.jiraApiToken || ''}
-                  onChange={(e) => handleChange('jiraApiToken', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="••••••••••••••••"
-                />
-                <p className="text-xs text-dark-text-muted mt-1">
-                  Generate from{' '}
-                  <a
-                    href="https://id.atlassian.com/manage-profile/security/api-tokens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-dark-accent-primary hover:underline"
-                  >
-                    Atlassian API Tokens
-                  </a>
+              {/* Confluence Configuration Section */}
+              <div className="pt-6 border-t border-dark-border">
+                <h3 className="text-base font-semibold text-dark-text-primary mb-2">Confluence Configuration</h3>
+                <p className="text-sm text-dark-text-secondary mb-4">
+                  Confluence uses the same credentials as Jira. Configure your Jira settings above first.
                 </p>
-              </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Default Space Key
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.confluenceDefaultSpace || ''}
+                      onChange={(e) => handleChange('confluenceDefaultSpace', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="PA1"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Default Confluence space for creating pages
+                    </p>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Default Project Key
-                </label>
-                <input
-                  type="text"
-                  value={settings.jiraDefaultProject || ''}
-                  onChange={(e) => handleChange('jiraDefaultProject', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="PROJ"
-                />
-                <p className="text-xs text-dark-text-muted mt-1">
-                  Default project key for creating tickets (e.g., AMP, PROJ)
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Default Issue Type
-                </label>
-                <input
-                  type="text"
-                  value={settings.jiraDefaultIssueType || ''}
-                  onChange={(e) => handleChange('jiraDefaultIssueType', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="Task"
-                />
-                <p className="text-xs text-dark-text-muted mt-1">
-                  Default issue type for creating tickets (e.g., Task, Epic, Bug)
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Confluence Tab */}
-          {activeTab === 'confluence' && (
-            <div className="space-y-4">
-              <p className="text-sm text-dark-text-secondary">
-                Confluence uses the same credentials as Jira. Configure your Jira settings first.
-              </p>
-
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Default Space Key
-                </label>
-                <input
-                  type="text"
-                  value={settings.confluenceDefaultSpace || ''}
-                  onChange={(e) => handleChange('confluenceDefaultSpace', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="PA1"
-                />
-                <p className="text-xs text-dark-text-muted mt-1">
-                  Default Confluence space for creating pages
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Default Parent Page ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={settings.confluenceDefaultParentId || ''}
-                  onChange={(e) => handleChange('confluenceDefaultParentId', e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                  placeholder="123456789"
-                />
-                <p className="text-xs text-dark-text-muted mt-1">
-                  Optional parent page ID to organize new pages under a specific folder
-                </p>
+                  <div>
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Default Parent Page ID (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.confluenceDefaultParentId || ''}
+                      onChange={(e) => handleChange('confluenceDefaultParentId', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="123456789"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Optional parent page ID to organize new pages under a specific folder
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -531,19 +495,114 @@ export default function Settings({ onClose }: SettingsProps) {
                   </button>
                 </div>
               </div>
+
+              <div className="space-y-4">
+                <h3 className="text-base font-semibold text-dark-text-primary">Timezone Settings</h3>
+
+                <div>
+                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                    Primary Timezone
+                  </label>
+                  <select
+                    value={settings.primaryTimezone || 'America/New_York'}
+                    onChange={(e) => handleChange('primaryTimezone', e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 bg-dark-bg border border-dark-border rounded-lg
+                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                  >
+                    <optgroup label="Suggested">
+                      <option value="America/New_York">Eastern Time (EST/EDT)</option>
+                      <option value="America/Los_Angeles">Pacific Time (PST/PDT)</option>
+                    </optgroup>
+                    <optgroup label="North America">
+                      <option value="America/New_York">Eastern Time (EST/EDT)</option>
+                      <option value="America/Chicago">Central Time (CST/CDT)</option>
+                      <option value="America/Denver">Mountain Time (MST/MDT)</option>
+                      <option value="America/Los_Angeles">Pacific Time (PST/PDT)</option>
+                      <option value="America/Anchorage">Alaska Time (AKST/AKDT)</option>
+                      <option value="Pacific/Honolulu">Hawaii Time (HST)</option>
+                    </optgroup>
+                    <optgroup label="Europe">
+                      <option value="Europe/London">London (GMT/BST)</option>
+                      <option value="Europe/Paris">Central European (CET/CEST)</option>
+                      <option value="Europe/Berlin">Berlin (CET/CEST)</option>
+                      <option value="Europe/Madrid">Madrid (CET/CEST)</option>
+                      <option value="Europe/Rome">Rome (CET/CEST)</option>
+                      <option value="Europe/Athens">Athens (EET/EEST)</option>
+                    </optgroup>
+                    <optgroup label="Asia">
+                      <option value="Asia/Dubai">Dubai (GST)</option>
+                      <option value="Asia/Kolkata">India (IST)</option>
+                      <option value="Asia/Shanghai">China (CST)</option>
+                      <option value="Asia/Tokyo">Tokyo (JST)</option>
+                      <option value="Asia/Seoul">Seoul (KST)</option>
+                      <option value="Asia/Singapore">Singapore (SGT)</option>
+                      <option value="Asia/Hong_Kong">Hong Kong (HKT)</option>
+                    </optgroup>
+                    <optgroup label="Australia">
+                      <option value="Australia/Sydney">Sydney (AEDT/AEST)</option>
+                      <option value="Australia/Melbourne">Melbourne (AEDT/AEST)</option>
+                      <option value="Australia/Brisbane">Brisbane (AEST)</option>
+                      <option value="Australia/Perth">Perth (AWST)</option>
+                    </optgroup>
+                  </select>
+                  <p className="text-xs text-dark-text-muted mt-1">
+                    Main timezone displayed in the Meetings tab
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                    Secondary Timezone
+                  </label>
+                  <select
+                    value={settings.secondaryTimezone || 'America/Los_Angeles'}
+                    onChange={(e) => handleChange('secondaryTimezone', e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 bg-dark-bg border border-dark-border rounded-lg
+                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                  >
+                    <optgroup label="Suggested">
+                      <option value="America/New_York">Eastern Time (EST/EDT)</option>
+                      <option value="America/Los_Angeles">Pacific Time (PST/PDT)</option>
+                    </optgroup>
+                    <optgroup label="North America">
+                      <option value="America/New_York">Eastern Time (EST/EDT)</option>
+                      <option value="America/Chicago">Central Time (CST/CDT)</option>
+                      <option value="America/Denver">Mountain Time (MST/MDT)</option>
+                      <option value="America/Los_Angeles">Pacific Time (PST/PDT)</option>
+                      <option value="America/Anchorage">Alaska Time (AKST/AKDT)</option>
+                      <option value="Pacific/Honolulu">Hawaii Time (HST)</option>
+                    </optgroup>
+                    <optgroup label="Europe">
+                      <option value="Europe/London">London (GMT/BST)</option>
+                      <option value="Europe/Paris">Central European (CET/CEST)</option>
+                      <option value="Europe/Berlin">Berlin (CET/CEST)</option>
+                      <option value="Europe/Madrid">Madrid (CET/CEST)</option>
+                      <option value="Europe/Rome">Rome (CET/CEST)</option>
+                      <option value="Europe/Athens">Athens (EET/EEST)</option>
+                    </optgroup>
+                    <optgroup label="Asia">
+                      <option value="Asia/Dubai">Dubai (GST)</option>
+                      <option value="Asia/Kolkata">India (IST)</option>
+                      <option value="Asia/Shanghai">China (CST)</option>
+                      <option value="Asia/Tokyo">Tokyo (JST)</option>
+                      <option value="Asia/Seoul">Seoul (KST)</option>
+                      <option value="Asia/Singapore">Singapore (SGT)</option>
+                      <option value="Asia/Hong_Kong">Hong Kong (HKT)</option>
+                    </optgroup>
+                    <optgroup label="Australia">
+                      <option value="Australia/Sydney">Sydney (AEDT/AEST)</option>
+                      <option value="Australia/Melbourne">Melbourne (AEDT/AEST)</option>
+                      <option value="Australia/Brisbane">Brisbane (AEST)</option>
+                      <option value="Australia/Perth">Perth (AWST)</option>
+                    </optgroup>
+                  </select>
+                  <p className="text-xs text-dark-text-muted mt-1">
+                    Timezone shown on hover in the Meetings tab
+                  </p>
+                </div>
+              </div>
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-dark-border flex justify-end gap-3 flex-shrink-0">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-6 btn-primary"
-          >
-            {isSaving ? 'Saving...' : 'Save Settings'}
-          </button>
         </div>
     </div>
   );

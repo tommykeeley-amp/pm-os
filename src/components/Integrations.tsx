@@ -188,7 +188,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
                         Connected
                       </span>
                       <button
-                        onClick={() => handleDisconnect(integration.id)}
+                        onClick={() => handleDisconnect(integration.id as 'google' | 'slack')}
                         className="text-xs text-dark-text-muted hover:text-dark-accent-danger transition-colors"
                       >
                         Disconnect
@@ -196,7 +196,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
                     </div>
                   ) : (
                     <button
-                      onClick={() => handleConnect(integration.id)}
+                      onClick={() => handleConnect(integration.id as 'google' | 'slack')}
                       disabled={isConnecting === integration.id}
                       className="btn-primary btn-sm"
                     >

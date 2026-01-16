@@ -2,28 +2,41 @@ import Store from 'electron-store';
 import { CalendarService } from '../src/services/calendar';
 import { GmailService } from '../src/services/gmail';
 import { SlackService } from '../src/services/slack';
+import { ZoomService } from '../src/services/zoom';
 import { ContextEngine } from '../src/services/context-engine';
 
 const store = new Store();
+
+// OAuth scope version tracking
+const REQUIRED_GOOGLE_SCOPE_VERSION = 2;
 
 export class IntegrationManager {
   private calendarService: CalendarService | null = null;
   private gmailService: GmailService | null = null;
   private slackService: SlackService | null = null;
+  private zoomService: ZoomService | null = null;
 
   constructor(
     private googleClientId: string,
     private googleClientSecret: string,
     private slackClientId: string,
     private slackClientSecret: string,
+    zoomClientId: string,
+    zoomClientSecret: string,
     private redirectUri: string
-  ) {}
+  ) {
+    // Initialize Zoom service
+    this.zoomService = new ZoomService(zoomClientId, zoomClientSecret, redirectUri);
+  }
 
   // Initialize services with stored tokens
   async initialize() {
-    // Initialize Google services if tokens exist
+    // Check if Google OAuth scope needs update
+    const scopeValid = this.checkAndHandleScopeUpdate();
+
+    // Initialize Google services if tokens exist and scope is valid
     const googleTokens = this.getStoredTokens('google');
-    if (googleTokens?.accessToken) {
+    if (googleTokens?.accessToken && scopeValid) {
       this.calendarService = new CalendarService(
         this.googleClientId,
         this.googleClientSecret,
@@ -49,6 +62,25 @@ export class IntegrationManager {
       );
       this.slackService.setTokens(slackTokens);
     }
+
+    // Initialize Zoom if tokens exist
+    const zoomTokens = this.getStoredTokens('zoom');
+    if (zoomTokens.accessToken) {
+      this.zoomService?.setTokens(zoomTokens);
+    }
+  }
+
+  // Check and handle OAuth scope updates
+  checkAndHandleScopeUpdate(): boolean {
+    const storedVersion = store.get('google_oauth_scope_version', 1) as number;
+    if (storedVersion < REQUIRED_GOOGLE_SCOPE_VERSION) {
+      // Clear outdated tokens
+      store.delete('google_access_token');
+      store.delete('google_refresh_token');
+      store.delete('google_expires_at');
+      return false; // Needs re-auth
+    }
+    return true; // OK
   }
 
   // Exchange OAuth code for tokens (Google)
@@ -61,6 +93,9 @@ export class IntegrationManager {
 
     const tokens = await calendarService.exchangeCodeForTokens(code);
     this.saveTokens('google', tokens);
+
+    // Save scope version after successful connection
+    store.set('google_oauth_scope_version', REQUIRED_GOOGLE_SCOPE_VERSION);
 
     // Initialize services
     this.calendarService = calendarService;
@@ -92,6 +127,47 @@ export class IntegrationManager {
     this.slackService.setTokens(tokens);
 
     return tokens;
+  }
+
+  // Exchange OAuth code for tokens (Zoom)
+  async connectZoom(code: string): Promise<void> {
+    if (!this.zoomService) {
+      throw new Error('Zoom service not initialized');
+    }
+
+    const tokens = await this.zoomService.exchangeCodeForTokens(code);
+    this.zoomService.setTokens(tokens);
+    this.saveTokens('zoom', tokens);
+  }
+
+  // Update event RSVP status
+  async updateEventRSVP(eventId: string, responseStatus: 'accepted' | 'declined' | 'tentative'): Promise<void> {
+    if (!this.calendarService) {
+      throw new Error('Calendar service not initialized');
+    }
+    await this.calendarService.updateEventAttendeeStatus(eventId, responseStatus);
+  }
+
+  // Create calendar event
+  async createCalendarEvent(request: any): Promise<any> {
+    if (!this.calendarService) {
+      throw new Error('Calendar service not initialized');
+    }
+    return await this.calendarService.createEvent(request);
+  }
+
+  // Create Zoom meeting
+  async createZoomMeeting(request: any): Promise<any> {
+    if (!this.zoomService) {
+      throw new Error('Zoom service not initialized');
+    }
+    return await this.zoomService.createMeeting(request);
+  }
+
+  // Check if Zoom is configured
+  isZoomConfigured(): boolean {
+    const tokens = this.getStoredTokens('zoom');
+    return !!tokens.accessToken;
   }
 
   // Sync calendar events

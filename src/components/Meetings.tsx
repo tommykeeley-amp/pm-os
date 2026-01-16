@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
+import PendingRSVPCard from './PendingRSVPCard';
+import CreateEventModal from './CreateEventModal';
 
 interface Attendee {
   email: string;
@@ -30,6 +32,9 @@ export default function Meetings({ isPinned }: MeetingsProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showDeclinedMeetings, setShowDeclinedMeetings] = useState(true);
+  const [primaryTimezone, setPrimaryTimezone] = useState('America/New_York');
+  const [secondaryTimezone, setSecondaryTimezone] = useState('America/Los_Angeles');
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
 
   useEffect(() => {
     loadTodaysEvents();
@@ -50,6 +55,8 @@ export default function Meetings({ isPinned }: MeetingsProps) {
       const settings = await window.electronAPI.getUserSettings();
       // Default to true if not set
       setShowDeclinedMeetings(settings?.showDeclinedMeetings ?? true);
+      setPrimaryTimezone(settings?.primaryTimezone || 'America/New_York');
+      setSecondaryTimezone(settings?.secondaryTimezone || 'America/Los_Angeles');
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -242,6 +249,35 @@ export default function Meetings({ isPinned }: MeetingsProps) {
     }
   };
 
+  const handleRSVP = async (eventId: string, status: 'accepted' | 'declined' | 'tentative') => {
+    try {
+      const result = await window.electronAPI.calendarUpdateRSVP(eventId, status);
+
+      if (result.success) {
+        // Optimistic update
+        setEvents(events.map(event => {
+          if (event.id === eventId) {
+            return {
+              ...event,
+              attendees: event.attendees?.map(a =>
+                a.self ? { ...a, responseStatus: status } : a
+              )
+            };
+          }
+          return event;
+        }));
+
+        // Refresh after delay
+        setTimeout(() => loadTodaysEvents(), 500);
+      } else {
+        alert(`Failed to update RSVP: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to update RSVP:', error);
+      alert('Failed to update RSVP. Please try again.');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full py-12">
@@ -378,8 +414,30 @@ export default function Meetings({ isPinned }: MeetingsProps) {
 
   const currentTimePosition = getCurrentTimePosition();
 
-  // Convert time label to PST and EST
-  const getTimezoneLabels = (timeLabel: string) => {
+  // Filter pending RSVPs
+  const pendingRSVPs = events.filter(event => {
+    const userAttendee = event.attendees?.find(a => a.self);
+    return userAttendee?.responseStatus === 'needsAction';
+  });
+
+  // Get timezone abbreviation
+  const getTimezoneAbbr = (timezone: string) => {
+    try {
+      const date = new Date();
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        timeZoneName: 'short',
+      });
+      const parts = formatter.formatToParts(date);
+      const tzPart = parts.find(part => part.type === 'timeZoneName');
+      return tzPart?.value || '';
+    } catch {
+      return '';
+    }
+  };
+
+  // Convert time from primary timezone to secondary timezone
+  const convertToSecondaryTimezone = (timeLabel: string) => {
     // Parse the hour from label like "9 AM" or "12 PM"
     const [hourStr, period] = timeLabel.split(' ');
     let hour = parseInt(hourStr);
@@ -391,57 +449,93 @@ export default function Meetings({ isPinned }: MeetingsProps) {
       hour = 0;
     }
 
-    // Calculate PST (UTC-8) and EST (UTC-5) - EST is 3 hours ahead
-    const estHour = hour; // We'll treat the displayed times as EST
-    let pstHour = hour - 3; // PST is 3 hours behind EST
+    // Create a date object for today at the specified hour in primary timezone
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00`;
 
-    // Handle wraparound
-    if (pstHour < 0) pstHour += 24;
-    if (pstHour >= 24) pstHour -= 24;
+    try {
+      // Create date and convert to secondary timezone
+      const date = new Date(dateStr);
+      const secondaryFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: secondaryTimezone,
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true,
+      });
 
-    // Format back to 12-hour
-    const formatHour = (h: number) => {
-      if (h === 0) return '12 AM';
-      if (h < 12) return `${h} AM`;
-      if (h === 12) return '12 PM';
-      return `${h - 12} PM`;
-    };
+      const secondaryTime = secondaryFormatter.format(date);
+      const secondaryAbbr = getTimezoneAbbr(secondaryTimezone);
 
-    return {
-      pst: formatHour(pstHour),
-      est: formatHour(estHour),
-    };
+      return `${secondaryTime} ${secondaryAbbr}`;
+    } catch (error) {
+      console.error('Timezone conversion error:', error);
+      return timeLabel;
+    }
   };
 
   return (
     <div className={`relative h-full ${!isPinned ? 'overflow-y-auto' : ''}`}>
+      {/* Pending RSVPs Section */}
+      {pendingRSVPs.length > 0 && (
+        <div className="mb-6 space-y-2 px-4 pt-4">
+          <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider mb-3">
+            Pending RSVPs ({pendingRSVPs.length})
+          </h3>
+          {pendingRSVPs.map(event => (
+            <PendingRSVPCard
+              key={event.id}
+              event={event}
+              onRSVP={handleRSVP}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Header with Create Event Button */}
+      <div className="flex items-center justify-between mb-4 px-4">
+        <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
+          Today's Schedule
+        </h3>
+        <button
+          onClick={() => setShowCreateEventModal(true)}
+          className="px-3 py-1.5 text-xs bg-dark-accent-primary text-white rounded-lg hover:bg-dark-accent-primary/90 transition-colors flex items-center gap-1"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          New Event
+        </button>
+      </div>
+
       <div className={isPinned ? 'h-full' : 'min-h-[800px] relative'}>
-        {/* Timezone labels header */}
-        <div className="absolute left-0 top-0 w-32 flex text-xs font-semibold text-dark-text-secondary border-b border-dark-border pb-1">
-          <div className="flex-1 text-right pr-2">PST</div>
-          <div className="flex-1 text-right pr-2">EST</div>
+        {/* Timezone label header */}
+        <div className="absolute left-0 top-0 w-20 text-xs font-semibold text-dark-text-secondary border-b border-dark-border pb-1 pr-2 text-right">
+          {getTimezoneAbbr(primaryTimezone)}
         </div>
 
-        {/* Time labels - PST and EST */}
-        <div className="absolute left-0 top-6 bottom-0 w-32 flex py-2">
-          {/* PST Column */}
-          <div className="flex-1 flex flex-col justify-between text-xs text-dark-text-muted">
-            {timeLabels.map((label, i) => {
-              const { pst } = getTimezoneLabels(label);
-              return <div key={`pst-${i}`} className="text-right pr-2">{pst}</div>;
-            })}
-          </div>
-          {/* EST Column */}
-          <div className="flex-1 flex flex-col justify-between text-xs text-dark-text-muted">
-            {timeLabels.map((label, i) => {
-              const { est } = getTimezoneLabels(label);
-              return <div key={`est-${i}`} className="text-right pr-2">{est}</div>;
-            })}
-          </div>
+        {/* Time labels - Primary timezone with Secondary on hover */}
+        <div className="absolute left-0 top-6 bottom-0 w-20 flex flex-col text-xs text-dark-text-muted py-2">
+          {timeLabels.map((label, i) => {
+            const secondaryLabel = convertToSecondaryTimezone(label);
+            return (
+              <div
+                key={i}
+                className="flex-1 group relative cursor-default pr-2 flex flex-col justify-start text-right"
+              >
+                <div className="group-hover:text-dark-text-primary transition-colors">
+                  {label}
+                </div>
+                {/* Secondary timezone label on hover */}
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-dark-text-muted mt-0.5">
+                  {secondaryLabel}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Events container */}
-        <div className="absolute left-32 right-0 top-6 bottom-0 ml-2">
+        <div className="absolute left-20 right-0 top-6 bottom-0 ml-2">
           {/* Hour grid lines */}
           <div className="absolute inset-0">
             {[...Array(gridLines)].map((_, i) => (
@@ -508,11 +602,6 @@ export default function Meetings({ isPinned }: MeetingsProps) {
                   <div className="text-xs text-dark-text-secondary">
                     {format(startTime, 'h:mm a')} - {format(endTime, 'h:mm a')}
                   </div>
-                  {event.location && (
-                    <div className="text-xs text-dark-text-muted truncate">
-                      📍 {event.location}
-                    </div>
-                  )}
                 </div>
 
                 {/* Hover buttons */}
@@ -541,6 +630,17 @@ export default function Meetings({ isPinned }: MeetingsProps) {
         </div>
       </div>
       </div>
+
+      {/* Create Event Modal */}
+      {showCreateEventModal && (
+        <CreateEventModal
+          onClose={() => setShowCreateEventModal(false)}
+          onSuccess={() => {
+            setShowCreateEventModal(false);
+            loadTodaysEvents();
+          }}
+        />
+      )}
     </div>
   );
 }

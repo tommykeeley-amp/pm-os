@@ -26,16 +26,40 @@ interface TokenData {
   expiresAt: number;
 }
 
+interface CreateEventRequest {
+  summary: string;
+  description?: string;
+  start: string; // ISO 8601
+  end: string;   // ISO 8601
+  attendees?: string[]; // Array of email addresses
+  conferenceData?: {
+    createRequest?: {
+      requestId: string;
+      conferenceSolutionKey: {
+        type: string;
+      };
+    };
+    entryPoints?: Array<{
+      entryPointType: 'video';
+      uri: string;
+      label?: string;
+    }>;
+  };
+}
+
 export class CalendarService {
   private oauth2Client: any;
-  private clientId: string;
-  private clientSecret: string;
-  private redirectUri: string;
+  // @ts-ignore - stored for future use
+  private _clientId: string;
+  // @ts-ignore - stored for future use
+  private _clientSecret: string;
+  // @ts-ignore - stored for future use
+  private _redirectUri: string;
 
   constructor(clientId: string, clientSecret: string, redirectUri: string) {
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-    this.redirectUri = redirectUri;
+    this._clientId = clientId;
+    this._clientSecret = clientSecret;
+    this._redirectUri = redirectUri;
 
     this.oauth2Client = new google.auth.OAuth2(
       clientId,
@@ -162,4 +186,94 @@ export class CalendarService {
       return null;
     }
   }
+
+  async updateEventAttendeeStatus(
+    eventId: string,
+    responseStatus: 'accepted' | 'declined' | 'tentative'
+  ): Promise<void> {
+    try {
+      const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+
+      // Get user email for updating correct attendee
+      const profile = await this.oauth2Client.getTokenInfo(this.oauth2Client.credentials.access_token);
+      const userEmail = profile.email;
+
+      await calendar.events.patch({
+        calendarId: 'primary',
+        eventId: eventId,
+        requestBody: {
+          attendees: [{
+            email: userEmail,
+            responseStatus: responseStatus,
+            self: true
+          }]
+        },
+        sendUpdates: 'all', // Notify other attendees
+      });
+    } catch (error: any) {
+      if (error.code === 401) {
+        // Token expired, try to refresh
+        const refreshedTokens = await this.getRefreshedTokens();
+        if (refreshedTokens) {
+          this.setTokens(refreshedTokens);
+          return this.updateEventAttendeeStatus(eventId, responseStatus);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async createEvent(request: CreateEventRequest): Promise<CalendarEvent> {
+    try {
+      const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+
+      const response = await calendar.events.insert({
+        calendarId: 'primary',
+        conferenceDataVersion: 1,
+        requestBody: {
+          summary: request.summary,
+          description: request.description,
+          start: {
+            dateTime: request.start,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          end: {
+            dateTime: request.end,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          attendees: request.attendees?.map(email => ({ email })),
+          conferenceData: request.conferenceData,
+        },
+      });
+
+      const event = response.data;
+      return {
+        id: event.id!,
+        title: event.summary || 'Untitled Event',
+        start: event.start?.dateTime || event.start?.date || '',
+        end: event.end?.dateTime || event.end?.date || '',
+        description: event.description || undefined,
+        location: event.location || undefined,
+        attendees: event.attendees?.map(a => ({
+          email: a.email!,
+          responseStatus: a.responseStatus || undefined,
+          self: a.self || undefined,
+        })),
+        htmlLink: event.htmlLink || undefined,
+        hangoutLink: event.hangoutLink || undefined,
+        conferenceData: event.conferenceData,
+      };
+    } catch (error: any) {
+      if (error.code === 401) {
+        const refreshedTokens = await this.getRefreshedTokens();
+        if (refreshedTokens) {
+          this.setTokens(refreshedTokens);
+          return this.createEvent(request);
+        }
+      }
+      throw error;
+    }
+  }
 }
+
+export type { CalendarEvent, Attendee, TokenData, CreateEventRequest };

@@ -30,6 +30,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncSlack: () => ipcRenderer.invoke('sync-slack'),
   getSmartSuggestions: () => ipcRenderer.invoke('get-smart-suggestions'),
 
+  // Calendar operations
+  calendarUpdateRSVP: (eventId: string, status: string) =>
+    ipcRenderer.invoke('calendar-update-rsvp', eventId, status),
+  calendarCreateEvent: (request: any) =>
+    ipcRenderer.invoke('calendar-create-event', request),
+
+  // Zoom integration
+  zoomIsConfigured: () =>
+    ipcRenderer.invoke('zoom-is-configured'),
+  zoomCreateMeeting: (request: any) =>
+    ipcRenderer.invoke('zoom-create-meeting', request),
+
   // Jira
   jiraIsConfigured: () => ipcRenderer.invoke('jira-is-configured'),
   jiraTestConnection: () => ipcRenderer.invoke('jira-test-connection'),
@@ -76,6 +88,10 @@ export interface ElectronAPI {
   syncGmail: () => Promise<any>;
   syncSlack: () => Promise<any>;
   getSmartSuggestions: () => Promise<any[]>;
+  calendarUpdateRSVP: (eventId: string, status: string) => Promise<{ success: boolean; error?: string }>;
+  calendarCreateEvent: (request: any) => Promise<{ success: boolean; event?: any; error?: string }>;
+  zoomIsConfigured: () => Promise<boolean>;
+  zoomCreateMeeting: (request: any) => Promise<{ success: boolean; meeting?: any; error?: string }>;
   jiraIsConfigured: () => Promise<boolean>;
   jiraTestConnection: () => Promise<{ success: boolean; error?: string }>;
   jiraGetProjects: () => Promise<any[]>;

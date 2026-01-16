@@ -1,4 +1,4 @@
-import { differenceInMinutes, differenceInHours, parseISO, isToday, isTomorrow, isPast } from 'date-fns';
+import { differenceInMinutes, differenceInHours, parseISO, isToday, isTomorrow } from 'date-fns';
 
 interface Suggestion {
   id: string;

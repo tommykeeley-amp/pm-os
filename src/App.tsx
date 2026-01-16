@@ -20,7 +20,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [jiraConfigured, setJiraConfigured] = useState(false);
   const [confluenceConfigured, setConfluenceConfigured] = useState(false);
-  const [slackConfigured, setSlackConfigured] = useState(false);
+  const [slackConfigured] = useState(false);
   const [jiraTicketTask, setJiraTicketTask] = useState<Task | null>(null);
   const [confluenceDocTask, setConfluenceDocTask] = useState<Task | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
