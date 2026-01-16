@@ -19,7 +19,7 @@ export default {
             muted: '#666666',
           },
           accent: {
-            primary: '#3b82f6',
+            primary: '#FCD34D', // Yellow - matches brand
             secondary: '#8b5cf6',
             success: '#10b981',
             warning: '#f59e0b',

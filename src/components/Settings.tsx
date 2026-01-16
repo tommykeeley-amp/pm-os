@@ -6,6 +6,7 @@ interface SettingsProps {
 
 interface UserSettings {
   // Personal Info
+  name?: string;
   email?: string;
 
   // Jira Settings
@@ -18,13 +19,16 @@ interface UserSettings {
   // Confluence Settings
   confluenceDefaultSpace?: string;
   confluenceDefaultParentId?: string;
+
+  // Customization Settings
+  showDeclinedMeetings?: boolean;
 }
 
 export default function Settings({ onClose }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'personal' | 'jira' | 'confluence' | 'integrations'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'jira' | 'confluence' | 'integrations' | 'customizations'>('personal');
 
   // Integrations state
   const [integrations, setIntegrations] = useState([
@@ -99,7 +103,7 @@ export default function Settings({ onClose }: SettingsProps) {
     }
   };
 
-  const handleChange = (field: keyof UserSettings, value: string) => {
+  const handleChange = (field: keyof UserSettings, value: string | boolean) => {
     setSettings({ ...settings, [field]: value });
   };
 
@@ -195,6 +199,16 @@ export default function Settings({ onClose }: SettingsProps) {
           >
             Confluence
           </button>
+          <button
+            onClick={() => setActiveTab('customizations')}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'customizations'
+                ? 'text-dark-accent-primary border-dark-accent-primary'
+                : 'text-dark-text-secondary border-transparent hover:text-dark-text-primary'
+            }`}
+          >
+            Customizations
+          </button>
         </div>
 
         {/* Content */}
@@ -212,6 +226,23 @@ export default function Settings({ onClose }: SettingsProps) {
           {/* Personal Tab */}
           {activeTab === 'personal' && (
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={settings.name || ''}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                  placeholder="Your name"
+                />
+                <p className="text-xs text-dark-text-muted mt-1">
+                  Your name for personalization
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-dark-text-secondary mb-2">
                   Email Address
@@ -463,6 +494,42 @@ export default function Settings({ onClose }: SettingsProps) {
                 <p className="text-xs text-dark-text-muted mt-1">
                   Optional parent page ID to organize new pages under a specific folder
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* Customizations Tab */}
+          {activeTab === 'customizations' && (
+            <div className="space-y-4">
+              <p className="text-sm text-dark-text-secondary">
+                Customize how PM-OS displays information.
+              </p>
+
+              <div className="bg-dark-bg border border-dark-border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-dark-text-primary">
+                      Show Declined Meetings
+                    </h3>
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Display meetings you've declined in the Meetings tab
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleChange('showDeclinedMeetings', !(settings.showDeclinedMeetings ?? true))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      settings.showDeclinedMeetings !== false
+                        ? 'bg-dark-accent-primary'
+                        : 'bg-dark-border'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        settings.showDeclinedMeetings !== false ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           )}

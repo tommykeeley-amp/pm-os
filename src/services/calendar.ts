@@ -1,6 +1,12 @@
 import { google } from 'googleapis';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
 
+interface Attendee {
+  email: string;
+  responseStatus?: string;
+  self?: boolean;
+}
+
 interface CalendarEvent {
   id: string;
   title: string;
@@ -8,7 +14,10 @@ interface CalendarEvent {
   end: string;
   description?: string;
   location?: string;
-  attendees?: string[];
+  attendees?: Attendee[];
+  htmlLink?: string;
+  hangoutLink?: string;
+  conferenceData?: any;
 }
 
 interface TokenData {
@@ -78,7 +87,14 @@ export class CalendarService {
         end: event.end.dateTime || event.end.date,
         description: event.description,
         location: event.location,
-        attendees: event.attendees?.map((a: any) => a.email) || [],
+        attendees: event.attendees?.map((a: any) => ({
+          email: a.email,
+          responseStatus: a.responseStatus,
+          self: a.self,
+        })) || [],
+        htmlLink: event.htmlLink,
+        hangoutLink: event.hangoutLink,
+        conferenceData: event.conferenceData,
       }));
     } catch (error: any) {
       if (error.response?.status === 401) {
@@ -114,7 +130,14 @@ export class CalendarService {
         end: event.end.dateTime || event.end.date,
         description: event.description,
         location: event.location,
-        attendees: event.attendees?.map((a: any) => a.email) || [],
+        attendees: event.attendees?.map((a: any) => ({
+          email: a.email,
+          responseStatus: a.responseStatus,
+          self: a.self,
+        })) || [],
+        htmlLink: event.htmlLink,
+        hangoutLink: event.hangoutLink,
+        conferenceData: event.conferenceData,
       }));
     } catch (error: any) {
       if (error.response?.status === 401) {

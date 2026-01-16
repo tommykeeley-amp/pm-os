@@ -44,7 +44,7 @@ export default function TaskInput({ onAddTask }: TaskInputProps) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Add a task... (cmd+shift+p)"
+        placeholder="Add task... (cmd+shift+p)"
         className="w-full bg-dark-surface text-dark-text-primary placeholder-dark-text-muted
                    px-4 py-3 rounded-lg border border-dark-border
                    focus:border-dark-accent-primary focus:ring-1 focus:ring-dark-accent-primary

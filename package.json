@@ -58,7 +58,11 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "build/icon.png"
+      "build/icon.png",
+      ".env"
+    ],
+    "asarUnpack": [
+      ".env"
     ],
     "directories": {
       "output": "release"

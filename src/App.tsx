@@ -7,9 +7,13 @@ import JiraTicketModal from './components/JiraTicketModal';
 import ConfluenceDocModal from './components/ConfluenceDocModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import Settings from './components/Settings';
+import Meetings from './components/Meetings';
 import type { Task } from './types/task';
 
+type Tab = 'tasks' | 'meetings';
+
 function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('tasks');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isPinned, setIsPinned] = useState(false);
@@ -24,6 +28,14 @@ function App() {
 
   useEffect(() => {
     loadInitialData();
+
+    // Listen for open-settings event from Meetings component
+    const handleOpenSettings = () => setShowSettings(true);
+    window.addEventListener('open-settings', handleOpenSettings);
+
+    return () => {
+      window.removeEventListener('open-settings', handleOpenSettings);
+    };
   }, []);
 
   const loadInitialData = async () => {
@@ -278,11 +290,43 @@ function App() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="bg-dark-surface border-b border-dark-border flex">
+        <button
+          onClick={() => setActiveTab('tasks')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative
+                   ${activeTab === 'tasks'
+                     ? 'text-dark-text-primary'
+                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
+        >
+          Tasks
+          {activeTab === 'tasks' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('meetings')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative
+                   ${activeTab === 'meetings'
+                     ? 'text-dark-text-primary'
+                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
+        >
+          Meetings
+          {activeTab === 'meetings' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary"></div>
+          )}
+        </button>
+      </div>
+
       {/* Main content */}
-      <div className="h-[calc(100vh-57px)] overflow-y-auto">
+      <div className="h-[calc(100vh-57px-49px)] overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-dark-text-secondary">Loading...</div>
+          </div>
+        ) : activeTab === 'meetings' ? (
+          <div className="h-full p-4">
+            <Meetings isPinned={isPinned} />
           </div>
         ) : (
           <div className="p-4 space-y-4">

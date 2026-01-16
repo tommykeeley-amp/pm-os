@@ -260,10 +260,10 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
             />
           </div>
 
-          {/* Tags */}
+          {/* Projects */}
           <div>
             <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-              Tags
+              Projects
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
               {tags.map((tag, index) => (
@@ -290,7 +290,7 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
                   className="px-3 py-1 border border-dashed border-dark-border rounded-full text-sm
                            text-dark-text-secondary hover:text-dark-text-primary hover:border-dark-text-secondary transition-colors"
                 >
-                  + Add Tag
+                  + Add Project
                 </button>
               ) : (
                 <div className="w-full p-2 bg-dark-bg rounded-lg border border-dark-border">

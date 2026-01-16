@@ -9,12 +9,24 @@ import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
 import { ConfluenceService } from '../src/services/confluence';
 
-// Load environment variables
-dotenv.config();
-
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load environment variables - handle both dev and production paths
+const envPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', '.env')
+  : path.join(__dirname, '..', '.env');
+
+console.log('Loading .env from:', envPath);
+dotenv.config({ path: envPath });
+
+// Debug: Log OAuth credentials (first 20 chars only for security)
+console.log('=== OAuth Configuration Debug ===');
+console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID?.substring(0, 20) + '...');
+console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET?.substring(0, 10) + '...');
+console.log('OAUTH_REDIRECT_URI:', process.env.OAUTH_REDIRECT_URI);
+console.log('================================');
 
 const store = new Store();
 let mainWindow: BrowserWindow | null = null;
@@ -408,8 +420,22 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack') => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        // Add additional preferences to mimic a real browser
+        webSecurity: true,
+        allowRunningInsecureContent: false,
       },
     });
+
+    // Set user agent to appear as the latest Chrome browser
+    // Updated to Chrome 131 (current as of Jan 2026)
+    authWindow.webContents.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    );
+
+    // Set additional session properties to appear more like a real browser
+    authWindow.webContents.session.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    );
 
     const authUrls = {
       google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}&response_type=code&scope=https://www.googleapis.com/auth/calendar.readonly%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent`,
@@ -418,8 +444,8 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack') => {
 
     authWindow.loadURL(authUrls[provider]);
 
-    // Listen for redirect
-    authWindow.webContents.on('will-redirect', async (_event, url) => {
+    // Handle OAuth callback
+    const handleOAuthCallback = async (url: string) => {
       if (url.startsWith(process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback')) {
         const urlObj = new URL(url);
         const code = urlObj.searchParams.get('code');
@@ -440,6 +466,15 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack') => {
           authWindow?.close();
         }
       }
+    };
+
+    // Listen for redirect - handle both will-redirect and did-navigate
+    authWindow.webContents.on('will-redirect', async (_event, url) => {
+      await handleOAuthCallback(url);
+    });
+
+    authWindow.webContents.on('did-navigate', async (_event, url) => {
+      await handleOAuthCallback(url);
     });
 
     authWindow.on('closed', () => {
