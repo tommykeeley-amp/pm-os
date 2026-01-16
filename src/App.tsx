@@ -3,10 +3,10 @@ import { startOfWeek, endOfWeek, parseISO, isWithinInterval } from 'date-fns';
 import TaskInput from './components/TaskInput';
 import TaskList from './components/TaskList';
 import SmartSuggestions from './components/SmartSuggestions';
-import Integrations from './components/Integrations';
 import JiraTicketModal from './components/JiraTicketModal';
 import ConfluenceDocModal from './components/ConfluenceDocModal';
 import TaskDetailModal from './components/TaskDetailModal';
+import Settings from './components/Settings';
 import type { Task } from './types/task';
 
 function App() {
@@ -14,13 +14,13 @@ function App() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isPinned, setIsPinned] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [showIntegrations, setShowIntegrations] = useState(false);
   const [jiraConfigured, setJiraConfigured] = useState(false);
   const [confluenceConfigured, setConfluenceConfigured] = useState(false);
   const [slackConfigured, setSlackConfigured] = useState(false);
   const [jiraTicketTask, setJiraTicketTask] = useState<Task | null>(null);
   const [confluenceDocTask, setConfluenceDocTask] = useState<Task | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadInitialData();
@@ -67,6 +67,8 @@ function App() {
     try {
       const addedTask = await window.electronAPI.addTask(newTask);
       setTasks([addedTask, ...tasks]);
+      // Automatically open the detail modal for the newly created task
+      setDetailTask(addedTask);
     } catch (error) {
       console.error('Failed to add task:', error);
     }
@@ -164,6 +166,8 @@ function App() {
       setTasks([addedTask, ...tasks]);
       // Remove from suggestions
       setSuggestions(suggestions.filter(s => s.id !== suggestion.id));
+      // Automatically open the detail modal for the newly created task
+      setDetailTask(addedTask);
     } catch (error) {
       console.error('Failed to add task from suggestion:', error);
     }
@@ -198,18 +202,18 @@ function App() {
   });
 
   return (
-    <div className="w-screen h-screen bg-dark-bg animate-fade-in">
+    <div className="relative w-screen h-screen bg-dark-bg animate-fade-in">
       {/* Header with drag region */}
       <div className="drag-region bg-dark-surface border-b border-dark-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-dark-accent-primary"></div>
+          <div className="w-2 h-2 rounded-full bg-brand-yellow animate-pulse-glow"></div>
           <h1 className="text-sm font-semibold text-dark-text-primary no-drag">PM-OS</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowIntegrations(true)}
+            onClick={() => setShowSettings(true)}
             className="no-drag p-1.5 hover:bg-dark-bg rounded transition-colors"
-            title="Integrations"
+            title="Settings"
           >
             <svg
               className="w-4 h-4 text-dark-text-secondary hover:text-dark-text-primary transition-colors"
@@ -221,7 +225,13 @@ function App() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
           </button>
@@ -364,9 +374,11 @@ function App() {
         )}
       </div>
 
-      {/* Integrations modal */}
-      {showIntegrations && (
-        <Integrations onClose={() => setShowIntegrations(false)} />
+      {/* Settings full-screen view */}
+      {showSettings && (
+        <div className="absolute inset-0 z-50 animate-fade-in">
+          <Settings onClose={() => setShowSettings(false)} />
+        </div>
       )}
 
       {/* Jira ticket modal */}
@@ -387,17 +399,20 @@ function App() {
         />
       )}
 
-      {/* Task detail modal */}
+      {/* Task detail full-screen view */}
       {detailTask && (
-        <TaskDetailModal
-          task={detailTask}
-          existingTags={tasks.flatMap(t => t.tags || [])}
-          onClose={() => setDetailTask(null)}
-          onSave={(updates) => {
-            handleUpdateTask(detailTask.id, updates);
-            setDetailTask(null);
-          }}
-        />
+        <div className="absolute inset-0 z-50 animate-fade-in">
+          <TaskDetailModal
+            task={detailTask}
+            existingTags={tasks.flatMap(t => t.tags || [])}
+            onClose={() => setDetailTask(null)}
+            onSave={(updates) => {
+              handleUpdateTask(detailTask.id, updates);
+              // Update the detailTask state to reflect changes immediately
+              setDetailTask({ ...detailTask, ...updates });
+            }}
+          />
+        </div>
       )}
     </div>
   );

@@ -25,6 +25,10 @@ export default {
             warning: '#f59e0b',
             danger: '#ef4444',
           }
+        },
+        // Brand color (matches app icon)
+        brand: {
+          yellow: '#FCD34D',
         }
       },
 
@@ -46,6 +50,10 @@ export default {
         'lg': ['1.125rem', { lineHeight: '1.75rem' }],  // 18px - modal titles
         'xl': ['1.25rem', { lineHeight: '1.75rem' }],   // 20px - large headings
         '2xl': ['1.5rem', { lineHeight: '2rem' }],      // 24px - page titles
+      },
+
+      fontFamily: {
+        sans: ['Space Grotesk', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
 
       fontWeight: {
@@ -84,6 +92,7 @@ export default {
         'slide-in': 'slideIn 0.2s ease-out',
         'slide-in-right': 'slideInRight 0.2s ease-out',
         'fade-in': 'fadeIn 0.15s ease-out',
+        'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
       },
 
       keyframes: {
@@ -98,6 +107,18 @@ export default {
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        pulseGlow: {
+          '0%, 100%': {
+            opacity: '1',
+            transform: 'scale(1)',
+            boxShadow: '0 0 0 0 rgba(252, 211, 77, 0.9)',
+          },
+          '50%': {
+            opacity: '0.6',
+            transform: 'scale(1.3)',
+            boxShadow: '0 0 12px 6px rgba(252, 211, 77, 0.6)',
+          },
         },
       },
     },

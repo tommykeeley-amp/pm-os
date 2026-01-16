@@ -10,11 +10,19 @@ export default function TaskInput({ onAddTask }: TaskInputProps) {
 
   useEffect(() => {
     // Listen for global hotkey event to focus input
+    console.log('TaskInput: Setting up focus listener');
     const unsubscribe = window.electronAPI.onFocusTaskInput(() => {
-      inputRef.current?.focus();
+      console.log('TaskInput: Received focus event, attempting to focus input');
+      if (inputRef.current) {
+        inputRef.current.focus();
+        console.log('TaskInput: Input focused successfully');
+      } else {
+        console.error('TaskInput: Input ref is null');
+      }
     });
 
     return () => {
+      console.log('TaskInput: Cleaning up focus listener');
       unsubscribe();
     };
   }, []);

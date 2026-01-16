@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleWindow: () => ipcRenderer.invoke('toggle-window'),
   pinWindow: (isPinned: boolean) => ipcRenderer.invoke('pin-window', isPinned),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -45,6 +46,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   confluenceSearchPages: (query: string, spaceKey?: string) => ipcRenderer.invoke('confluence-search-pages', query, spaceKey),
   confluenceGetPage: (pageId: string) => ipcRenderer.invoke('confluence-get-page', pageId),
 
+  // User Settings
+  getUserSettings: () => ipcRenderer.invoke('get-user-settings'),
+  saveUserSettings: (settings: any) => ipcRenderer.invoke('save-user-settings', settings),
+
   // Events
   onFocusTaskInput: (callback: () => void) => {
     ipcRenderer.on('focus-task-input', callback);
@@ -57,6 +62,7 @@ export interface ElectronAPI {
   toggleWindow: () => Promise<void>;
   pinWindow: (isPinned: boolean) => Promise<void>;
   minimizeWindow: () => Promise<void>;
+  openExternal: (url: string) => Promise<void>;
   getSettings: () => Promise<any>;
   updateSettings: (settings: any) => Promise<void>;
   getTasks: () => Promise<any[]>;
@@ -82,6 +88,8 @@ export interface ElectronAPI {
   confluenceCreatePage: (request: any) => Promise<{ id: string; url: string }>;
   confluenceSearchPages: (query: string, spaceKey?: string) => Promise<any[]>;
   confluenceGetPage: (pageId: string) => Promise<any>;
+  getUserSettings: () => Promise<any>;
+  saveUserSettings: (settings: any) => Promise<void>;
   onFocusTaskInput: (callback: () => void) => () => void;
 }
 

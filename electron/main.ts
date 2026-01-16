@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, screen, ipcMain } from 'electron';
+import { app, BrowserWindow, globalShortcut, screen, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
@@ -30,23 +30,34 @@ const integrationManager = new IntegrationManager(
   process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'
 );
 
+// Helper function to get Jira/Confluence credentials from settings or env
+function getJiraCredentials() {
+  const userSettings = store.get('userSettings', {}) as any;
+  return {
+    domain: userSettings.jiraDomain || process.env.JIRA_DOMAIN,
+    email: userSettings.jiraEmail || process.env.JIRA_EMAIL,
+    apiToken: userSettings.jiraApiToken || process.env.JIRA_API_TOKEN,
+  };
+}
+
 // Initialize Jira service if configured
 let jiraService: JiraService | null = null;
-if (process.env.JIRA_DOMAIN && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN) {
+const jiraCredentials = getJiraCredentials();
+if (jiraCredentials.domain && jiraCredentials.email && jiraCredentials.apiToken) {
   jiraService = new JiraService({
-    domain: process.env.JIRA_DOMAIN,
-    email: process.env.JIRA_EMAIL,
-    apiToken: process.env.JIRA_API_TOKEN,
+    domain: jiraCredentials.domain,
+    email: jiraCredentials.email,
+    apiToken: jiraCredentials.apiToken,
   });
 }
 
 // Initialize Confluence service if configured (uses same credentials as Jira)
 let confluenceService: ConfluenceService | null = null;
-if (process.env.JIRA_DOMAIN && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN) {
+if (jiraCredentials.domain && jiraCredentials.email && jiraCredentials.apiToken) {
   confluenceService = new ConfluenceService({
-    domain: process.env.JIRA_DOMAIN,
-    email: process.env.JIRA_EMAIL,
-    apiToken: process.env.JIRA_API_TOKEN,
+    domain: jiraCredentials.domain,
+    email: jiraCredentials.email,
+    apiToken: jiraCredentials.apiToken,
   });
 }
 
@@ -70,9 +81,10 @@ function createWindow() {
     x: savedPosition?.x ?? defaultX,
     y: savedPosition?.y ?? defaultY,
     title: 'PM OS',
+    icon: path.join(__dirname, '../build/icon.png'),
     frame: false,
     transparent: true,
-    alwaysOnTop: true,
+    alwaysOnTop: isPinned, // Only always-on-top when pinned
     skipTaskbar: false,
     resizable: false,
     webPreferences: {
@@ -80,6 +92,12 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  // Handle external links - open in default browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   // In development, load from dev server; in production, load from file
@@ -149,21 +167,50 @@ function registerHotkey() {
   }
 
   // Register cmd+shift+p to show window and focus task input
+  // Try to unregister first in case it's already registered
+  globalShortcut.unregister('CommandOrControl+Shift+P');
+
   const quickAddSuccess = globalShortcut.register('CommandOrControl+Shift+P', () => {
+    console.log('Quick add hotkey triggered!');
+
     if (!mainWindow) {
       createWindow();
+      // Wait for window to be ready before sending focus event
+      setTimeout(() => {
+        if (mainWindow) {
+          console.log('Sending focus event after window creation');
+          mainWindow.webContents.send('focus-task-input');
+        }
+      }, 500);
     } else {
-      mainWindow.show();
+      // Aggressively show and focus the window
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+
+      // Multiple methods to ensure focus on macOS
+      mainWindow.moveTop();
       mainWindow.focus();
-    }
-    // Send event to renderer to focus task input
-    if (mainWindow) {
-      mainWindow.webContents.send('focus-task-input');
+      app.focus({ steal: true });
+
+      // Send focus event after ensuring window is focused
+      setTimeout(() => {
+        if (mainWindow && mainWindow.webContents) {
+          console.log('Sending focus event to renderer');
+          mainWindow.webContents.send('focus-task-input');
+        }
+      }, 150);
     }
   });
 
   if (!quickAddSuccess) {
     console.error('Failed to register quick add shortcut: CommandOrControl+Shift+P');
+    console.error('This might be because another application is using this shortcut.');
+  } else {
+    console.log('Successfully registered cmd+shift+p shortcut');
   }
 }
 
@@ -220,6 +267,7 @@ ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
       height: screenHeight
     });
     mainWindow.setResizable(false);
+    mainWindow.setAlwaysOnTop(true); // Enable always-on-top when pinned
   } else {
     // Unpin - restore original size and center
     mainWindow.setResizable(true);
@@ -230,6 +278,7 @@ ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
       height: WINDOW_HEIGHT
     });
     mainWindow.setResizable(false);
+    mainWindow.setAlwaysOnTop(false); // Disable always-on-top when unpinned
   }
 
   const position = store.get('windowPosition') as WindowPosition | undefined;
@@ -247,6 +296,10 @@ ipcMain.handle('minimize-window', () => {
   if (mainWindow) {
     mainWindow.minimize();
   }
+});
+
+ipcMain.handle('open-external', async (_event, url: string) => {
+  await shell.openExternal(url);
 });
 
 ipcMain.handle('get-settings', () => {
@@ -267,6 +320,34 @@ ipcMain.handle('update-settings', (_event, settings: any) => {
   if (settings.hotkey) {
     globalShortcut.unregisterAll();
     registerHotkey();
+  }
+});
+
+// User Settings IPC Handlers
+ipcMain.handle('get-user-settings', () => {
+  return store.get('userSettings', {});
+});
+
+ipcMain.handle('save-user-settings', (_event, settings: any) => {
+  store.set('userSettings', settings);
+
+  // If Jira/Confluence credentials changed, reinitialize services
+  if (settings.jiraDomain || settings.jiraEmail || settings.jiraApiToken) {
+    // Reinitialize Jira service
+    if (settings.jiraDomain && settings.jiraEmail && settings.jiraApiToken) {
+      jiraService = new JiraService({
+        domain: settings.jiraDomain,
+        email: settings.jiraEmail,
+        apiToken: settings.jiraApiToken,
+      });
+
+      // Also reinitialize Confluence service (uses same credentials)
+      confluenceService = new ConfluenceService({
+        domain: settings.jiraDomain,
+        email: settings.jiraEmail,
+        apiToken: settings.jiraApiToken,
+      });
+    }
   }
 });
 
@@ -451,11 +532,12 @@ ipcMain.handle('jira-get-issue-types', async (_event, projectKey: string) => {
 ipcMain.handle('jira-create-issue', async (_event, request: any) => {
   if (!jiraService) throw new Error('Jira not configured');
 
+  const userSettings = store.get('userSettings', {}) as any;
   const issue = await jiraService.createIssue({
     summary: request.summary,
     description: request.description,
-    projectKey: request.projectKey || process.env.JIRA_DEFAULT_PROJECT || '',
-    issueType: request.issueType || process.env.JIRA_DEFAULT_ISSUE_TYPE || 'Task',
+    projectKey: request.projectKey || userSettings.jiraDefaultProject || process.env.JIRA_DEFAULT_PROJECT || '',
+    issueType: request.issueType || userSettings.jiraDefaultIssueType || process.env.JIRA_DEFAULT_ISSUE_TYPE || 'Task',
     priority: request.priority,
   });
 
@@ -494,11 +576,12 @@ ipcMain.handle('confluence-get-spaces', async () => {
 ipcMain.handle('confluence-create-page', async (_event, request: any) => {
   if (!confluenceService) throw new Error('Confluence not configured');
 
+  const userSettings = store.get('userSettings', {}) as any;
   const page = await confluenceService.createPage({
     title: request.title,
     body: request.body,
-    spaceKey: request.spaceKey || process.env.CONFLUENCE_DEFAULT_SPACE || '',
-    parentId: request.parentId || process.env.CONFLUENCE_DEFAULT_PARENT_ID,
+    spaceKey: request.spaceKey || userSettings.confluenceDefaultSpace || process.env.CONFLUENCE_DEFAULT_SPACE || '',
+    parentId: request.parentId || userSettings.confluenceDefaultParentId || process.env.CONFLUENCE_DEFAULT_PARENT_ID,
   });
 
   return {

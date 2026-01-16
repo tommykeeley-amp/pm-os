@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Task, TaskTag, LinkedItem } from '../types/task';
 import { TAG_COLORS } from '../design-system/tokens';
 
@@ -74,16 +74,78 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
 
-  const handleSave = () => {
-    onSave({
-      title,
-      description,
-      tags,
-      deadline: deadline || undefined,
-      linkedItems,
-    });
-    onClose();
-  };
+  // Debounce timer refs
+  const titleDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const descriptionDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const isInitialMount = useRef(true);
+
+  // Skip autosave on initial mount
+  useEffect(() => {
+    isInitialMount.current = false;
+  }, []);
+
+  // Autosave title with debounce (500ms)
+  useEffect(() => {
+    if (!isInitialMount.current && title !== task.title && title.trim()) {
+      if (titleDebounceTimer.current) {
+        clearTimeout(titleDebounceTimer.current);
+      }
+      titleDebounceTimer.current = setTimeout(() => {
+        onSave({ title });
+      }, 500);
+    }
+    return () => {
+      if (titleDebounceTimer.current) {
+        clearTimeout(titleDebounceTimer.current);
+      }
+    };
+  }, [title]);
+
+  // Autosave description with debounce (500ms)
+  useEffect(() => {
+    if (!isInitialMount.current && description !== (task.description || '')) {
+      if (descriptionDebounceTimer.current) {
+        clearTimeout(descriptionDebounceTimer.current);
+      }
+      descriptionDebounceTimer.current = setTimeout(() => {
+        onSave({ description });
+      }, 500);
+    }
+    return () => {
+      if (descriptionDebounceTimer.current) {
+        clearTimeout(descriptionDebounceTimer.current);
+      }
+    };
+  }, [description]);
+
+  // Autosave tags immediately
+  useEffect(() => {
+    if (!isInitialMount.current) {
+      const currentTags = JSON.stringify(task.tags || []);
+      const newTags = JSON.stringify(tags);
+      if (currentTags !== newTags) {
+        onSave({ tags });
+      }
+    }
+  }, [tags]);
+
+  // Autosave deadline immediately
+  useEffect(() => {
+    if (!isInitialMount.current && deadline !== (task.deadline || '')) {
+      onSave({ deadline: deadline || undefined });
+    }
+  }, [deadline]);
+
+  // Autosave linked items immediately
+  useEffect(() => {
+    if (!isInitialMount.current) {
+      const currentItems = JSON.stringify(task.linkedItems || []);
+      const newItems = JSON.stringify(linkedItems);
+      if (currentItems !== newItems) {
+        onSave({ linkedItems });
+      }
+    }
+  }, [linkedItems]);
 
   const handleAddTag = () => {
     if (newTagLabel.trim()) {
@@ -166,23 +228,23 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-container w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col">
-        {/* Header */}
-        <div className="modal-header">
-          <h2 className="text-lg font-semibold text-dark-text-primary">Task Details</h2>
-          <button
-            onClick={onClose}
-            className="text-dark-text-muted hover:text-dark-text-primary transition-colors"
-          >
-            <svg className="icon-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <div className="w-full h-full bg-dark-bg flex flex-col">
+      {/* Header */}
+      <div className="bg-dark-surface border-b border-dark-border px-4 py-3 flex items-center gap-3 flex-shrink-0">
+        <button
+          onClick={onClose}
+          className="text-dark-text-secondary hover:text-dark-text-primary transition-colors flex items-center gap-2"
+        >
+          <svg className="icon-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          <span className="text-sm font-medium">Back</span>
+        </button>
+        <h2 className="text-lg font-semibold text-dark-text-primary">Task Details</h2>
+      </div>
 
-        {/* Content */}
-        <div className="modal-content">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {/* Title */}
           <div>
             <label className="block text-sm font-medium text-dark-text-secondary mb-2">
@@ -400,15 +462,13 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
                   <div className="text-dark-text-secondary flex-shrink-0">
                     {getLinkIcon(item.type)}
                   </div>
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 text-sm text-dark-accent-primary hover:underline truncate"
+                  <button
+                    onClick={() => window.electronAPI.openExternal(item.url)}
+                    className="flex-1 text-left text-sm text-dark-accent-primary hover:underline truncate"
                     title={item.url}
                   >
                     {item.title}
-                  </a>
+                  </button>
                   <button
                     onClick={() => handleRemoveLink(item.id)}
                     className="text-dark-text-muted hover:text-dark-accent-danger transition-colors flex-shrink-0"
@@ -486,17 +546,7 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
               )}
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="modal-footer">
-          <button onClick={onClose} className="flex-1 btn-secondary">
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={!title.trim()} className="flex-1 btn-primary">
-            Save Changes
-          </button>
-        </div>
       </div>
     </div>
   );

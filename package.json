@@ -49,6 +49,7 @@
     "productName": "PM-OS",
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -56,7 +57,8 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "build/icon.png"
     ],
     "directories": {
       "output": "release"
