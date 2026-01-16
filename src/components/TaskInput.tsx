@@ -1,4 +1,4 @@
-import { useState, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 
 interface TaskInputProps {
   onAddTask: (title: string) => void;
@@ -6,6 +6,18 @@ interface TaskInputProps {
 
 export default function TaskInput({ onAddTask }: TaskInputProps) {
   const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Listen for global hotkey event to focus input
+    const unsubscribe = window.electronAPI.onFocusTaskInput(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && value.trim()) {
@@ -19,11 +31,12 @@ export default function TaskInput({ onAddTask }: TaskInputProps) {
   return (
     <div className="relative">
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Add a task... (Press Enter)"
+        placeholder="Add a task... (cmd+shift+p)"
         className="w-full bg-dark-surface text-dark-text-primary placeholder-dark-text-muted
                    px-4 py-3 rounded-lg border border-dark-border
                    focus:border-dark-accent-primary focus:ring-1 focus:ring-dark-accent-primary
@@ -36,7 +49,7 @@ export default function TaskInput({ onAddTask }: TaskInputProps) {
             onClick={() => setValue('')}
             className="text-dark-text-muted hover:text-dark-text-secondary transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

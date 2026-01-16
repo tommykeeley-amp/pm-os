@@ -147,6 +147,24 @@ function registerHotkey() {
   if (!success) {
     console.error('Failed to register global shortcut:', hotkey);
   }
+
+  // Register cmd+shift+p to show window and focus task input
+  const quickAddSuccess = globalShortcut.register('CommandOrControl+Shift+P', () => {
+    if (!mainWindow) {
+      createWindow();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    // Send event to renderer to focus task input
+    if (mainWindow) {
+      mainWindow.webContents.send('focus-task-input');
+    }
+  });
+
+  if (!quickAddSuccess) {
+    console.error('Failed to register quick add shortcut: CommandOrControl+Shift+P');
+  }
 }
 
 // App lifecycle

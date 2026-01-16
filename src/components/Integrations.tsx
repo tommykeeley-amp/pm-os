@@ -21,7 +21,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
       description: 'Calendar & Gmail',
       type: 'oauth',
       icon: (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+        <svg className="icon-md" viewBox="0 0 24 24" fill="currentColor">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
           <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -117,16 +117,16 @@ export default function Integrations({ onClose }: IntegrationsProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center animate-fade-in z-50">
-      <div className="bg-dark-surface border border-dark-border rounded-xl w-full max-w-md mx-4 animate-slide-in">
+    <div className="modal-backdrop">
+      <div className="modal-container w-full max-w-md mx-4 animate-slide-in">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-dark-border flex items-center justify-between">
+        <div className="modal-header">
           <h2 className="text-lg font-semibold text-dark-text-primary">Integrations</h2>
           <button
             onClick={onClose}
             className="text-dark-text-muted hover:text-dark-text-primary transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="icon-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -162,7 +162,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
                   // API token integrations (like Jira)
                   integration.connected ? (
                     <span className="text-xs text-dark-accent-success flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="icon-xs" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
                       Configured
@@ -182,7 +182,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
                   integration.connected ? (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-dark-accent-success flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="icon-xs" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
                         Connected
@@ -198,8 +198,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
                     <button
                       onClick={() => handleConnect(integration.id)}
                       disabled={isConnecting === integration.id}
-                      className="px-3 py-1.5 bg-dark-accent-primary hover:bg-dark-accent-primary/90
-                               text-white text-sm rounded-md transition-colors disabled:opacity-50"
+                      className="btn-primary btn-sm"
                     >
                       {isConnecting === integration.id ? 'Connecting...' : 'Connect'}
                     </button>

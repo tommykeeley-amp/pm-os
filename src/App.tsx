@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { startOfWeek, endOfWeek, parseISO, isWithinInterval } from 'date-fns';
 import TaskInput from './components/TaskInput';
 import TaskList from './components/TaskList';
 import SmartSuggestions from './components/SmartSuggestions';
 import Integrations from './components/Integrations';
 import JiraTicketModal from './components/JiraTicketModal';
 import ConfluenceDocModal from './components/ConfluenceDocModal';
+import TaskDetailModal from './components/TaskDetailModal';
 import type { Task } from './types/task';
 
 function App() {
@@ -15,8 +17,10 @@ function App() {
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [jiraConfigured, setJiraConfigured] = useState(false);
   const [confluenceConfigured, setConfluenceConfigured] = useState(false);
+  const [slackConfigured, setSlackConfigured] = useState(false);
   const [jiraTicketTask, setJiraTicketTask] = useState<Task | null>(null);
   const [confluenceDocTask, setConfluenceDocTask] = useState<Task | null>(null);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -127,6 +131,22 @@ function App() {
     }
   };
 
+  const handleLinkSlackChannel = (task: Task) => {
+    // TODO: Implement Slack channel linking
+    console.log('Link Slack channel for task:', task);
+  };
+
+  const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
+    try {
+      await window.electronAPI.updateTask(taskId, updates);
+      setTasks(tasks.map(t =>
+        t.id === taskId ? { ...t, ...updates } : t
+      ));
+    } catch (error) {
+      console.error('Failed to update task:', error);
+    }
+  };
+
   const handleAddFromSuggestion = async (suggestion: any) => {
     const newTask: Partial<Task> = {
       title: suggestion.title,
@@ -151,6 +171,31 @@ function App() {
 
   const activeTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);
+
+  // Categorize active tasks by this week vs backlog
+  const now = new Date();
+  const weekStart = startOfWeek(now, { weekStartsOn: 0 }); // Sunday
+  const weekEnd = endOfWeek(now, { weekStartsOn: 0 }); // Saturday
+
+  const thisWeekTasks = activeTasks.filter(task => {
+    if (!task.deadline) return false;
+    try {
+      const deadline = parseISO(task.deadline);
+      return isWithinInterval(deadline, { start: weekStart, end: weekEnd });
+    } catch {
+      return false;
+    }
+  });
+
+  const backlogTasks = activeTasks.filter(task => {
+    if (!task.deadline) return true; // No deadline = backlog
+    try {
+      const deadline = parseISO(task.deadline);
+      return !isWithinInterval(deadline, { start: weekStart, end: weekEnd });
+    } catch {
+      return true;
+    }
+  });
 
   return (
     <div className="w-screen h-screen bg-dark-bg animate-fade-in">
@@ -243,20 +288,44 @@ function App() {
               />
             )}
 
-            {/* Active tasks */}
-            {activeTasks.length > 0 && (
+            {/* This Week's Tasks */}
+            {thisWeekTasks.length > 0 && (
               <div>
-                <h2 className="text-xs font-semibold text-dark-text-secondary mb-2 uppercase tracking-wider">
-                  Active Tasks
+                <h2 className="section-header">
+                  This Week's Tasks
                 </h2>
                 <TaskList
-                  tasks={activeTasks}
+                  tasks={thisWeekTasks}
                   onToggle={handleToggleTask}
                   onDelete={handleDeleteTask}
                   onCreateJiraTicket={handleCreateJiraTicket}
                   jiraConfigured={jiraConfigured}
                   onCreateConfluenceDoc={handleCreateConfluenceDoc}
                   confluenceConfigured={confluenceConfigured}
+                  onLinkSlackChannel={handleLinkSlackChannel}
+                  slackConfigured={slackConfigured}
+                  onTaskClick={setDetailTask}
+                />
+              </div>
+            )}
+
+            {/* Backlog Tasks */}
+            {backlogTasks.length > 0 && (
+              <div>
+                <h2 className="section-header">
+                  Backlog of Tasks
+                </h2>
+                <TaskList
+                  tasks={backlogTasks}
+                  onToggle={handleToggleTask}
+                  onDelete={handleDeleteTask}
+                  onCreateJiraTicket={handleCreateJiraTicket}
+                  jiraConfigured={jiraConfigured}
+                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
+                  confluenceConfigured={confluenceConfigured}
+                  onLinkSlackChannel={handleLinkSlackChannel}
+                  slackConfigured={slackConfigured}
+                  onTaskClick={setDetailTask}
                 />
               </div>
             )}
@@ -264,7 +333,7 @@ function App() {
             {/* Completed tasks */}
             {completedTasks.length > 0 && (
               <div>
-                <h2 className="text-xs font-semibold text-dark-text-secondary mb-2 uppercase tracking-wider">
+                <h2 className="section-header">
                   Completed
                 </h2>
                 <TaskList
@@ -275,6 +344,9 @@ function App() {
                   jiraConfigured={jiraConfigured}
                   onCreateConfluenceDoc={handleCreateConfluenceDoc}
                   confluenceConfigured={confluenceConfigured}
+                  onLinkSlackChannel={handleLinkSlackChannel}
+                  slackConfigured={slackConfigured}
+                  onTaskClick={setDetailTask}
                 />
               </div>
             )}
@@ -312,6 +384,19 @@ function App() {
           task={confluenceDocTask}
           onClose={() => setConfluenceDocTask(null)}
           onSuccess={handleConfluenceDocSuccess}
+        />
+      )}
+
+      {/* Task detail modal */}
+      {detailTask && (
+        <TaskDetailModal
+          task={detailTask}
+          existingTags={tasks.flatMap(t => t.tags || [])}
+          onClose={() => setDetailTask(null)}
+          onSave={(updates) => {
+            handleUpdateTask(detailTask.id, updates);
+            setDetailTask(null);
+          }}
         />
       )}
     </div>

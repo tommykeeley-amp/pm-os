@@ -80,16 +80,16 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center animate-fade-in z-50">
-      <div className="bg-dark-surface border border-dark-border rounded-xl w-full max-w-lg mx-4 animate-slide-in">
+    <div className="modal-backdrop">
+      <div className="modal-container w-full max-w-lg mx-4 animate-slide-in">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-dark-border flex items-center justify-between">
+        <div className="modal-header">
           <h2 className="text-lg font-semibold text-dark-text-primary">Create Jira Ticket</h2>
           <button
             onClick={onClose}
             className="text-dark-text-muted hover:text-dark-text-primary transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="icon-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -184,16 +184,14 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
             <button
               onClick={handleCreate}
               disabled={isCreating}
-              className="flex-1 px-4 py-2 bg-dark-accent-primary hover:bg-dark-accent-primary/90
-                         text-white rounded-lg transition-colors disabled:opacity-50"
+              className="flex-1 btn-primary"
             >
               {isCreating ? 'Creating...' : 'Create Ticket'}
             </button>
             <button
               onClick={onClose}
               disabled={isCreating}
-              className="px-4 py-2 bg-dark-bg hover:bg-dark-border/20 text-dark-text-secondary
-                         rounded-lg transition-colors"
+              className="btn-secondary"
             >
               Cancel
             </button>

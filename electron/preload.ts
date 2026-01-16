@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   confluenceCreatePage: (request: any) => ipcRenderer.invoke('confluence-create-page', request),
   confluenceSearchPages: (query: string, spaceKey?: string) => ipcRenderer.invoke('confluence-search-pages', query, spaceKey),
   confluenceGetPage: (pageId: string) => ipcRenderer.invoke('confluence-get-page', pageId),
+
+  // Events
+  onFocusTaskInput: (callback: () => void) => {
+    ipcRenderer.on('focus-task-input', callback);
+    return () => ipcRenderer.removeListener('focus-task-input', callback);
+  },
 });
 
 // Type definitions for TypeScript
@@ -76,6 +82,7 @@ export interface ElectronAPI {
   confluenceCreatePage: (request: any) => Promise<{ id: string; url: string }>;
   confluenceSearchPages: (query: string, spaceKey?: string) => Promise<any[]>;
   confluenceGetPage: (pageId: string) => Promise<any>;
+  onFocusTaskInput: (callback: () => void) => () => void;
 }
 
 declare global {
