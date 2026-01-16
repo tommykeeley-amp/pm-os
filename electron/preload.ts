@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   toggleWindow: () => ipcRenderer.invoke('toggle-window'),
   pinWindow: (isPinned: boolean) => ipcRenderer.invoke('pin-window', isPinned),
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -35,12 +36,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   jiraGetIssueTypes: (projectKey: string) => ipcRenderer.invoke('jira-get-issue-types', projectKey),
   jiraCreateIssue: (request: any) => ipcRenderer.invoke('jira-create-issue', request),
   jiraGetMyIssues: () => ipcRenderer.invoke('jira-get-my-issues'),
+
+  // Confluence
+  confluenceIsConfigured: () => ipcRenderer.invoke('confluence-is-configured'),
+  confluenceTestConnection: () => ipcRenderer.invoke('confluence-test-connection'),
+  confluenceGetSpaces: () => ipcRenderer.invoke('confluence-get-spaces'),
+  confluenceCreatePage: (request: any) => ipcRenderer.invoke('confluence-create-page', request),
+  confluenceSearchPages: (query: string, spaceKey?: string) => ipcRenderer.invoke('confluence-search-pages', query, spaceKey),
+  confluenceGetPage: (pageId: string) => ipcRenderer.invoke('confluence-get-page', pageId),
 });
 
 // Type definitions for TypeScript
 export interface ElectronAPI {
   toggleWindow: () => Promise<void>;
   pinWindow: (isPinned: boolean) => Promise<void>;
+  minimizeWindow: () => Promise<void>;
   getSettings: () => Promise<any>;
   updateSettings: (settings: any) => Promise<void>;
   getTasks: () => Promise<any[]>;
@@ -60,6 +70,12 @@ export interface ElectronAPI {
   jiraGetIssueTypes: (projectKey: string) => Promise<any[]>;
   jiraCreateIssue: (request: any) => Promise<{ key: string; url: string }>;
   jiraGetMyIssues: () => Promise<any[]>;
+  confluenceIsConfigured: () => Promise<boolean>;
+  confluenceTestConnection: () => Promise<{ success: boolean; error?: string }>;
+  confluenceGetSpaces: () => Promise<any[]>;
+  confluenceCreatePage: (request: any) => Promise<{ id: string; url: string }>;
+  confluenceSearchPages: (query: string, spaceKey?: string) => Promise<any[]>;
+  confluenceGetPage: (pageId: string) => Promise<any>;
 }
 
 declare global {

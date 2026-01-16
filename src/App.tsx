@@ -4,6 +4,7 @@ import TaskList from './components/TaskList';
 import SmartSuggestions from './components/SmartSuggestions';
 import Integrations from './components/Integrations';
 import JiraTicketModal from './components/JiraTicketModal';
+import ConfluenceDocModal from './components/ConfluenceDocModal';
 import type { Task } from './types/task';
 
 function App() {
@@ -13,7 +14,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [jiraConfigured, setJiraConfigured] = useState(false);
+  const [confluenceConfigured, setConfluenceConfigured] = useState(false);
   const [jiraTicketTask, setJiraTicketTask] = useState<Task | null>(null);
+  const [confluenceDocTask, setConfluenceDocTask] = useState<Task | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -36,6 +39,10 @@ function App() {
       // Check if Jira is configured
       const jiraIsConfigured = await window.electronAPI.jiraIsConfigured();
       setJiraConfigured(jiraIsConfigured);
+
+      // Check if Confluence is configured
+      const confluenceIsConfigured = await window.electronAPI.confluenceIsConfigured();
+      setConfluenceConfigured(confluenceIsConfigured);
 
       setIsLoading(false);
     } catch (error) {
@@ -104,6 +111,19 @@ function App() {
     // Optionally open the URL in browser
     if (confirm('Open ticket in browser?')) {
       window.open(issueUrl, '_blank');
+    }
+  };
+
+  const handleCreateConfluenceDoc = (task: Task) => {
+    setConfluenceDocTask(task);
+  };
+
+  const handleConfluenceDocSuccess = (pageId: string, pageUrl: string) => {
+    setConfluenceDocTask(null);
+    alert(`Confluence page created successfully!\n\nPage ID: ${pageId}\n\nClick OK to open: ${pageUrl}`);
+    // Optionally open the URL in browser
+    if (confirm('Open page in browser?')) {
+      window.open(pageUrl, '_blank');
     }
   };
 
@@ -181,6 +201,25 @@ function App() {
               />
             </svg>
           </button>
+          <button
+            onClick={() => window.electronAPI.minimizeWindow()}
+            className="no-drag p-1.5 hover:bg-dark-bg rounded transition-colors"
+            title="Minimize"
+          >
+            <svg
+              className="w-4 h-4 text-dark-text-secondary hover:text-dark-text-primary transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M20 12H4"
+              />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -216,6 +255,8 @@ function App() {
                   onDelete={handleDeleteTask}
                   onCreateJiraTicket={handleCreateJiraTicket}
                   jiraConfigured={jiraConfigured}
+                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
+                  confluenceConfigured={confluenceConfigured}
                 />
               </div>
             )}
@@ -232,6 +273,8 @@ function App() {
                   onDelete={handleDeleteTask}
                   onCreateJiraTicket={handleCreateJiraTicket}
                   jiraConfigured={jiraConfigured}
+                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
+                  confluenceConfigured={confluenceConfigured}
                 />
               </div>
             )}
@@ -260,6 +303,15 @@ function App() {
           task={jiraTicketTask}
           onClose={() => setJiraTicketTask(null)}
           onSuccess={handleJiraTicketSuccess}
+        />
+      )}
+
+      {/* Confluence doc modal */}
+      {confluenceDocTask && (
+        <ConfluenceDocModal
+          task={confluenceDocTask}
+          onClose={() => setConfluenceDocTask(null)}
+          onSuccess={handleConfluenceDocSuccess}
         />
       )}
     </div>

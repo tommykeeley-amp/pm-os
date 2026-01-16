@@ -32,7 +32,9 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
       const projectList = await window.electronAPI.jiraGetProjects();
       setProjects(projectList);
       if (projectList.length > 0) {
-        setSelectedProject(projectList[0].key);
+        // Prepopulate with AMP project if it exists, otherwise use first project
+        const ampProject = projectList.find((p: any) => p.key === 'AMP');
+        setSelectedProject(ampProject ? ampProject.key : projectList[0].key);
       }
     } catch (err: any) {
       setError('Failed to load projects: ' + err.message);
@@ -44,7 +46,9 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
       const types = await window.electronAPI.jiraGetIssueTypes(projectKey);
       setIssueTypes(types);
       if (types.length > 0) {
-        setSelectedIssueType(types[0].name);
+        // Prepopulate with Epic if it exists, otherwise use first type
+        const epicType = types.find((t: any) => t.name === 'Epic');
+        setSelectedIssueType(epicType ? epicType.name : types[0].name);
       }
     } catch (err: any) {
       console.error('Failed to load issue types:', err);

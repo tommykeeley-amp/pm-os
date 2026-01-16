@@ -7,6 +7,7 @@ import * as dotenv from 'dotenv';
 import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
+import { ConfluenceService } from '../src/services/confluence';
 
 // Load environment variables
 dotenv.config();
@@ -39,24 +40,40 @@ if (process.env.JIRA_DOMAIN && process.env.JIRA_EMAIL && process.env.JIRA_API_TO
   });
 }
 
+// Initialize Confluence service if configured (uses same credentials as Jira)
+let confluenceService: ConfluenceService | null = null;
+if (process.env.JIRA_DOMAIN && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN) {
+  confluenceService = new ConfluenceService({
+    domain: process.env.JIRA_DOMAIN,
+    email: process.env.JIRA_EMAIL,
+    apiToken: process.env.JIRA_API_TOKEN,
+  });
+}
+
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
   // Get saved position or default to right side of screen
   const savedPosition = store.get('windowPosition') as WindowPosition | undefined;
-  const defaultX = screenWidth - WINDOW_WIDTH - 20;
-  const defaultY = 100;
+  const isPinned = savedPosition?.isPinned ?? false;
+
+  // If pinned, use full height on right side; otherwise use default dimensions
+  const windowWidth = WINDOW_WIDTH;
+  const windowHeight = isPinned ? screenHeight : WINDOW_HEIGHT;
+  const defaultX = isPinned ? screenWidth - WINDOW_WIDTH : screenWidth - WINDOW_WIDTH - 20;
+  const defaultY = isPinned ? 0 : 100;
 
   mainWindow = new BrowserWindow({
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width: windowWidth,
+    height: windowHeight,
     x: savedPosition?.x ?? defaultX,
     y: savedPosition?.y ?? defaultY,
+    title: 'PM OS',
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    skipTaskbar: true,
+    skipTaskbar: false,
     resizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
@@ -134,6 +151,7 @@ function registerHotkey() {
 
 // App lifecycle
 app.whenReady().then(async () => {
+  app.setName('PM OS');
   createWindow();
   registerHotkey();
 
@@ -170,13 +188,30 @@ ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
   if (!mainWindow) return;
 
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth } = primaryDisplay.workAreaSize;
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
   if (isPinned) {
-    // Pin to right side
-    const x = screenWidth - WINDOW_WIDTH - 20;
-    const y = 100;
-    mainWindow.setPosition(x, y);
+    // Pin to right side with full height
+    const x = screenWidth - WINDOW_WIDTH;
+    const y = 0;
+    mainWindow.setResizable(true);
+    mainWindow.setBounds({
+      x,
+      y,
+      width: WINDOW_WIDTH,
+      height: screenHeight
+    });
+    mainWindow.setResizable(false);
+  } else {
+    // Unpin - restore original size and center
+    mainWindow.setResizable(true);
+    mainWindow.setBounds({
+      x: Math.floor((screenWidth - WINDOW_WIDTH) / 2),
+      y: Math.floor((screenHeight - WINDOW_HEIGHT) / 2),
+      width: WINDOW_WIDTH,
+      height: WINDOW_HEIGHT
+    });
+    mainWindow.setResizable(false);
   }
 
   const position = store.get('windowPosition') as WindowPosition | undefined;
@@ -185,9 +220,15 @@ ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
     isPinned,
     x: mainWindow.getPosition()[0],
     y: mainWindow.getPosition()[1],
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width: mainWindow.getSize()[0],
+    height: mainWindow.getSize()[1],
   });
+});
+
+ipcMain.handle('minimize-window', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
 });
 
 ipcMain.handle('get-settings', () => {
@@ -413,4 +454,47 @@ ipcMain.handle('jira-get-my-issues', async () => {
 
 ipcMain.handle('jira-is-configured', () => {
   return !!jiraService;
+});
+
+// Confluence Handlers
+ipcMain.handle('confluence-is-configured', () => {
+  return !!confluenceService;
+});
+
+ipcMain.handle('confluence-test-connection', async () => {
+  if (!confluenceService) {
+    return { success: false, error: 'Confluence not configured' };
+  }
+  return await confluenceService.testConnection();
+});
+
+ipcMain.handle('confluence-get-spaces', async () => {
+  if (!confluenceService) throw new Error('Confluence not configured');
+  return await confluenceService.getSpaces();
+});
+
+ipcMain.handle('confluence-create-page', async (_event, request: any) => {
+  if (!confluenceService) throw new Error('Confluence not configured');
+
+  const page = await confluenceService.createPage({
+    title: request.title,
+    body: request.body,
+    spaceKey: request.spaceKey || process.env.CONFLUENCE_DEFAULT_SPACE || '',
+    parentId: request.parentId || process.env.CONFLUENCE_DEFAULT_PARENT_ID,
+  });
+
+  return {
+    id: page.id,
+    url: page.url,
+  };
+});
+
+ipcMain.handle('confluence-search-pages', async (_event, query: string, spaceKey?: string) => {
+  if (!confluenceService) throw new Error('Confluence not configured');
+  return await confluenceService.searchPages(query, spaceKey);
+});
+
+ipcMain.handle('confluence-get-page', async (_event, pageId: string) => {
+  if (!confluenceService) throw new Error('Confluence not configured');
+  return await confluenceService.getPage(pageId);
 });

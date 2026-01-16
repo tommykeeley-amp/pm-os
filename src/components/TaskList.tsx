@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { format, isToday, isTomorrow, isPast, parseISO, formatDistanceToNow } from 'date-fns';
 import type { Task } from '../types/task';
 
@@ -7,6 +8,8 @@ interface TaskListProps {
   onDelete: (id: string) => void;
   onCreateJiraTicket?: (task: Task) => void;
   jiraConfigured?: boolean;
+  onCreateConfluenceDoc?: (task: Task) => void;
+  confluenceConfigured?: boolean;
 }
 
 function getSourceIcon(source: string) {
@@ -83,7 +86,9 @@ function getTaskTooltip(task: Task): string {
   return tooltip;
 }
 
-export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket, jiraConfigured }: TaskListProps) {
+export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket, jiraConfigured, onCreateConfluenceDoc, confluenceConfigured }: TaskListProps) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
   return (
     <div className="space-y-1">
       {tasks.map((task, index) => (
@@ -114,32 +119,93 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
                   {task.title}
                 </p>
 
-                {/* Action buttons (show on hover) */}
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                  {/* Jira button */}
-                  {jiraConfigured && onCreateJiraTicket && (
-                    <button
-                      onClick={() => onCreateJiraTicket(task)}
-                      className="text-dark-text-muted hover:text-blue-400 transition-colors flex-shrink-0"
-                      title="Create Jira ticket"
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 0 0-.84-.84H11.53zM2 11.53c0-2.4 1.97-4.35 4.35-4.35h1.78v-1.7c0-2.4 1.94-4.34 4.34-4.34V11.69a.84.84 0 0 1-.84.84H2zm9.53 9.47c0-2.4-1.97-4.35-4.35-4.35H5.4v-1.7c0-2.4-1.94-4.34-4.34-4.34v9.55c0 .46.37.84.84.84h9.63z"/>
-                      </svg>
-                    </button>
-                  )}
-
-                  {/* Delete button */}
+                {/* Actions dropdown */}
+                <div className="relative opacity-0 group-hover:opacity-100 transition-all">
                   <button
-                    onClick={() => onDelete(task.id)}
-                    className="text-dark-text-muted hover:text-dark-accent-danger transition-colors flex-shrink-0"
-                    title="Delete task"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuId(openMenuId === task.id ? null : task.id);
+                    }}
+                    className="text-dark-text-muted hover:text-dark-text-primary transition-colors flex-shrink-0 p-1"
+                    title="Actions"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                      <circle cx="8" cy="3" r="1.5"/>
+                      <circle cx="8" cy="8" r="1.5"/>
+                      <circle cx="8" cy="13" r="1.5"/>
                     </svg>
                   </button>
+
+                  {/* Dropdown menu */}
+                  {openMenuId === task.id && (
+                    <>
+                      {/* Backdrop to close menu */}
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setOpenMenuId(null)}
+                      />
+
+                      <div className="absolute right-0 top-8 z-20 bg-dark-surface border border-dark-border rounded-lg shadow-lg py-1 min-w-[160px] animate-fade-in">
+                        {/* Integrations section */}
+                        {(confluenceConfigured || jiraConfigured) && (
+                          <>
+                            {confluenceConfigured && onCreateConfluenceDoc && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onCreateConfluenceDoc(task);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-dark-text-primary hover:bg-dark-bg transition-colors flex items-center gap-3"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 225 225">
+                                  <path d="M 43 16 L 15 66 L 16 73 L 74 107 L 55 117 L 37 134 L 14 174 L 16 182 L 60 207 L 70 210 L 76 206 L 91 178 L 99 172 L 104 172 L 173 210 L 181 208 L 209 158 L 208 151 L 150 117 L 173 104 L 187 90 L 210 50 L 208 42 L 164 17 L 154 14 L 148 18 L 133 46 L 125 52 L 120 52 L 51 14 Z M 36 170 L 38 168 L 48 149 L 62 134 L 75 126 L 77 126 L 83 123 L 90 122 L 91 121 L 112 121 L 113 122 L 123 124 L 134 129 L 136 131 L 143 134 L 145 136 L 163 145 L 165 147 L 172 150 L 174 152 L 181 155 L 187 159 L 187 162 L 185 164 L 182 171 L 180 173 L 177 180 L 175 182 L 172 188 L 169 188 L 167 186 L 149 177 L 147 175 L 120 161 L 118 159 L 108 155 L 95 155 L 85 159 L 77 167 L 67 186 L 65 188 L 62 188 L 60 186 L 36 173 Z M 37 65 L 37 62 L 39 60 L 42 53 L 44 51 L 47 44 L 49 42 L 52 36 L 55 36 L 57 38 L 75 47 L 77 49 L 104 63 L 106 65 L 116 69 L 129 69 L 130 68 L 135 67 L 140 64 L 147 57 L 157 38 L 159 36 L 162 36 L 164 38 L 171 41 L 173 43 L 180 46 L 182 48 L 188 51 L 188 54 L 186 56 L 176 75 L 162 90 L 149 98 L 147 98 L 141 101 L 134 102 L 133 103 L 112 103 L 111 102 L 107 102 L 106 101 L 101 100 L 90 95 L 88 93 L 81 90 L 79 88 L 72 85 L 70 83 L 63 80 L 61 78 L 52 74 L 50 72 L 43 69 Z" fillRule="evenodd" />
+                                </svg>
+                                Confluence
+                              </button>
+                            )}
+
+                            {jiraConfigured && onCreateJiraTicket && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onCreateJiraTicket(task);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-dark-text-primary hover:bg-dark-bg transition-colors flex items-center gap-3"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 256 256">
+                                  <path d="M 150 28 H 220 V 98 C 220 122 198 122 186 110 L 150 74 C 138 62 138 28 150 28 Z"/>
+                                  <path d="M 86 84 H 156 V 154 C 156 178 134 178 122 166 L 86 130 C 74 118 74 84 86 84 Z"/>
+                                  <path d="M 28 142 H 98 V 212 C 98 236 76 236 64 224 L 28 188 C 16 176 16 142 28 142 Z"/>
+                                </svg>
+                                Jira ticket
+                              </button>
+                            )}
+
+                            {/* Separator */}
+                            <div className="my-1 border-t border-dark-border" />
+                          </>
+                        )}
+
+                        {/* Delete section */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(task.id);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-dark-accent-danger hover:bg-dark-accent-danger/10 transition-colors flex items-center gap-3"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
