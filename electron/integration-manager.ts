@@ -304,7 +304,16 @@ export class IntegrationManager {
       slackMessages
     );
 
-    return suggestions;
+    // Get dismissed suggestions from storage
+    const dismissedSuggestions = store.get('dismissed_suggestions', []) as string[];
+
+    // Filter out dismissed suggestions and only keep high-conviction ones (score >= 70)
+    const filteredSuggestions = suggestions.filter(
+      (suggestion: any) =>
+        !dismissedSuggestions.includes(suggestion.id) && suggestion.score >= 70
+    );
+
+    return filteredSuggestions;
   }
 
   // Get Slack unread messages

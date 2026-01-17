@@ -1062,6 +1062,22 @@ ipcMain.handle('get-smart-suggestions', async () => {
   }
 });
 
+// Dismiss suggestion
+ipcMain.handle('dismiss-suggestion', async (_event, suggestionId: string) => {
+  try {
+    const dismissedSuggestions = store.get('dismissed_suggestions', []) as string[];
+    if (!dismissedSuggestions.includes(suggestionId)) {
+      dismissedSuggestions.push(suggestionId);
+      store.set('dismissed_suggestions', dismissedSuggestions);
+      console.log(`[Smart Suggestions] Dismissed suggestion: ${suggestionId}`);
+    }
+    return { success: true };
+  } catch (error: any) {
+    console.error('Failed to dismiss suggestion:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Chats - Slack unread messages
 ipcMain.handle('get-slack-unread-messages', async () => {
   try {

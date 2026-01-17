@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncGmail: () => ipcRenderer.invoke('sync-gmail'),
   syncSlack: () => ipcRenderer.invoke('sync-slack'),
   getSmartSuggestions: () => ipcRenderer.invoke('get-smart-suggestions'),
+  dismissSuggestion: (suggestionId: string) => ipcRenderer.invoke('dismiss-suggestion', suggestionId),
 
   // Calendar operations
   calendarUpdateRSVP: (eventId: string, status: string) =>
@@ -117,6 +118,7 @@ export interface ElectronAPI {
   syncGmail: () => Promise<any>;
   syncSlack: () => Promise<any>;
   getSmartSuggestions: () => Promise<any[]>;
+  dismissSuggestion: (suggestionId: string) => Promise<{ success: boolean; error?: string }>;
   calendarUpdateRSVP: (eventId: string, status: string) => Promise<{ success: boolean; error?: string }>;
   calendarCreateEvent: (request: any) => Promise<{ success: boolean; event?: any; error?: string }>;
   zoomIsConfigured: () => Promise<boolean>;

@@ -259,6 +259,8 @@ function App() {
       setTasks([addedTask, ...tasks]);
       // Remove from suggestions
       setSuggestions(suggestions.filter(s => s.id !== suggestion.id));
+      // Mark as dismissed to prevent reappearing
+      await window.electronAPI.dismissSuggestion(suggestion.id);
       // Automatically open the detail modal for the newly created task
       setDetailTask(addedTask);
     } catch (error) {
@@ -455,7 +457,16 @@ function App() {
               <SmartSuggestions
                 suggestions={suggestions}
                 onAddTask={handleAddFromSuggestion}
-                onDismiss={(id) => setSuggestions(suggestions.filter(s => s.id !== id))}
+                onDismiss={async (id) => {
+                  // Remove from UI immediately
+                  setSuggestions(suggestions.filter(s => s.id !== id));
+                  // Persist dismissal to prevent reappearing
+                  try {
+                    await window.electronAPI.dismissSuggestion(id);
+                  } catch (error) {
+                    console.error('Failed to dismiss suggestion:', error);
+                  }
+                }}
                 projectTags={(() => {
                   // Extract unique tags from all tasks
                   const tagMap = new Map();
