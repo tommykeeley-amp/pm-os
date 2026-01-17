@@ -66,29 +66,54 @@ export class AIService {
       const tagLabels = projectTags.map(t => t.label);
       const hasProjectTags = projectTags.length > 0;
 
+      // Get current context
+      const now = new Date();
+      const currentHour = now.getHours();
+      const timeOfDay = currentHour < 12 ? 'morning' : currentHour < 17 ? 'afternoon' : 'evening';
+      const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+
       // Create a comprehensive prompt for GPT to intelligently filter suggestions
-      const prompt = `You are an intelligent task management assistant. Analyze these suggestions and select the 5 MOST ACTIONABLE and RELEVANT tasks.
+      const prompt = `You are an intelligent task management assistant. It's ${timeOfDay} on ${dayOfWeek}. Analyze these suggestions and select the 5 MOST ACTIONABLE and RELEVANT tasks for RIGHT NOW.
 
 ${hasProjectTags ? `Current Projects: ${tagLabels.join(', ')}\n` : ''}
 Task Suggestions:
 ${suggestions.map((s, i) => `${i + 1}. "${s.title}" (${s.source}) - ${s.context || 'no context'}`).join('\n')}
 
-Select the 5 MOST IMPORTANT tasks that:
-1. Require immediate action or response
-2. Are clearly actionable (not just FYI)
-3. Have deadlines or time sensitivity
-4. ${hasProjectTags ? 'Match current project work' : 'Are high-priority work items'}
-5. Represent genuine work that needs to be done
+Select the 5 MOST IMPORTANT tasks considering:
 
-DO NOT include:
-- Informational emails that don't require action
-- Calendar events that are just attendance (no prep needed)
-- Messages that are just updates/FYI
-- Low-priority or vague items
+✅ PRIORITIZE THESE:
+1. **Urgency** - Deadlines, time-sensitive items, things needed TODAY
+2. **Actionability** - Clear next steps (not vague or FYI)
+3. **Impact** - Blocks other work, affects team, critical path items
+4. **Timing** - Appropriate for ${timeOfDay} (complex work vs quick replies)
+5. **Relevance** - ${hasProjectTags ? 'Matches current projects' : 'Core work responsibilities'}
+6. **Sender/Source Importance** - From key stakeholders, leadership, or critical systems
+7. **Recency** - Recently mentioned (today/yesterday) = likely more urgent
+8. **Meeting Proximity** - Related to upcoming meetings (prep needed)
+9. **Response Expected** - Someone waiting on you specifically
+10. **Business Hours** - ${timeOfDay === 'evening' ? 'Prefer async tasks for evening' : 'Prefer collaborative tasks during work hours'}
+
+❌ FILTER OUT:
+- Informational emails (newsletters, updates, FYI)
+- Routine calendar events (no prep needed, just attend)
+- Messages that are just status updates
+- Low-priority vague items with no clear action
+- Tasks better suited for different times (deep work in morning, admin in afternoon)
+- Duplicate or redundant items
+- Tasks with unclear requirements (need more info first)
+- Items that can wait until later this week
+
+🎯 ADDITIONAL CONTEXT:
+- ${timeOfDay === 'morning' ? 'Morning: Favor deep work, strategic tasks, creative work' : ''}
+- ${timeOfDay === 'afternoon' ? 'Afternoon: Favor meetings prep, collaborative work, quick wins' : ''}
+- ${timeOfDay === 'evening' ? 'Evening: Favor async work, planning, review tasks' : ''}
+- ${dayOfWeek === 'Monday' ? 'Monday: Prioritize week planning, high-priority items' : ''}
+- ${dayOfWeek === 'Friday' ? 'Friday: Prioritize week wrap-up, urgent closures' : ''}
 
 For EACH of the 5 selected tasks:
-- Score relevance from 1-10 (how actionable/important)
+- Score relevance from 1-10 (how actionable/important RIGHT NOW)
 - ${hasProjectTags ? 'Identify matching project tags' : 'Leave matchedTags empty'}
+- Brief reasoning (1 sentence)
 
 Respond in JSON format:
 {
@@ -97,12 +122,12 @@ Respond in JSON format:
       "taskIndex": 2,
       "relevanceScore": 9,
       "matchedTags": ["frontend", "API"],
-      "reasoning": "Needs immediate response about production bug"
+      "reasoning": "Critical production bug needs immediate fix before EOD"
     }
   ]
 }
 
-ONLY return 5 tasks maximum. Be selective and smart.`;
+ONLY return UP TO 5 tasks. If fewer than 5 are truly actionable right now, return fewer. Quality over quantity.`;
 
       const response = await this.openai!.chat.completions.create({
         model: 'gpt-3.5-turbo',
