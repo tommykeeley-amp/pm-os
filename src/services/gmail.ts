@@ -125,6 +125,7 @@ export class GmailService {
 
   async getUnreadStarredEmails(maxResults: number = 20): Promise<EmailMessage[]> {
     try {
+      console.log('[GmailService] Fetching unread starred emails with query: is:starred is:unread');
       const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
 
       const response = await gmail.users.messages.list({
@@ -134,6 +135,11 @@ export class GmailService {
       });
 
       const messages = response.data.messages || [];
+      console.log(`[GmailService] Found ${messages.length} unread starred message(s)`);
+
+      if (messages.length === 0) {
+        return [];
+      }
 
       const emailPromises = messages.map(async (msg: any) => {
         const details = await gmail.users.messages.get({
@@ -145,9 +151,18 @@ export class GmailService {
         return this.parseEmailMessage(details.data);
       });
 
-      return Promise.all(emailPromises);
+      const emails = await Promise.all(emailPromises);
+      console.log(`[GmailService] Successfully parsed ${emails.length} emails`);
+      return emails;
     } catch (error: any) {
+      console.error('[GmailService] Error fetching starred emails:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+
       if (error.response?.status === 401) {
+        console.log('[GmailService] Token expired, refreshing...');
         await this.oauth2Client.refreshAccessToken();
         return this.getUnreadStarredEmails(maxResults);
       }

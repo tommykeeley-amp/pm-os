@@ -344,11 +344,14 @@ export class IntegrationManager {
   // Get starred emails
   async getStarredEmails() {
     if (!this.gmailService) {
+      console.error('[getStarredEmails] Gmail service not initialized');
       return [];
     }
 
     try {
+      console.log('[getStarredEmails] Fetching unread starred emails...');
       const emails = await this.gmailService.getUnreadStarredEmails(20);
+      console.log(`[getStarredEmails] Found ${emails.length} unread starred emails`);
       return emails.map(email => ({
         id: email.id,
         subject: email.subject,
@@ -358,7 +361,15 @@ export class IntegrationManager {
         threadId: email.threadId,
       }));
     } catch (error: any) {
-      if (error.message?.includes('401') || error.message?.includes('unauthorized')) {
+      console.error('[getStarredEmails] Error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+      });
+
+      if (error.response?.status === 401 || error.message?.includes('401') || error.message?.includes('unauthorized')) {
+        console.log('[getStarredEmails] Refreshing tokens and retrying...');
         await this.refreshGoogleTokens();
         const emails = await this.gmailService.getUnreadStarredEmails(20);
         return emails.map(email => ({

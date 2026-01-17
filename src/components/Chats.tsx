@@ -36,22 +36,28 @@ export default function Chats({ isPinned: _isPinned }: ChatsProps) {
   }, []);
 
   const loadMessages = async () => {
+    console.log('[Chats] Loading messages...');
     setIsLoading(true);
     setError(null);
 
     try {
       // Fetch Slack messages
+      console.log('[Chats] Fetching Slack messages...');
       const slackData = await window.electronAPI.getSlackUnreadMessages();
+      console.log('[Chats] Slack messages received:', slackData?.length || 0);
       setSlackMessages(slackData || []);
 
       // Fetch starred emails
+      console.log('[Chats] Fetching starred emails...');
       const emailData = await window.electronAPI.getStarredEmails();
+      console.log('[Chats] Starred emails received:', emailData?.length || 0, emailData);
       setEmails(emailData || []);
     } catch (err: any) {
-      console.error('Failed to load messages:', err);
+      console.error('[Chats] Failed to load messages:', err);
       setError(err.message || 'Failed to load messages');
     } finally {
       setIsLoading(false);
+      console.log('[Chats] Loading complete');
     }
   };
 
