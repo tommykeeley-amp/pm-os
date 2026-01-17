@@ -21,6 +21,9 @@ interface UserSettings {
   confluenceDefaultSpace?: string;
   confluenceDefaultParentId?: string;
 
+  // Obsidian Settings
+  obsidianVaultPath?: string;
+
   // Customization Settings
   showDeclinedMeetings?: boolean;
   primaryTimezone?: string;
@@ -515,7 +518,32 @@ export default function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
 
-              <div className="space-y-4">
+              {/* Obsidian Integration Section */}
+              <div className="space-y-4 pt-6 border-t border-dark-border">
+                <h3 className="text-base font-semibold text-dark-text-primary">Obsidian Integration</h3>
+                <p className="text-sm text-dark-text-secondary">
+                  Connect your Obsidian vault to create and view notes directly from PM-OS.
+                </p>
+
+                <div>
+                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                    Vault Path
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.obsidianVaultPath || ''}
+                    onChange={(e) => handleChange('obsidianVaultPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                    placeholder="/Users/yourname/Documents/ObsidianVault"
+                  />
+                  <p className="text-xs text-dark-text-muted mt-1">
+                    Absolute path to your Obsidian vault folder. Notes created in PM-OS will be saved here.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-dark-border">
                 <h3 className="text-base font-semibold text-dark-text-primary">Timezone Settings</h3>
 
                 <div>

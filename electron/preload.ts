@@ -66,6 +66,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStoredData: (key: string) => ipcRenderer.invoke('get-stored-data', key),
   saveData: (key: string, data: any) => ipcRenderer.invoke('save-data', key, data),
 
+  // Obsidian integration
+  obsidianListNotes: () => ipcRenderer.invoke('obsidian-list-notes'),
+  obsidianCreateNote: (noteData: { title: string; content: string; tags?: string[] }) =>
+    ipcRenderer.invoke('obsidian-create-note', noteData),
+  obsidianUpdateNote: (noteId: string, content: string) =>
+    ipcRenderer.invoke('obsidian-update-note', noteId, content),
+  obsidianDeleteNote: (noteId: string) =>
+    ipcRenderer.invoke('obsidian-delete-note', noteId),
+  obsidianOpenInApp: (noteId: string) =>
+    ipcRenderer.invoke('obsidian-open-in-app', noteId),
+
   // Chats
   getSlackUnreadMessages: () => ipcRenderer.invoke('get-slack-unread-messages'),
   getStarredEmails: () => ipcRenderer.invoke('get-starred-emails'),
@@ -126,6 +137,11 @@ export interface ElectronAPI {
   saveUserSettings: (settings: any) => Promise<void>;
   getStoredData: (key: string) => Promise<any>;
   saveData: (key: string, data: any) => Promise<void>;
+  obsidianListNotes: () => Promise<{ success: boolean; notes?: any[]; error?: string }>;
+  obsidianCreateNote: (noteData: { title: string; content: string; tags?: string[] }) => Promise<{ success: boolean; note?: any; error?: string }>;
+  obsidianUpdateNote: (noteId: string, content: string) => Promise<{ success: boolean; error?: string }>;
+  obsidianDeleteNote: (noteId: string) => Promise<{ success: boolean; error?: string }>;
+  obsidianOpenInApp: (noteId: string) => Promise<{ success: boolean; error?: string }>;
   getSlackUnreadMessages: () => Promise<any[]>;
   getStarredEmails: () => Promise<any[]>;
   getSlackChannels: () => Promise<any[]>;

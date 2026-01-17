@@ -568,6 +568,227 @@ ipcMain.handle('save-data', (_event, key: string, data: any) => {
   store.set(key, data);
 });
 
+// Obsidian Integration IPC Handlers
+ipcMain.handle('obsidian-list-notes', async () => {
+  try {
+    const userSettings = store.get('userSettings', {}) as any;
+    const vaultPath = userSettings.obsidianVaultPath;
+
+    if (!vaultPath || !fs.existsSync(vaultPath)) {
+      return { success: false, error: 'Vault path not configured or does not exist' };
+    }
+
+    const notes: any[] = [];
+
+    // Recursively read all .md files
+    function readDir(dirPath: string) {
+      const items = fs.readdirSync(dirPath);
+
+      for (const item of items) {
+        const fullPath = path.join(dirPath, item);
+        const stat = fs.statSync(fullPath);
+
+        if (stat.isDirectory()) {
+          // Skip hidden folders and .obsidian folder
+          if (!item.startsWith('.')) {
+            readDir(fullPath);
+          }
+        } else if (item.endsWith('.md')) {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const relativePath = path.relative(vaultPath, fullPath);
+
+          // Parse frontmatter if exists
+          let frontmatter: any = {};
+          let bodyContent = content;
+
+          if (content.startsWith('---')) {
+            const endIndex = content.indexOf('---', 3);
+            if (endIndex !== -1) {
+              const frontmatterText = content.substring(3, endIndex).trim();
+              bodyContent = content.substring(endIndex + 3).trim();
+
+              // Simple YAML parsing (just key: value pairs)
+              frontmatterText.split('\n').forEach(line => {
+                const colonIndex = line.indexOf(':');
+                if (colonIndex !== -1) {
+                  const key = line.substring(0, colonIndex).trim();
+                  const value = line.substring(colonIndex + 1).trim();
+                  frontmatter[key] = value;
+                }
+              });
+            }
+          }
+
+          notes.push({
+            id: relativePath.replace(/\.md$/, '').replace(/\\/g, '/'),
+            title: item.replace(/\.md$/, ''),
+            path: relativePath,
+            fullPath: fullPath,
+            content: bodyContent,
+            frontmatter,
+            createdAt: stat.birthtime.toISOString(),
+            updatedAt: stat.mtime.toISOString(),
+          });
+        }
+      }
+    }
+
+    readDir(vaultPath);
+
+    // Sort by updated time, newest first
+    notes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    return { success: true, notes };
+  } catch (error: any) {
+    console.error('Failed to list Obsidian notes:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('obsidian-create-note', async (_event, noteData: { title: string; content: string; tags?: string[] }) => {
+  try {
+    const userSettings = store.get('userSettings', {}) as any;
+    const vaultPath = userSettings.obsidianVaultPath;
+
+    if (!vaultPath || !fs.existsSync(vaultPath)) {
+      return { success: false, error: 'Vault path not configured or does not exist' };
+    }
+
+    const now = new Date();
+    const timestamp = now.toISOString();
+
+    // Create frontmatter
+    let frontmatter = '---\n';
+    frontmatter += `created: ${timestamp}\n`;
+    frontmatter += `updated: ${timestamp}\n`;
+    if (noteData.tags && noteData.tags.length > 0) {
+      frontmatter += `tags: [${noteData.tags.join(', ')}]\n`;
+    }
+    frontmatter += '---\n\n';
+
+    const fullContent = frontmatter + noteData.content;
+
+    // Sanitize filename
+    const safeTitle = noteData.title.replace(/[/\\?%*:|"<>]/g, '-');
+    const fileName = `${safeTitle}.md`;
+    const filePath = path.join(vaultPath, fileName);
+
+    // Check if file already exists
+    if (fs.existsSync(filePath)) {
+      return { success: false, error: 'A note with this title already exists' };
+    }
+
+    fs.writeFileSync(filePath, fullContent, 'utf-8');
+
+    return {
+      success: true,
+      note: {
+        id: safeTitle,
+        title: safeTitle,
+        path: fileName,
+        fullPath: filePath,
+        content: noteData.content,
+        frontmatter: {
+          created: timestamp,
+          updated: timestamp,
+          tags: noteData.tags || [],
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+    };
+  } catch (error: any) {
+    console.error('Failed to create Obsidian note:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('obsidian-update-note', async (_event, noteId: string, content: string) => {
+  try {
+    const userSettings = store.get('userSettings', {}) as any;
+    const vaultPath = userSettings.obsidianVaultPath;
+
+    if (!vaultPath || !fs.existsSync(vaultPath)) {
+      return { success: false, error: 'Vault path not configured or does not exist' };
+    }
+
+    const filePath = path.join(vaultPath, `${noteId}.md`);
+
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: 'Note not found' };
+    }
+
+    const existingContent = fs.readFileSync(filePath, 'utf-8');
+
+    // Preserve frontmatter, update content
+    let newContent = content;
+    if (existingContent.startsWith('---')) {
+      const endIndex = existingContent.indexOf('---', 3);
+      if (endIndex !== -1) {
+        let frontmatter = existingContent.substring(0, endIndex + 3);
+        // Update the updated timestamp
+        frontmatter = frontmatter.replace(/updated: .*\n/, `updated: ${new Date().toISOString()}\n`);
+        newContent = frontmatter + '\n\n' + content;
+      }
+    }
+
+    fs.writeFileSync(filePath, newContent, 'utf-8');
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Failed to update Obsidian note:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('obsidian-delete-note', async (_event, noteId: string) => {
+  try {
+    const userSettings = store.get('userSettings', {}) as any;
+    const vaultPath = userSettings.obsidianVaultPath;
+
+    if (!vaultPath || !fs.existsSync(vaultPath)) {
+      return { success: false, error: 'Vault path not configured or does not exist' };
+    }
+
+    const filePath = path.join(vaultPath, `${noteId}.md`);
+
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: 'Note not found' };
+    }
+
+    fs.unlinkSync(filePath);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Failed to delete Obsidian note:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('obsidian-open-in-app', async (_event, noteId: string) => {
+  try {
+    const userSettings = store.get('userSettings', {}) as any;
+    const vaultPath = userSettings.obsidianVaultPath;
+
+    if (!vaultPath) {
+      return { success: false, error: 'Vault path not configured' };
+    }
+
+    // Get vault name from path
+    const vaultName = path.basename(vaultPath);
+
+    // Construct Obsidian URI
+    const uri = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(noteId)}`;
+
+    await shell.openExternal(uri);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Failed to open note in Obsidian:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Task Management IPC Handlers
 ipcMain.handle('get-tasks', () => {
   const tasks = store.get('tasks', []) as Task[];
