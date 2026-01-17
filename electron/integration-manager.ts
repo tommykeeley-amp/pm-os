@@ -31,12 +31,39 @@ export class IntegrationManager {
 
   // Initialize services with stored tokens
   async initialize() {
+    console.log('[IntegrationManager] ===== INITIALIZATION START =====');
+
     // Check if Google OAuth scope needs update
     const scopeValid = this.checkAndHandleScopeUpdate();
+    console.log(`[IntegrationManager] Scope valid: ${scopeValid}`);
 
     // Initialize Google services if tokens exist and scope is valid
-    const googleTokens = this.getStoredTokens('google');
+    let googleTokens = this.getStoredTokens('google');
+
+    // If we have a refresh token but no access token, try to refresh
+    if (scopeValid && googleTokens?.refreshToken && !googleTokens?.accessToken) {
+      try {
+        console.log('[IntegrationManager] Access token missing but refresh token exists, attempting refresh...');
+        const tempCalendarService = new CalendarService(
+          this.googleClientId,
+          this.googleClientSecret,
+          this.redirectUri
+        );
+        tempCalendarService.setTokens(googleTokens);
+
+        const refreshedTokens = await tempCalendarService.getRefreshedTokens();
+        if (refreshedTokens) {
+          console.log('[IntegrationManager] Token refresh successful');
+          this.saveTokens('google', refreshedTokens);
+          googleTokens = refreshedTokens;
+        }
+      } catch (error) {
+        console.error('[IntegrationManager] Failed to refresh tokens during initialization:', error);
+      }
+    }
+
     if (googleTokens?.accessToken && scopeValid) {
+      console.log('[IntegrationManager] Initializing Google services with valid tokens');
       this.calendarService = new CalendarService(
         this.googleClientId,
         this.googleClientSecret,
@@ -50,6 +77,11 @@ export class IntegrationManager {
         this.redirectUri
       );
       this.gmailService.setTokens(googleTokens);
+      console.log('[IntegrationManager] Google services initialized successfully');
+    } else {
+      console.log('[IntegrationManager] NOT initializing Google services - missing tokens or invalid scope');
+      console.log(`[IntegrationManager] Has access token: ${!!googleTokens?.accessToken}`);
+      console.log(`[IntegrationManager] Scope valid: ${scopeValid}`);
     }
 
     // Initialize Slack service if tokens exist
@@ -68,23 +100,29 @@ export class IntegrationManager {
     if (zoomTokens.accessToken) {
       this.zoomService?.setTokens(zoomTokens);
     }
+
+    console.log('[IntegrationManager] ===== INITIALIZATION COMPLETE =====');
   }
 
   // Check and handle OAuth scope updates
   checkAndHandleScopeUpdate(): boolean {
     const storedVersion = store.get('google_oauth_scope_version', 1) as number;
+    console.log(`[IntegrationManager] Scope version check: stored=${storedVersion}, required=${REQUIRED_GOOGLE_SCOPE_VERSION}`);
     if (storedVersion < REQUIRED_GOOGLE_SCOPE_VERSION) {
+      console.log('[IntegrationManager] Scope version outdated, clearing tokens...');
       // Clear outdated tokens
       store.delete('google_access_token');
       store.delete('google_refresh_token');
       store.delete('google_expires_at');
       return false; // Needs re-auth
     }
+    console.log('[IntegrationManager] Scope version valid');
     return true; // OK
   }
 
   // Exchange OAuth code for tokens (Google)
   async connectGoogle(code: string) {
+    console.log('[IntegrationManager] Exchanging Google OAuth code for tokens...');
     const calendarService = new CalendarService(
       this.googleClientId,
       this.googleClientSecret,
@@ -92,9 +130,11 @@ export class IntegrationManager {
     );
 
     const tokens = await calendarService.exchangeCodeForTokens(code);
+    console.log('[IntegrationManager] Tokens received, saving...');
     this.saveTokens('google', tokens);
 
     // Save scope version after successful connection
+    console.log(`[IntegrationManager] Setting scope version to ${REQUIRED_GOOGLE_SCOPE_VERSION}`);
     store.set('google_oauth_scope_version', REQUIRED_GOOGLE_SCOPE_VERSION);
 
     // Initialize services
@@ -108,6 +148,7 @@ export class IntegrationManager {
     );
     this.gmailService.setTokens(tokens);
 
+    console.log('[IntegrationManager] Google connection complete');
     return tokens;
   }
 
@@ -256,15 +297,26 @@ export class IntegrationManager {
 
   // Get stored tokens
   private getStoredTokens(provider: string) {
-    return {
+    const tokens = {
       accessToken: store.get(`${provider}_access_token`) as string,
       refreshToken: store.get(`${provider}_refresh_token`) as string,
       expiresAt: store.get(`${provider}_expires_at`) as number,
     };
+    console.log(`[IntegrationManager] getStoredTokens for ${provider}:`, {
+      accessToken: tokens.accessToken ? `YES (length: ${tokens.accessToken.length})` : 'NO',
+      refreshToken: tokens.refreshToken ? 'YES' : 'NO',
+      expiresAt: tokens.expiresAt
+    });
+    return tokens;
   }
 
   // Save tokens to store
   private saveTokens(provider: string, tokens: any) {
+    console.log(`[IntegrationManager] saveTokens called for ${provider}`);
+    console.log(`[IntegrationManager] Saving access token: ${tokens.accessToken ? 'YES (length: ' + tokens.accessToken.length + ')' : 'NO'}`);
+    console.log(`[IntegrationManager] Saving refresh token: ${tokens.refreshToken ? 'YES' : 'NO'}`);
+    console.log(`[IntegrationManager] Saving expiresAt: ${tokens.expiresAt}`);
+
     store.set(`${provider}_access_token`, tokens.accessToken);
     if (tokens.refreshToken) {
       store.set(`${provider}_refresh_token`, tokens.refreshToken);
@@ -272,6 +324,18 @@ export class IntegrationManager {
     if (tokens.expiresAt) {
       store.set(`${provider}_expires_at`, tokens.expiresAt);
     }
+
+    // Verify tokens were saved
+    const saved = {
+      accessToken: store.get(`${provider}_access_token`),
+      refreshToken: store.get(`${provider}_refresh_token`),
+      expiresAt: store.get(`${provider}_expires_at`)
+    };
+    console.log(`[IntegrationManager] Verification - tokens saved successfully:`, {
+      accessToken: saved.accessToken ? 'YES' : 'NO',
+      refreshToken: saved.refreshToken ? 'YES' : 'NO',
+      expiresAt: saved.expiresAt
+    });
   }
 
   // Check if services are connected

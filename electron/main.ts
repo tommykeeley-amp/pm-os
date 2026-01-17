@@ -235,7 +235,9 @@ app.whenReady().then(async () => {
   registerHotkey();
 
   // Initialize integrations with stored tokens
+  console.log('[Main] About to initialize integrationManager...');
   await integrationManager.initialize();
+  console.log('[Main] integrationManager initialization complete');
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -440,21 +442,35 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
     );
 
     const authUrls = {
-      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent`,
-      slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,chat:write,users:read,im:read&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}`,
-      zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'}&response_type=code`,
+      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent`,
+      slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,chat:write,users:read,im:read&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}`,
+      zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}&response_type=code`,
     };
+
+    console.log(`[OAuth] Opening ${provider} auth URL:`, authUrls[provider]);
+    console.log(`[OAuth] Redirect URI: ${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}`);
+
+    // Open DevTools to debug the auth window
+    authWindow.webContents.openDevTools();
 
     authWindow.loadURL(authUrls[provider]);
 
     // Handle OAuth callback
     const handleOAuthCallback = async (url: string) => {
-      if (url.startsWith(process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback')) {
+      console.log('[OAuth] Navigation detected:', url);
+      console.log('[OAuth] Expected redirect URI:', process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000');
+
+      const redirectUri = process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000';
+      // Check if URL starts with redirect URI (handle both with and without trailing slash and path)
+      if (url.startsWith(redirectUri)) {
+        console.log('[OAuth] Redirect URI matched!');
         const urlObj = new URL(url);
         const code = urlObj.searchParams.get('code');
+        console.log('[OAuth] Authorization code:', code ? 'received' : 'missing');
 
         if (code) {
           try {
+            console.log(`[OAuth] Exchanging ${provider} code for tokens...`);
             // Exchange code for tokens using integration manager
             if (provider === 'google') {
               await integrationManager.connectGoogle(code);
@@ -463,13 +479,16 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
             } else if (provider === 'zoom') {
               await integrationManager.connectZoom(code);
             }
+            console.log(`[OAuth] ${provider} connection successful!`);
             resolve({ code, provider, success: true });
           } catch (error) {
-            console.error(`Failed to exchange ${provider} code:`, error);
+            console.error(`[OAuth] Failed to exchange ${provider} code:`, error);
             resolve({ code, provider, success: false, error });
           }
           authWindow?.close();
         }
+      } else {
+        console.log('[OAuth] Redirect URI did not match, ignoring');
       }
     };
 
@@ -482,6 +501,16 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
       await handleOAuthCallback(url);
     });
 
+    // Catch navigation before it happens (prevents ERR_CONNECTION_REFUSED)
+    authWindow.webContents.on('will-navigate', async (event, url) => {
+      console.log('[OAuth] will-navigate event:', url);
+      const redirectUri = process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000';
+      if (url.startsWith(redirectUri)) {
+        event.preventDefault(); // Prevent loading the URL
+        await handleOAuthCallback(url);
+      }
+    });
+
     authWindow.on('closed', () => {
       authWindow = null;
       reject(new Error('OAuth window closed'));
@@ -490,11 +519,17 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
 });
 
 ipcMain.handle('get-oauth-tokens', (_event, provider: string) => {
-  return {
+  const tokens = {
     accessToken: store.get(`${provider}_access_token`),
     refreshToken: store.get(`${provider}_refresh_token`),
     expiresAt: store.get(`${provider}_expires_at`),
   };
+  console.log(`[IPC] get-oauth-tokens for ${provider}:`, {
+    accessToken: tokens.accessToken ? `YES (length: ${(tokens.accessToken as string).length})` : 'NO',
+    refreshToken: tokens.refreshToken ? 'YES' : 'NO',
+    expiresAt: tokens.expiresAt
+  });
+  return tokens;
 });
 
 ipcMain.handle('save-oauth-tokens', (_event, provider: string, tokens: any) => {

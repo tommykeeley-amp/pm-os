@@ -30,3 +30,8 @@ electron-store/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# OAuth callback Next.js
+oauth-callback/.next/
+oauth-callback/node_modules/
+oauth-callback/next-env.d.ts
