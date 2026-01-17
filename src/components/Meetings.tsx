@@ -556,9 +556,14 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
       {/* Header with Create Event Button */}
       <div className="flex items-center justify-between mb-4 px-4">
-        <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
-          Today's Schedule
-        </h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
+            Today's Schedule
+          </h3>
+          <span className="text-xs text-dark-text-muted">
+            {getTimezoneAbbr(primaryTimezone)}
+          </span>
+        </div>
         <button
           onClick={() => setShowCreateEventModal(true)}
           className="px-3 py-1.5 text-xs bg-dark-accent-primary text-white rounded-lg hover:bg-dark-accent-primary/90 transition-colors flex items-center gap-1"
@@ -570,14 +575,10 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </button>
       </div>
 
-      <div className={isPinned ? 'h-full' : 'min-h-[800px] relative'}>
-        {/* Timezone label header */}
-        <div className="absolute left-0 top-0 w-20 text-xs font-semibold text-dark-text-secondary border-b border-dark-border pb-1 pr-2 text-right">
-          {getTimezoneAbbr(primaryTimezone)}
-        </div>
+      <div className={`${isPinned ? 'h-full' : 'min-h-[800px]'} relative px-4`}>
 
         {/* Time labels - Primary timezone with Secondary on hover */}
-        <div className="absolute left-0 top-6 bottom-0 w-20 flex flex-col text-xs text-dark-text-muted py-2">
+        <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-dark-text-muted py-2">
           {timeLabels.map((label, i) => {
             const secondaryLabel = convertToSecondaryTimezone(label);
             return (
@@ -598,7 +599,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </div>
 
         {/* Events container */}
-        <div className="absolute left-20 right-0 top-6 bottom-0 ml-2">
+        <div className="absolute left-16 right-0 top-0 bottom-0 ml-3">
           {/* Hour grid lines */}
           <div className="absolute inset-0">
             {[...Array(gridLines)].map((_, i) => (
@@ -618,9 +619,9 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
             >
               <div className="relative">
                 {/* Circle dot on the left */}
-                <div className="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full border-2 border-dark-bg" />
+                <div className="absolute -left-2 -top-1.5 w-3 h-3 bg-red-500 rounded-full border border-dark-bg" />
                 {/* Line */}
-                <div className="h-0.5 bg-red-500" />
+                <div className="h-0.5 bg-red-500/80" />
               </div>
             </div>
           )}
