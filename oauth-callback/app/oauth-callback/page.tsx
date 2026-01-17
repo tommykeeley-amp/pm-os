@@ -26,9 +26,8 @@ function OAuthCallbackContent() {
       return;
     }
 
-    // Determine provider from state or URL
-    // For simplicity, we'll pass provider in the state parameter
-    let provider = 'google'; // default
+    // Determine provider from state
+    let provider = 'google';
     if (state) {
       try {
         const stateObj = JSON.parse(atob(state));
@@ -38,31 +37,48 @@ function OAuthCallbackContent() {
       }
     }
 
-    // Build custom protocol URL
-    const url = `pmos://oauth-callback?provider=${provider}&code=${encodeURIComponent(code)}`;
-    setCallbackUrl(url);
+    // Exchange code for tokens on the server
+    async function exchangeToken() {
+      try {
+        const response = await fetch('/api/exchange-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, provider }),
+        });
 
-    console.log('Redirecting to:', url);
+        const data = await response.json();
 
-    // Try to redirect to custom protocol
-    try {
-      // First try iframe approach (more reliable on some browsers)
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = url;
-      document.body.appendChild(iframe);
+        if (!response.ok) {
+          setError(`Token exchange failed: ${data.error || 'Unknown error'}`);
+          setStatus('error');
+          return;
+        }
 
-      // Also try direct redirect as fallback
-      setTimeout(() => {
-        window.location.href = url;
-      }, 100);
+        // Build custom protocol URL with session ID
+        const url = `pmos://oauth-callback?provider=${provider}&sessionId=${data.sessionId}`;
+        setCallbackUrl(url);
 
-      setStatus('success');
-    } catch (e) {
-      console.error('Protocol redirect failed:', e);
-      setError('Failed to redirect to PM-OS automatically.');
-      setStatus('error');
+        console.log('Redirecting to:', url);
+
+        // Try to redirect to custom protocol
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = url;
+        document.body.appendChild(iframe);
+
+        setTimeout(() => {
+          window.location.href = url;
+        }, 100);
+
+        setStatus('success');
+      } catch (e: any) {
+        console.error('Token exchange failed:', e);
+        setError(`Failed to exchange token: ${e.message}`);
+        setStatus('error');
+      }
     }
+
+    exchangeToken();
   }, [searchParams]);
 
   return (

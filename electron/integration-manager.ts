@@ -1,4 +1,5 @@
 import Store from 'electron-store';
+import * as fs from 'fs';
 import { CalendarService } from '../src/services/calendar';
 import { GmailService } from '../src/services/gmail';
 import { SlackService } from '../src/services/slack';
@@ -6,6 +7,19 @@ import { ZoomService } from '../src/services/zoom';
 import { ContextEngine } from '../src/services/context-engine';
 
 const store = new Store();
+
+// Direct file logging helper
+function logToFile(message: string) {
+  try {
+    fs.appendFileSync('/tmp/pm-os-oauth-debug.log', `${message}\n`);
+  } catch (e) {
+    // Ignore logging errors
+    console.error('logToFile failed:', e);
+  }
+}
+
+// Test logging on module load
+logToFile('[IntegrationManager] MODULE LOADED - logToFile is working');
 
 // OAuth scope version tracking
 const REQUIRED_GOOGLE_SCOPE_VERSION = 2;
@@ -122,13 +136,25 @@ export class IntegrationManager {
 
   // Exchange OAuth code for tokens (Google)
   async connectGoogle(code: string) {
+    logToFile('[IntegrationManager] ===== connectGoogle CALLED =====');
+    logToFile(`[IntegrationManager] Code (first 30 chars): ${code.substring(0, 30)}`);
+    logToFile(`[IntegrationManager] googleClientId: ${this.googleClientId}`);
+    logToFile(`[IntegrationManager] redirectUri: ${this.redirectUri}`);
+
+    console.log('[IntegrationManager] ===== connectGoogle CALLED =====');
+    console.log('[IntegrationManager] Code (first 30 chars):', code.substring(0, 30));
+    console.log('[IntegrationManager] googleClientId:', this.googleClientId);
+    console.log('[IntegrationManager] redirectUri:', this.redirectUri);
     console.log('[IntegrationManager] Exchanging Google OAuth code for tokens...');
+
     const calendarService = new CalendarService(
       this.googleClientId,
       this.googleClientSecret,
       this.redirectUri
     );
 
+    logToFile('[IntegrationManager] CalendarService created, about to exchange code...');
+    console.log('[IntegrationManager] CalendarService created, about to exchange code...');
     const tokens = await calendarService.exchangeCodeForTokens(code);
     console.log('[IntegrationManager] Tokens received, saving...');
     this.saveTokens('google', tokens);

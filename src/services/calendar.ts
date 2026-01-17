@@ -1,5 +1,15 @@
 import { google } from 'googleapis';
 import { addDays, startOfDay, endOfDay } from 'date-fns';
+import * as fs from 'fs';
+
+// Direct file logging helper
+function logToFile(message: string) {
+  try {
+    fs.appendFileSync('/tmp/pm-os-oauth-debug.log', `${message}\n`);
+  } catch (e) {
+    // Ignore logging errors
+  }
+}
 
 interface Attendee {
   email: string;
@@ -61,6 +71,10 @@ export class CalendarService {
     this._clientSecret = clientSecret;
     this._redirectUri = redirectUri;
 
+    console.log('[CalendarService] Constructor called');
+    console.log('[CalendarService] Client ID:', clientId);
+    console.log('[CalendarService] Redirect URI:', redirectUri);
+
     this.oauth2Client = new google.auth.OAuth2(
       clientId,
       clientSecret,
@@ -77,6 +91,12 @@ export class CalendarService {
   }
 
   async exchangeCodeForTokens(code: string): Promise<TokenData> {
+    logToFile('[CalendarService] ===== TOKEN EXCHANGE START =====');
+    logToFile(`[CalendarService] Code received (first 30 chars): ${code.substring(0, 30)}...`);
+    logToFile(`[CalendarService] Client ID: ${this._clientId}`);
+    logToFile(`[CalendarService] Redirect URI: ${this._redirectUri}`);
+    logToFile(`[CalendarService] Client Secret (first 10 chars): ${this._clientSecret.substring(0, 10)}...`);
+
     console.log('[CalendarService] ===== TOKEN EXCHANGE START =====');
     console.log('[CalendarService] Code received (first 30 chars):', code.substring(0, 30) + '...');
     console.log('[CalendarService] Client ID:', this._clientId);
@@ -85,6 +105,11 @@ export class CalendarService {
 
     try {
       const { tokens } = await this.oauth2Client.getToken(code);
+
+      logToFile('[CalendarService] Token exchange SUCCESS');
+      logToFile(`[CalendarService] Received access token: ${tokens.access_token ? 'YES' : 'NO'}`);
+      logToFile(`[CalendarService] Received refresh token: ${tokens.refresh_token ? 'YES' : 'NO'}`);
+      logToFile(`[CalendarService] Token expiry: ${tokens.expiry_date}`);
 
       console.log('[CalendarService] Token exchange SUCCESS');
       console.log('[CalendarService] Received access token:', tokens.access_token ? 'YES' : 'NO');
@@ -97,6 +122,10 @@ export class CalendarService {
         expiresAt: tokens.expiry_date,
       };
     } catch (error: any) {
+      logToFile('[CalendarService] Token exchange FAILED');
+      logToFile(`[CalendarService] Error: ${error.message}`);
+      logToFile(`[CalendarService] Error response: ${JSON.stringify(error.response?.data, null, 2)}`);
+
       console.error('[CalendarService] Token exchange FAILED');
       console.error('[CalendarService] Error:', error.message);
       console.error('[CalendarService] Error response:', JSON.stringify(error.response?.data, null, 2));

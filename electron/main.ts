@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import Store from 'electron-store';
 import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
 import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
@@ -12,6 +13,24 @@ import { ConfluenceService } from '../src/services/confluence';
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Set up file logging
+const logFile = '/tmp/pm-os-oauth-debug.log';
+const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+console.log = (...args: any[]) => {
+  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
+  logStream.write(`${message}\n`);
+  originalConsoleLog(...args);
+};
+
+console.error = (...args: any[]) => {
+  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
+  logStream.write(`ERROR: ${message}\n`);
+  originalConsoleError(...args);
+};
 
 // Load environment variables - handle both dev and production paths
 const envPath = app.isPackaged
@@ -277,26 +296,55 @@ async function handleProtocolUrl(url: string) {
   try {
     const urlObj = new URL(url);
     const provider = urlObj.searchParams.get('provider');
-    const code = urlObj.searchParams.get('code');
+    const sessionId = urlObj.searchParams.get('sessionId');
 
     console.log('[Protocol] Provider:', provider);
-    console.log('[Protocol] Code:', code ? 'received' : 'missing');
+    console.log('[Protocol] Session ID:', sessionId ? 'received' : 'missing');
 
-    if (!provider || !code) {
-      console.error('[Protocol] Missing provider or code');
+    if (!provider || !sessionId) {
+      console.error('[Protocol] Missing provider or sessionId');
       return;
     }
 
-    // Exchange code for tokens
+    // Fetch tokens from Vercel using session ID
+    console.log('[Protocol] Fetching tokens from Vercel...');
+    const tokenResponse = await fetch(`https://pm-os.vercel.app/api/exchange-token?sessionId=${sessionId}`);
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok) {
+      console.error('[Protocol] Failed to fetch tokens:', tokenData);
+      throw new Error(tokenData.error || 'Failed to fetch tokens');
+    }
+
+    console.log('[Protocol] Tokens received from Vercel');
+    const { tokens } = tokenData;
+
+    // Save tokens directly to store
     if (provider === 'google') {
-      await integrationManager.connectGoogle(code);
+      const expiresAt = Date.now() + (tokens.expires_in * 1000);
+      const tokenData = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt,
+      };
+
+      store.set('google_access_token', tokenData.accessToken);
+      if (tokenData.refreshToken) {
+        store.set('google_refresh_token', tokenData.refreshToken);
+      }
+      store.set('google_expires_at', tokenData.expiresAt);
+      store.set('google_oauth_scope_version', 2);
+
+      console.log('[Protocol] Google tokens saved to store');
+
+      // Initialize services
+      await integrationManager.initialize();
       console.log('[Protocol] Google connection successful');
     } else if (provider === 'slack') {
-      await integrationManager.connectSlack(code);
+      store.set('slack_access_token', tokens.access_token);
+      store.set('slack_refresh_token', tokens.refresh_token);
+      store.set('slack_expires_at', Date.now() + (tokens.expires_in * 1000));
       console.log('[Protocol] Slack connection successful');
-    } else if (provider === 'zoom') {
-      await integrationManager.connectZoom(code);
-      console.log('[Protocol] Zoom connection successful');
     }
 
     // Notify the renderer process
