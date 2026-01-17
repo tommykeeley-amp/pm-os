@@ -175,7 +175,7 @@
      TAB TRANSITIONS
      ========================================
 
-     Smooth animations for tab switching.
+     Smooth horizontal sliding animations for tab switching.
 
      Usage:
        1. Import TabPanel component
@@ -189,51 +189,36 @@
        </TabPanel>
 
      Features:
-       - Fade-in with subtle upward slide (0.3s)
-       - Prevents jarring switches between tabs
-       - Consistent with app's motion design
+       - Smooth horizontal slide from right (0.35s)
+       - Carousel-like tab switching
+       - Easing for natural motion
      ======================================== */
 
   .tab-panel {
     @apply h-full;
-    animation: tabFadeIn 0.3s ease-out;
+    animation: tabSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  @keyframes tabFadeIn {
+  @keyframes tabSlideIn {
     from {
       opacity: 0;
-      transform: translateY(8px);
+      transform: translateX(24px);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateX(0);
     }
-  }
-
-  @keyframes tabFadeOut {
-    from {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    to {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-  }
-
-  .tab-panel-exit {
-    animation: tabFadeOut 0.15s ease-in;
   }
 
   /* Tab indicator slide-in animation */
   .animate-slide-in {
-    animation: slideIn 0.2s ease-out;
+    animation: slideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   @keyframes slideIn {
     from {
       opacity: 0;
-      transform: scaleX(0);
+      transform: scaleX(0.7);
     }
     to {
       opacity: 1;

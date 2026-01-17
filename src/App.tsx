@@ -48,6 +48,14 @@ function App() {
 
     window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
 
+    // Listen for tab switch hotkeys
+    const handleSwitchTab = (tab: 'tasks' | 'meetings' | 'chats') => {
+      console.log('[App] Switching to tab:', tab);
+      setActiveTab(tab);
+    };
+
+    window.electronAPI.onSwitchTab?.(handleSwitchTab);
+
     return () => {
       window.removeEventListener('open-settings', handleOpenSettings);
     };

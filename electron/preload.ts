@@ -76,6 +76,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('oauth-success', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('oauth-success');
   },
+  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'chats') => void) => {
+    const handler = (_event: any, tab: 'tasks' | 'meetings' | 'chats') => callback(tab);
+    ipcRenderer.on('switch-tab', handler);
+    return () => ipcRenderer.removeListener('switch-tab', handler);
+  },
 });
 
 // Type definitions for TypeScript
@@ -120,6 +125,7 @@ export interface ElectronAPI {
   getSlackChannels: () => Promise<any[]>;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
+  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'chats') => void) => () => void;
 }
 
 declare global {

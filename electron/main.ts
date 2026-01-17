@@ -199,20 +199,18 @@ function registerHotkey() {
     console.error('Failed to register global shortcut:', hotkey);
   }
 
-  // Register cmd+shift+p to show window and focus task input
-  // Try to unregister first in case it's already registered
-  globalShortcut.unregister('CommandOrControl+Shift+P');
-
-  const quickAddSuccess = globalShortcut.register('CommandOrControl+Shift+P', () => {
-    console.log('Quick add hotkey triggered!');
-
+  // Helper function to show window and switch tab
+  const showWindowAndSwitchTab = (tab: 'tasks' | 'meetings' | 'chats', focusInput = false) => {
     if (!mainWindow) {
       createWindow();
-      // Wait for window to be ready before sending focus event
+      // Wait for window to be ready before sending event
       setTimeout(() => {
         if (mainWindow) {
-          console.log('Sending focus event after window creation');
-          mainWindow.webContents.send('focus-task-input');
+          console.log(`Switching to ${tab} tab after window creation`);
+          mainWindow.webContents.send('switch-tab', tab);
+          if (focusInput) {
+            mainWindow.webContents.send('focus-task-input');
+          }
         }
       }, 500);
     } else {
@@ -229,21 +227,56 @@ function registerHotkey() {
       mainWindow.focus();
       app.focus({ steal: true });
 
-      // Send focus event after ensuring window is focused
+      // Send switch tab event after ensuring window is focused
       setTimeout(() => {
         if (mainWindow && mainWindow.webContents) {
-          console.log('Sending focus event to renderer');
-          mainWindow.webContents.send('focus-task-input');
+          console.log(`Switching to ${tab} tab`);
+          mainWindow.webContents.send('switch-tab', tab);
+          if (focusInput) {
+            mainWindow.webContents.send('focus-task-input');
+          }
         }
       }, 150);
     }
+  };
+
+  // Register cmd+shift+t to show window and switch to tasks tab
+  globalShortcut.unregister('CommandOrControl+Shift+T');
+  const tasksSuccess = globalShortcut.register('CommandOrControl+Shift+T', () => {
+    console.log('Tasks hotkey triggered!');
+    showWindowAndSwitchTab('tasks', true);
   });
 
-  if (!quickAddSuccess) {
-    console.error('Failed to register quick add shortcut: CommandOrControl+Shift+P');
-    console.error('This might be because another application is using this shortcut.');
+  if (!tasksSuccess) {
+    console.error('Failed to register tasks shortcut: CommandOrControl+Shift+T');
   } else {
-    console.log('Successfully registered cmd+shift+p shortcut');
+    console.log('Successfully registered cmd+shift+t shortcut');
+  }
+
+  // Register cmd+shift+m to show window and switch to meetings tab
+  globalShortcut.unregister('CommandOrControl+Shift+M');
+  const meetingsSuccess = globalShortcut.register('CommandOrControl+Shift+M', () => {
+    console.log('Meetings hotkey triggered!');
+    showWindowAndSwitchTab('meetings');
+  });
+
+  if (!meetingsSuccess) {
+    console.error('Failed to register meetings shortcut: CommandOrControl+Shift+M');
+  } else {
+    console.log('Successfully registered cmd+shift+m shortcut');
+  }
+
+  // Register cmd+shift+c to show window and switch to chats tab
+  globalShortcut.unregister('CommandOrControl+Shift+C');
+  const chatsSuccess = globalShortcut.register('CommandOrControl+Shift+C', () => {
+    console.log('Chats hotkey triggered!');
+    showWindowAndSwitchTab('chats');
+  });
+
+  if (!chatsSuccess) {
+    console.error('Failed to register chats shortcut: CommandOrControl+Shift+C');
+  } else {
+    console.log('Successfully registered cmd+shift+c shortcut');
   }
 }
 
@@ -566,7 +599,7 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
 
   const authUrls = {
     google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
-    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,chat:write,users:read,im:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
+    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,channels:history,groups:history,mpim:history,im:history,users:read,conversations.info&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
     zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&state=${state}`,
   };
 
