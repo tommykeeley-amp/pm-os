@@ -1052,13 +1052,59 @@ ipcMain.handle('sync-slack', async () => {
   }
 });
 
-// Smart Suggestions
-ipcMain.handle('get-smart-suggestions', async () => {
+// Smart Suggestions with caching (refresh once per day or on demand)
+ipcMain.handle('get-smart-suggestions', async (_event, forceRefresh = false) => {
   try {
-    return await integrationManager.getSmartSuggestions();
+    const lastFetch = store.get('smart_suggestions_last_fetch', 0) as number;
+    const cachedSuggestions = store.get('smart_suggestions_cache', []) as any[];
+    const now = Date.now();
+    const twelveHours = 12 * 60 * 60 * 1000; // 12 hours
+
+    // Return cached suggestions if less than 12 hours old and not forcing refresh
+    if (!forceRefresh && cachedSuggestions.length > 0 && (now - lastFetch) < twelveHours) {
+      console.log('[Smart Suggestions] Using cached suggestions (last fetch:', new Date(lastFetch).toISOString(), ')');
+      return cachedSuggestions;
+    }
+
+    console.log('[Smart Suggestions] Fetching fresh suggestions...');
+    const suggestions = await integrationManager.getSmartSuggestions();
+
+    // Cache the results
+    store.set('smart_suggestions_cache', suggestions);
+    store.set('smart_suggestions_last_fetch', now);
+
+    return suggestions;
   } catch (error: any) {
     console.error('Failed to get smart suggestions:', error);
     return [];
+  }
+});
+
+// Force refresh smart suggestions (called when user adds/dismisses a suggestion)
+ipcMain.handle('refresh-smart-suggestions', async () => {
+  try {
+    console.log('[Smart Suggestions] Force refresh triggered');
+    const suggestions = await integrationManager.getSmartSuggestions();
+    store.set('smart_suggestions_cache', suggestions);
+    store.set('smart_suggestions_last_fetch', Date.now());
+    return suggestions;
+  } catch (error: any) {
+    console.error('Failed to refresh smart suggestions:', error);
+    return [];
+  }
+});
+
+// Debug log handler that writes to a file
+ipcMain.handle('write-debug-log', async (_event, message: string) => {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'debug.log');
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] ${message}\n`;
+    fs.appendFileSync(logPath, logLine);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Failed to write debug log:', error);
+    return { success: false, error: error.message };
   }
 });
 

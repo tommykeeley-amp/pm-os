@@ -262,6 +262,9 @@ function App() {
       setSuggestions(suggestions.filter(s => s.id !== suggestion.id));
       // Mark as dismissed to prevent reappearing
       await window.electronAPI.dismissSuggestion(suggestion.id);
+      // Refresh suggestions to get a new one
+      const newSuggestions = await window.electronAPI.refreshSmartSuggestions();
+      setSuggestions(newSuggestions || []);
       // Automatically open the detail modal for the newly created task
       setDetailTask(addedTask);
     } catch (error) {
@@ -370,36 +373,62 @@ function App() {
 
   // Calculate today + overdue tasks count for notification badge
   useEffect(() => {
-    const today = startOfToday();
-    console.log('[Tasks Count] Calculating today/overdue tasks...');
-    console.log('[Tasks Count] Active tasks:', activeTasks.length);
-    console.log('[Tasks Count] Today:', today);
+    const calculateCount = async () => {
+      const today = startOfToday();
+      const debugLog = async (msg: string) => {
+        console.log(msg);
+        try {
+          await window.electronAPI.writeDebugLog(msg);
+        } catch (error) {
+          console.error('Failed to write debug log:', error);
+        }
+      };
 
-    const todayAndOverdueTasks = activeTasks.filter(task => {
-      console.log('[Tasks Count] Checking task:', task.title, 'deadline:', task.deadline, 'dueDate:', task.dueDate);
+      await debugLog('[Tasks Count] ==================== STARTING CALCULATION ====================');
+      await debugLog(`[Tasks Count] Total tasks: ${tasks.length}, Active tasks: ${activeTasks.length}`);
+      await debugLog(`[Tasks Count] Today: ${today.toISOString()}`);
 
-      if (!task.deadline && !task.dueDate) {
-        console.log('[Tasks Count] No deadline/dueDate, skipping');
-        return false;
+      const todayAndOverdueTasks: typeof tasks = [];
+
+      for (const task of activeTasks) {
+        await debugLog(`[Tasks Count] Task: "${task.title}"`);
+        await debugLog(`[Tasks Count]   - deadline: ${task.deadline || 'NONE'}`);
+        await debugLog(`[Tasks Count]   - dueDate: ${task.dueDate || 'NONE'}`);
+
+        if (!task.deadline && !task.dueDate) {
+          await debugLog('[Tasks Count]   - SKIPPING: No deadline/dueDate');
+          continue;
+        }
+
+        try {
+          const dateField = task.deadline || task.dueDate || '';
+          await debugLog(`[Tasks Count]   - Using field: ${dateField}`);
+          const taskDate = parseISO(dateField);
+          await debugLog(`[Tasks Count]   - Parsed date: ${taskDate.toISOString()}`);
+
+          const isToday = isSameDay(taskDate, today);
+          const isOverdue = isBefore(taskDate, today);
+          await debugLog(`[Tasks Count]   - isToday: ${isToday}, isOverdue: ${isOverdue}`);
+
+          const shouldCount = isToday || isOverdue;
+          await debugLog(`[Tasks Count]   - ${shouldCount ? 'COUNTING' : 'NOT COUNTING'} this task`);
+
+          if (shouldCount) {
+            todayAndOverdueTasks.push(task);
+          }
+        } catch (error) {
+          await debugLog(`[Tasks Count]   - ERROR parsing date: ${error}`);
+        }
       }
 
-      try {
-        const taskDate = parseISO(task.deadline || task.dueDate || '');
-        console.log('[Tasks Count] Parsed date:', taskDate);
-        const isToday = isSameDay(taskDate, today);
-        const isOverdue = isBefore(taskDate, today);
-        console.log('[Tasks Count] isToday:', isToday, 'isOverdue:', isOverdue);
-        // Include tasks that are today or overdue
-        return isToday || isOverdue;
-      } catch (error) {
-        console.log('[Tasks Count] Parse error:', error);
-        return false;
-      }
-    });
+      await debugLog(`[Tasks Count] FINAL COUNT: ${todayAndOverdueTasks.length}`);
+      await debugLog('[Tasks Count] ==================== END CALCULATION ====================');
 
-    console.log('[Tasks Count] Final count:', todayAndOverdueTasks.length);
-    setTasksCount(todayAndOverdueTasks.length);
-  }, [tasks]);
+      setTasksCount(todayAndOverdueTasks.length);
+    };
+
+    calculateCount();
+  }, [tasks, activeTasks]);
 
   return (
     <div className="relative w-screen h-screen bg-dark-bg animate-fade-in">
@@ -575,6 +604,9 @@ function App() {
                   // Persist dismissal to prevent reappearing
                   try {
                     await window.electronAPI.dismissSuggestion(id);
+                    // Refresh suggestions to get a new one
+                    const newSuggestions = await window.electronAPI.refreshSmartSuggestions();
+                    setSuggestions(newSuggestions || []);
                   } catch (error) {
                     console.error('Failed to dismiss suggestion:', error);
                   }
