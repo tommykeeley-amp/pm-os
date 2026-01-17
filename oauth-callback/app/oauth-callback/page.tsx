@@ -7,6 +7,7 @@ function OAuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [error, setError] = useState<string>('');
+  const [callbackUrl, setCallbackUrl] = useState<string>('');
 
   useEffect(() => {
     const code = searchParams.get('code');
@@ -38,21 +39,28 @@ function OAuthCallbackContent() {
     }
 
     // Build custom protocol URL
-    const callbackUrl = `pmos://oauth-callback?provider=${provider}&code=${encodeURIComponent(code)}`;
+    const url = `pmos://oauth-callback?provider=${provider}&code=${encodeURIComponent(code)}`;
+    setCallbackUrl(url);
 
-    console.log('Redirecting to:', callbackUrl);
+    console.log('Redirecting to:', url);
 
     // Try to redirect to custom protocol
     try {
-      window.location.href = callbackUrl;
-      setStatus('success');
+      // First try iframe approach (more reliable on some browsers)
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = url;
+      document.body.appendChild(iframe);
 
-      // Show success message
+      // Also try direct redirect as fallback
       setTimeout(() => {
-        setStatus('success');
-      }, 500);
+        window.location.href = url;
+      }, 100);
+
+      setStatus('success');
     } catch (e) {
-      setError('Failed to redirect to PM-OS. Please copy the code manually.');
+      console.error('Protocol redirect failed:', e);
+      setError('Failed to redirect to PM-OS automatically.');
       setStatus('error');
     }
   }, [searchParams]);
@@ -92,8 +100,24 @@ function OAuthCallbackContent() {
             <p style={{ color: '#888', fontSize: '14px', marginBottom: '20px' }}>
               Redirecting to PM-OS...
             </p>
+            <button
+              onClick={() => window.location.href = callbackUrl}
+              style={{
+                padding: '12px 24px',
+                background: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: '10px'
+              }}
+            >
+              Open PM-OS
+            </button>
             <p style={{ color: '#666', fontSize: '12px' }}>
-              If the app doesn't open automatically, please return to PM-OS manually.
+              Click the button above if PM-OS doesn't open automatically.
             </p>
           </>
         )}
