@@ -255,6 +255,9 @@ export default function SmartSuggestions({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      // Optimistic UI update - remove immediately from local state
+                      setFilteredSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+                      // Then call parent's dismiss handler to update source state
                       onDismiss(suggestion.id);
                     }}
                     className="p-1 text-dark-text-muted hover:bg-dark-text-muted/10 rounded transition-all"
