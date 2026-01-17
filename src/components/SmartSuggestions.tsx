@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { aiService } from '../services/ai-service';
 
 interface Suggestion {
   id: string;
@@ -12,6 +13,11 @@ interface Suggestion {
 interface TaskTag {
   label: string;
   color: string;
+}
+
+interface ScoredSuggestion extends Suggestion {
+  relevanceScore?: number;
+  matchedTags?: string[];
 }
 
 interface SmartSuggestionsProps {
@@ -54,45 +60,99 @@ export default function SmartSuggestions({
   projectTags = [],
 }: SmartSuggestionsProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<ScoredSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Filter suggestions based on project tag relevance
-  const filterByProjectTags = (suggestions: Suggestion[]): Suggestion[] => {
-    if (projectTags.length === 0) {
-      // No tags, return top 5 suggestions
-      return suggestions.slice(0, 5);
+  // Initialize AI service
+  useEffect(() => {
+    const initAI = async () => {
+      const apiKey = await window.electronAPI.getSettings().then((settings: any) =>
+        settings.openaiApiKey || process.env.OPENAI_API_KEY
+      );
+      if (apiKey) {
+        await aiService.initialize(apiKey);
+      }
+    };
+    initAI();
+  }, []);
+
+  const filterSuggestions = async () => {
+    if (suggestions.length === 0) {
+      setFilteredSuggestions([]);
+      return;
     }
 
-    // Score each suggestion based on tag keyword matching
+    setIsLoading(true);
+
+    try {
+      // Try AI-powered matching first
+      if (aiService.isAvailable() && projectTags.length > 0) {
+        console.log('[SmartSuggestions] Using AI to match suggestions to tags');
+        const scored = await aiService.matchSuggestionsToTags(suggestions, projectTags);
+
+        // Sort by relevance score
+        scored.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+
+        // Return top 5
+        setFilteredSuggestions(scored.slice(0, 5));
+      } else {
+        // Fallback to keyword matching
+        console.log('[SmartSuggestions] Using keyword matching');
+        const scored = keywordMatchSuggestions(suggestions, projectTags);
+        setFilteredSuggestions(scored.slice(0, 5));
+      }
+    } catch (error) {
+      console.error('[SmartSuggestions] Error filtering suggestions:', error);
+      // Fallback to keyword matching on error
+      const scored = keywordMatchSuggestions(suggestions, projectTags);
+      setFilteredSuggestions(scored.slice(0, 5));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fallback keyword matching
+  const keywordMatchSuggestions = (
+    suggestions: Suggestion[],
+    projectTags: TaskTag[]
+  ): ScoredSuggestion[] => {
+    if (projectTags.length === 0) {
+      return suggestions.slice(0, 5).map(s => ({ ...s, relevanceScore: 0, matchedTags: [] }));
+    }
+
     const scoredSuggestions = suggestions.map(suggestion => {
       const text = `${suggestion.title} ${suggestion.context || ''}`.toLowerCase();
       let relevanceScore = 0;
+      const matchedTags: string[] = [];
 
-      // Check how many project tags are mentioned in the suggestion
       projectTags.forEach(tag => {
         const tagWords = tag.label.toLowerCase().split(' ');
+        let tagMatched = false;
+
         tagWords.forEach(word => {
-          if (text.includes(word) && word.length > 2) { // Ignore very short words
+          if (text.includes(word) && word.length > 2) {
             relevanceScore += 1;
+            tagMatched = true;
           }
         });
+
+        if (tagMatched) {
+          matchedTags.push(tag.label);
+        }
       });
 
-      return { ...suggestion, relevanceScore };
+      return { ...suggestion, relevanceScore, matchedTags };
     });
 
-    // Sort by relevance score, then by original order
-    scoredSuggestions.sort((a, b) => {
-      if (b.relevanceScore !== a.relevanceScore) {
-        return b.relevanceScore - a.relevanceScore;
-      }
-      return 0;
-    });
-
-    // Return top 5 most relevant
-    return scoredSuggestions.slice(0, 5);
+    scoredSuggestions.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+    return scoredSuggestions;
   };
 
-  const filteredSuggestions = filterByProjectTags(suggestions);
+  // Filter suggestions when suggestions or projectTags change
+  useEffect(() => {
+    filterSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions, projectTags]);
 
   if (filteredSuggestions.length === 0) return null;
 
@@ -103,12 +163,22 @@ export default function SmartSuggestions({
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-dark-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+          {isLoading ? (
+            <svg className="w-4 h-4 text-dark-accent-primary animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-dark-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          )}
           <h2 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
             Smart Suggestions ({filteredSuggestions.length})
+            {aiService.isAvailable() && (
+              <span className="ml-2 text-[10px] text-dark-accent-primary font-normal">AI</span>
+            )}
           </h2>
         </div>
         <svg
@@ -136,19 +206,38 @@ export default function SmartSuggestions({
                   {suggestion.title}
                 </p>
 
-                {/* Source badge and context */}
-                {(suggestion.context || suggestion.source) && (
-                  <div className="flex flex-col gap-1">
-                    <span className={`text-xs px-1.5 py-0.5 rounded self-start ${getSourceColor(suggestion.source)}`}>
-                      {getSourceLabel(suggestion.source)}
-                    </span>
-                    {suggestion.context && (
-                      <span className="text-xs text-dark-text-muted truncate">
-                        {suggestion.context}
-                      </span>
-                    )}
+                {/* Matched project tags */}
+                {suggestion.matchedTags && suggestion.matchedTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {suggestion.matchedTags.map((tagLabel, idx) => {
+                      const tag = projectTags.find(t => t.label === tagLabel);
+                      return (
+                        <span
+                          key={idx}
+                          className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{
+                            backgroundColor: `${tag?.color || '#666'}20`,
+                            color: tag?.color || '#666',
+                          }}
+                        >
+                          {tagLabel}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
+
+                {/* Source badge and context */}
+                <div className="flex flex-col gap-1">
+                  <span className={`text-xs px-1.5 py-0.5 rounded self-start ${getSourceColor(suggestion.source)}`}>
+                    {getSourceLabel(suggestion.source)}
+                  </span>
+                  {suggestion.context && (
+                    <span className="text-xs text-dark-text-muted truncate">
+                      {suggestion.context}
+                    </span>
+                  )}
+                </div>
 
                 {/* Action buttons */}
                 <div className="flex items-center gap-1 pt-2 border-t border-dark-border">

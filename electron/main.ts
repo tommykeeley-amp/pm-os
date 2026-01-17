@@ -502,6 +502,7 @@ ipcMain.handle('get-settings', () => {
     syncInterval: store.get('syncInterval', 5),
     windowPosition: store.get('windowPosition'),
     hideOnBlur: store.get('hideOnBlur', false),
+    openaiApiKey: process.env.OPENAI_API_KEY,
   };
 });
 
