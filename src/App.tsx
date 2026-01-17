@@ -331,18 +331,6 @@ function App() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab('meetings')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
-                   ${activeTab === 'meetings'
-                     ? 'text-dark-text-primary'
-                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
-        >
-          Meetings
-          {activeTab === 'meetings' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
-          )}
-        </button>
-        <button
           onClick={() => setActiveTab('docs')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
                    ${activeTab === 'docs'
@@ -351,6 +339,18 @@ function App() {
         >
           Docs
           {activeTab === 'docs' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('meetings')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
+                   ${activeTab === 'meetings'
+                     ? 'text-dark-text-primary'
+                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
+        >
+          Meetings
+          {activeTab === 'meetings' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
           )}
         </button>
@@ -481,14 +481,14 @@ function App() {
             )}
             </TabPanel>
 
-            {/* Meetings Tab */}
-            <TabPanel isActive={activeTab === 'meetings'} className="p-4">
-              <Meetings isPinned={isPinned} />
-            </TabPanel>
-
             {/* Docs Tab */}
             <TabPanel isActive={activeTab === 'docs'}>
               <Docs onAddTask={handleAddTask} />
+            </TabPanel>
+
+            {/* Meetings Tab */}
+            <TabPanel isActive={activeTab === 'meetings'} className="p-4">
+              <Meetings isPinned={isPinned} />
             </TabPanel>
 
             {/* Chats Tab */}
