@@ -341,10 +341,25 @@ async function handleProtocolUrl(url: string) {
       await integrationManager.initialize();
       console.log('[Protocol] Google connection successful');
     } else if (provider === 'slack') {
-      store.set('slack_access_token', tokens.access_token);
-      store.set('slack_refresh_token', tokens.refresh_token);
-      store.set('slack_expires_at', Date.now() + (tokens.expires_in * 1000));
-      console.log('[Protocol] Slack connection successful');
+      // Slack returns tokens in authed_user for user tokens
+      const accessToken = tokens.authed_user?.access_token || tokens.access_token;
+
+      if (accessToken) {
+        store.set('slack_access_token', accessToken);
+        if (tokens.authed_user?.refresh_token) {
+          store.set('slack_refresh_token', tokens.authed_user.refresh_token);
+        }
+        if (tokens.authed_user?.expires_in) {
+          store.set('slack_expires_at', Date.now() + (tokens.authed_user.expires_in * 1000));
+        }
+        console.log('[Protocol] Slack tokens saved to store');
+
+        // Initialize services
+        await integrationManager.initialize();
+        console.log('[Protocol] Slack connection successful');
+      } else {
+        throw new Error('No access token found in Slack response');
+      }
     }
 
     // Notify the renderer process

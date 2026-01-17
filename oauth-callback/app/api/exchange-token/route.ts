@@ -21,32 +21,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing code or provider' }, { status: 400 });
     }
 
-    // Exchange code for tokens using Google's token endpoint
-    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-    const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
     const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || 'https://pm-os.vercel.app/oauth-callback';
+    let tokenResponse;
 
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-      return NextResponse.json({ error: 'Missing OAuth credentials' }, { status: 500 });
+    if (provider === 'google') {
+      const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+      const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+
+      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+        return NextResponse.json({ error: 'Missing Google OAuth credentials' }, { status: 500 });
+      }
+
+      tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri: REDIRECT_URI,
+          grant_type: 'authorization_code',
+        }),
+      });
+    } else if (provider === 'slack') {
+      const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID;
+      const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET;
+
+      if (!SLACK_CLIENT_ID || !SLACK_CLIENT_SECRET) {
+        return NextResponse.json({ error: 'Missing Slack OAuth credentials' }, { status: 500 });
+      }
+
+      tokenResponse = await fetch('https://slack.com/api/oauth.v2.access', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: SLACK_CLIENT_ID,
+          client_secret: SLACK_CLIENT_SECRET,
+          redirect_uri: REDIRECT_URI,
+        }),
+      });
+    } else {
+      return NextResponse.json({ error: `Unsupported provider: ${provider}` }, { status: 400 });
     }
-
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: REDIRECT_URI,
-        grant_type: 'authorization_code',
-      }),
-    });
 
     const tokens = await tokenResponse.json();
 
-    if (!tokenResponse.ok) {
+    if (!tokenResponse.ok || (provider === 'slack' && !tokens.ok)) {
       console.error('Token exchange failed:', tokens);
       return NextResponse.json({ error: 'Token exchange failed', details: tokens }, { status: 400 });
     }
