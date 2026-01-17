@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PM-OS Task Capture</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>PM-OS</h1>
+      <button id="syncBtn" class="icon-btn" title="Sync with desktop app">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Quick Add Form -->
+    <div class="quick-add">
+      <form id="taskForm">
+        <input
+          type="text"
+          id="taskInput"
+          placeholder="Add task from this page..."
+          autocomplete="off"
+        />
+        <button type="submit" class="add-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+      </form>
+      <div class="quick-actions">
+        <button id="capturePageBtn" class="quick-action-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+            <path d="M13 2v7h7"/>
+          </svg>
+          Capture Page
+        </button>
+        <button id="captureSelectionBtn" class="quick-action-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7h16M4 12h16M4 17h10"/>
+          </svg>
+          Selected Text
+        </button>
+      </div>
+    </div>
+
+    <!-- Tasks List -->
+    <div class="tasks-section">
+      <div class="section-header">
+        <span>Recent Tasks</span>
+        <span id="taskCount" class="count">0</span>
+      </div>
+      <div id="tasksList" class="tasks-list">
+        <!-- Tasks will be inserted here -->
+      </div>
+      <div id="emptyState" class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        <p>No tasks yet</p>
+        <small>Right-click anywhere or use the form above</small>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <a href="#" id="openDesktopBtn" class="footer-link">
+        Open Desktop App
+      </a>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

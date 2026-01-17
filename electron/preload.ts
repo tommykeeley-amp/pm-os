@@ -62,6 +62,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUserSettings: () => ipcRenderer.invoke('get-user-settings'),
   saveUserSettings: (settings: any) => ipcRenderer.invoke('save-user-settings', settings),
 
+  // Generic storage
+  getStoredData: (key: string) => ipcRenderer.invoke('get-stored-data', key),
+  saveData: (key: string, data: any) => ipcRenderer.invoke('save-data', key, data),
+
   // Chats
   getSlackUnreadMessages: () => ipcRenderer.invoke('get-slack-unread-messages'),
   getStarredEmails: () => ipcRenderer.invoke('get-starred-emails'),
@@ -76,8 +80,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('oauth-success', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('oauth-success');
   },
-  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'chats') => void) => {
-    const handler = (_event: any, tab: 'tasks' | 'meetings' | 'chats') => callback(tab);
+  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => {
+    const handler = (_event: any, tab: 'tasks' | 'meetings' | 'docs' | 'chats') => callback(tab);
     ipcRenderer.on('switch-tab', handler);
     return () => ipcRenderer.removeListener('switch-tab', handler);
   },
@@ -120,12 +124,14 @@ export interface ElectronAPI {
   confluenceGetPage: (pageId: string) => Promise<any>;
   getUserSettings: () => Promise<any>;
   saveUserSettings: (settings: any) => Promise<void>;
+  getStoredData: (key: string) => Promise<any>;
+  saveData: (key: string, data: any) => Promise<void>;
   getSlackUnreadMessages: () => Promise<any[]>;
   getStarredEmails: () => Promise<any[]>;
   getSlackChannels: () => Promise<any[]>;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
-  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'chats') => void) => () => void;
+  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => () => void;
 }
 
 declare global {

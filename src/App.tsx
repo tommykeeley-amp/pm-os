@@ -9,10 +9,11 @@ import TaskDetailModal from './components/TaskDetailModal';
 import Settings from './components/Settings';
 import Meetings from './components/Meetings';
 import Chats from './components/Chats';
+import Docs from './components/Docs';
 import TabPanel from './components/TabPanel';
 import type { Task } from './types/task';
 
-type Tab = 'tasks' | 'meetings' | 'chats';
+type Tab = 'tasks' | 'meetings' | 'docs' | 'chats';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
@@ -50,7 +51,7 @@ function App() {
     window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
 
     // Listen for tab switch hotkeys
-    const handleSwitchTab = (tab: 'tasks' | 'meetings' | 'chats') => {
+    const handleSwitchTab = (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => {
       console.log('[App] Switching to tab:', tab);
       setActiveTab(tab);
     };
@@ -91,13 +92,14 @@ function App() {
     }
   };
 
-  const handleAddTask = async (title: string) => {
+  const handleAddTask = async (title: string, tags?: any[]) => {
     const newTask: Partial<Task> = {
       title,
       completed: false,
       source: 'manual',
       priority: 'medium',
       createdAt: new Date().toISOString(),
+      tags: tags || undefined,
     };
 
     try {
@@ -288,7 +290,7 @@ function App() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                d="M8 4v8H6v2h5v10h2V14h5v-2h-2V4H8z"
               />
             </svg>
           </button>
@@ -337,6 +339,18 @@ function App() {
         >
           Meetings
           {activeTab === 'meetings' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('docs')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
+                   ${activeTab === 'docs'
+                     ? 'text-dark-text-primary'
+                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
+        >
+          Docs
+          {activeTab === 'docs' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
           )}
         </button>
@@ -470,6 +484,11 @@ function App() {
             {/* Meetings Tab */}
             <TabPanel isActive={activeTab === 'meetings'} className="p-4">
               <Meetings isPinned={isPinned} />
+            </TabPanel>
+
+            {/* Docs Tab */}
+            <TabPanel isActive={activeTab === 'docs'}>
+              <Docs onAddTask={handleAddTask} />
             </TabPanel>
 
             {/* Chats Tab */}

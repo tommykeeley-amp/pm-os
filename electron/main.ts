@@ -200,7 +200,7 @@ function registerHotkey() {
   }
 
   // Helper function to show window and switch tab
-  const showWindowAndSwitchTab = (tab: 'tasks' | 'meetings' | 'chats', focusInput = false) => {
+  const showWindowAndSwitchTab = (tab: 'tasks' | 'meetings' | 'docs' | 'chats', focusInput = false) => {
     if (!mainWindow) {
       createWindow();
       // Wait for window to be ready before sending event
@@ -264,6 +264,19 @@ function registerHotkey() {
     console.error('Failed to register meetings shortcut: CommandOrControl+Shift+M');
   } else {
     console.log('Successfully registered cmd+shift+m shortcut');
+  }
+
+  // Register cmd+shift+d to show window and switch to docs tab
+  globalShortcut.unregister('CommandOrControl+Shift+D');
+  const docsSuccess = globalShortcut.register('CommandOrControl+Shift+D', () => {
+    console.log('Docs hotkey triggered!');
+    showWindowAndSwitchTab('docs');
+  });
+
+  if (!docsSuccess) {
+    console.error('Failed to register docs shortcut: CommandOrControl+Shift+D');
+  } else {
+    console.log('Successfully registered cmd+shift+d shortcut');
   }
 
   // Register cmd+shift+c to show window and switch to chats tab
@@ -544,6 +557,15 @@ ipcMain.handle('save-user-settings', (_event, settings: any) => {
       });
     }
   }
+});
+
+// Generic Storage IPC Handlers
+ipcMain.handle('get-stored-data', (_event, key: string) => {
+  return store.get(key, null);
+});
+
+ipcMain.handle('save-data', (_event, key: string, data: any) => {
+  store.set(key, data);
 });
 
 // Task Management IPC Handlers
