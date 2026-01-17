@@ -25,9 +25,10 @@ interface CalendarEvent {
 interface MeetingsProps {
   isPinned: boolean;
   onNextMeetingChange?: (time: string | null) => void;
+  isActive?: boolean;
 }
 
-export default function Meetings({ isPinned, onNextMeetingChange }: MeetingsProps) {
+export default function Meetings({ isPinned, onNextMeetingChange, isActive }: MeetingsProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
@@ -55,6 +56,14 @@ export default function Meetings({ isPinned, onNextMeetingChange }: MeetingsProp
       // Cleanup if needed
     };
   }, []);
+
+  // Refresh events when tab becomes active
+  useEffect(() => {
+    if (isActive) {
+      console.log('[Meetings] Tab became active, refreshing events...');
+      loadTodaysEvents();
+    }
+  }, [isActive]);
 
   // Update current time every minute
   useEffect(() => {

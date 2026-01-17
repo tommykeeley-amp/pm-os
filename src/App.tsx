@@ -150,12 +150,39 @@ function App() {
     setJiraTicketTask(task);
   };
 
-  const handleJiraTicketSuccess = (issueKey: string, issueUrl: string) => {
+  const handleJiraTicketSuccess = async (issueKey: string, issueUrl: string) => {
+    const task = jiraTicketTask;
     setJiraTicketTask(null);
-    alert(`Jira ticket created successfully!\n\n${issueKey}\n\nClick OK to open: ${issueUrl}`);
-    // Optionally open the URL in browser
-    if (confirm('Open ticket in browser?')) {
-      window.open(issueUrl, '_blank');
+
+    // Save as a document in Docs storage
+    if (task) {
+      try {
+        const storedDocs = await window.electronAPI.getStoredData('docs');
+        const docs = storedDocs || [];
+
+        const newDoc = {
+          id: issueKey,
+          title: `${issueKey}: ${task.title}`,
+          url: issueUrl,
+          content: task.context,
+          tags: task.tags,
+          createdAt: new Date().toISOString(),
+          source: 'jira',
+        };
+
+        docs.unshift(newDoc);
+        await window.electronAPI.saveData('docs', docs);
+
+        alert(`Jira ticket created and saved to Docs!\n\n${issueKey}`);
+
+        // Optionally open the URL in browser
+        if (confirm('Open ticket in browser?')) {
+          window.open(issueUrl, '_blank');
+        }
+      } catch (error) {
+        console.error('Failed to save document:', error);
+        alert(`Jira ticket created successfully!\n\n${issueKey}\n\nClick OK to open: ${issueUrl}`);
+      }
     }
   };
 
@@ -163,12 +190,39 @@ function App() {
     setConfluenceDocTask(task);
   };
 
-  const handleConfluenceDocSuccess = (pageId: string, pageUrl: string) => {
+  const handleConfluenceDocSuccess = async (pageId: string, pageUrl: string) => {
+    const task = confluenceDocTask;
     setConfluenceDocTask(null);
-    alert(`Confluence page created successfully!\n\nPage ID: ${pageId}\n\nClick OK to open: ${pageUrl}`);
-    // Optionally open the URL in browser
-    if (confirm('Open page in browser?')) {
-      window.open(pageUrl, '_blank');
+
+    // Save as a document in Docs storage
+    if (task) {
+      try {
+        const storedDocs = await window.electronAPI.getStoredData('docs');
+        const docs = storedDocs || [];
+
+        const newDoc = {
+          id: pageId,
+          title: task.title,
+          url: pageUrl,
+          content: task.context,
+          tags: task.tags,
+          createdAt: new Date().toISOString(),
+          source: 'confluence',
+        };
+
+        docs.unshift(newDoc);
+        await window.electronAPI.saveData('docs', docs);
+
+        alert(`Confluence page created and saved to Docs!\n\nPage ID: ${pageId}`);
+
+        // Optionally open the URL in browser
+        if (confirm('Open page in browser?')) {
+          window.open(pageUrl, '_blank');
+        }
+      } catch (error) {
+        console.error('Failed to save document:', error);
+        alert(`Confluence page created successfully!\n\nPage ID: ${pageId}\n\nClick OK to open: ${pageUrl}`);
+      }
     }
   };
 
@@ -496,7 +550,11 @@ function App() {
 
             {/* Meetings Tab */}
             <TabPanel isActive={activeTab === 'meetings'} className="p-4">
-              <Meetings isPinned={isPinned} onNextMeetingChange={setNextMeetingTime} />
+              <Meetings
+                isPinned={isPinned}
+                onNextMeetingChange={setNextMeetingTime}
+                isActive={activeTab === 'meetings'}
+              />
             </TabPanel>
 
             {/* Chats Tab */}
