@@ -380,6 +380,16 @@ function App() {
                 suggestions={suggestions}
                 onAddTask={handleAddFromSuggestion}
                 onDismiss={(id) => setSuggestions(suggestions.filter(s => s.id !== id))}
+                projectTags={(() => {
+                  // Extract unique tags from all tasks
+                  const tagMap = new Map();
+                  tasks.forEach(task => {
+                    task.tags?.forEach(tag => {
+                      tagMap.set(tag.label.toLowerCase(), tag);
+                    });
+                  });
+                  return Array.from(tagMap.values());
+                })()}
               />
             )}
 
