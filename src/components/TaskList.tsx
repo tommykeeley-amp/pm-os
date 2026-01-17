@@ -13,6 +13,8 @@ interface TaskListProps {
   onLinkSlackChannel?: (task: Task) => void;
   slackConfigured?: boolean;
   onTaskClick?: (task: Task) => void;
+  onDragStart?: (task: Task) => void;
+  onDragEnd?: () => void;
 }
 
 function getSourceIcon(source: string) {
@@ -89,7 +91,7 @@ function getTaskTooltip(task: Task): string {
   return tooltip;
 }
 
-export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket, jiraConfigured, onCreateConfluenceDoc, confluenceConfigured, onLinkSlackChannel, slackConfigured, onTaskClick }: TaskListProps) {
+export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket, jiraConfigured, onCreateConfluenceDoc, confluenceConfigured, onLinkSlackChannel, slackConfigured, onTaskClick, onDragStart, onDragEnd }: TaskListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   return (
@@ -97,8 +99,20 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
       {tasks.map((task, index) => (
         <div
           key={task.id}
+          draggable
+          onDragStart={(e) => {
+            if (onDragStart) {
+              onDragStart(task);
+              e.dataTransfer.effectAllowed = 'move';
+            }
+          }}
+          onDragEnd={() => {
+            if (onDragEnd) {
+              onDragEnd();
+            }
+          }}
           className="task-item group bg-dark-surface rounded-lg px-3 py-2.5 border border-dark-border
-                     hover:border-dark-border/60 transition-all animate-slide-in-right cursor-pointer"
+                     hover:border-dark-border/60 transition-all animate-slide-in-right cursor-move"
           style={{ animationDelay: `${index * 30}ms` }}
           title={getTaskTooltip(task)}
           onClick={(e) => {

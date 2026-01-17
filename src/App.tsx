@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { startOfWeek, endOfWeek, parseISO, isWithinInterval, startOfToday, isBefore, isSameDay } from 'date-fns';
+import { startOfWeek, endOfWeek, parseISO, isWithinInterval, startOfToday, isBefore, isSameDay, addDays, format } from 'date-fns';
 import TaskInput from './components/TaskInput';
 import TaskList from './components/TaskList';
 import SmartSuggestions from './components/SmartSuggestions';
@@ -269,19 +269,89 @@ function App() {
     }
   };
 
+  // Drag and drop handlers
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+
+  const handleDragStart = (task: Task) => {
+    setDraggedTask(task);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTask(null);
+  };
+
+  const handleDropOnSection = async (section: 'overdue' | 'today' | 'thisWeek' | 'backlog') => {
+    if (!draggedTask) return;
+
+    let newDeadline: string;
+    const today = startOfToday();
+
+    switch (section) {
+      case 'overdue':
+        // Set to yesterday
+        newDeadline = format(addDays(today, -1), 'yyyy-MM-dd');
+        break;
+      case 'today':
+        // Set to today
+        newDeadline = format(today, 'yyyy-MM-dd');
+        break;
+      case 'thisWeek':
+        // Set to tomorrow (or next day in the week)
+        newDeadline = format(addDays(today, 1), 'yyyy-MM-dd');
+        break;
+      case 'backlog':
+        // Set to next week
+        newDeadline = format(addDays(today, 7), 'yyyy-MM-dd');
+        break;
+    }
+
+    try {
+      await handleUpdateTask(draggedTask.id, { deadline: newDeadline });
+      console.log(`[Drag&Drop] Moved task "${draggedTask.title}" to ${section}, new deadline: ${newDeadline}`);
+    } catch (error) {
+      console.error('Failed to update task deadline:', error);
+    }
+
+    setDraggedTask(null);
+  };
+
   const activeTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);
 
-  // Categorize active tasks by this week vs backlog
+  // Categorize active tasks: overdue, today, this week, backlog
   const now = new Date();
+  const today = startOfToday();
   const weekStart = startOfWeek(now, { weekStartsOn: 0 }); // Sunday
   const weekEnd = endOfWeek(now, { weekStartsOn: 0 }); // Saturday
+
+  const overdueTasks = activeTasks.filter(task => {
+    if (!task.deadline) return false;
+    try {
+      const deadline = parseISO(task.deadline);
+      return isBefore(deadline, today);
+    } catch {
+      return false;
+    }
+  });
+
+  const todayTasks = activeTasks.filter(task => {
+    if (!task.deadline) return false;
+    try {
+      const deadline = parseISO(task.deadline);
+      return isSameDay(deadline, today);
+    } catch {
+      return false;
+    }
+  });
 
   const thisWeekTasks = activeTasks.filter(task => {
     if (!task.deadline) return false;
     try {
       const deadline = parseISO(task.deadline);
-      return isWithinInterval(deadline, { start: weekStart, end: weekEnd });
+      // This week but not today or overdue
+      return isWithinInterval(deadline, { start: weekStart, end: weekEnd })
+        && !isSameDay(deadline, today)
+        && !isBefore(deadline, today);
     } catch {
       return false;
     }
@@ -291,6 +361,7 @@ function App() {
     if (!task.deadline) return true; // No deadline = backlog
     try {
       const deadline = parseISO(task.deadline);
+      // Not this week (includes future weeks)
       return !isWithinInterval(deadline, { start: weekStart, end: weekEnd });
     } catch {
       return true;
@@ -522,11 +593,90 @@ function App() {
               />
             )}
 
+            {/* Overdue Tasks */}
+            {overdueTasks.length > 0 && (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDropOnSection('overdue');
+                }}
+                className="border-2 border-transparent hover:border-red-500/30 rounded-lg transition-colors"
+              >
+                <h2 className="section-header text-red-500 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Overdue ({overdueTasks.length})
+                </h2>
+                <TaskList
+                  tasks={overdueTasks}
+                  onToggle={handleToggleTask}
+                  onDelete={handleDeleteTask}
+                  onCreateJiraTicket={handleCreateJiraTicket}
+                  jiraConfigured={jiraConfigured}
+                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
+                  confluenceConfigured={confluenceConfigured}
+                  onLinkSlackChannel={handleLinkSlackChannel}
+                  slackConfigured={slackConfigured}
+                  onTaskClick={setDetailTask}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                />
+              </div>
+            )}
+
+            {/* Today's Tasks */}
+            {todayTasks.length > 0 && (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDropOnSection('today');
+                }}
+                className="border-2 border-transparent hover:border-blue-500/30 rounded-lg transition-colors"
+              >
+                <h2 className="section-header">
+                  Today's Tasks ({todayTasks.length})
+                </h2>
+                <TaskList
+                  tasks={todayTasks}
+                  onToggle={handleToggleTask}
+                  onDelete={handleDeleteTask}
+                  onCreateJiraTicket={handleCreateJiraTicket}
+                  jiraConfigured={jiraConfigured}
+                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
+                  confluenceConfigured={confluenceConfigured}
+                  onLinkSlackChannel={handleLinkSlackChannel}
+                  slackConfigured={slackConfigured}
+                  onTaskClick={setDetailTask}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                />
+              </div>
+            )}
+
             {/* This Week's Tasks */}
             {thisWeekTasks.length > 0 && (
-              <div>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDropOnSection('thisWeek');
+                }}
+                className="border-2 border-transparent hover:border-purple-500/30 rounded-lg transition-colors"
+              >
                 <h2 className="section-header">
-                  This Week's Tasks
+                  This Week's Tasks ({thisWeekTasks.length})
                 </h2>
                 <TaskList
                   tasks={thisWeekTasks}
@@ -539,15 +689,27 @@ function App() {
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
                 />
               </div>
             )}
 
             {/* Backlog Tasks */}
             {backlogTasks.length > 0 && (
-              <div>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDropOnSection('backlog');
+                }}
+                className="border-2 border-transparent hover:border-gray-500/30 rounded-lg transition-colors"
+              >
                 <h2 className="section-header">
-                  Backlog of Tasks
+                  Backlog ({backlogTasks.length})
                 </h2>
                 <TaskList
                   tasks={backlogTasks}
@@ -560,6 +722,8 @@ function App() {
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
                 />
               </div>
             )}
