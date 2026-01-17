@@ -467,6 +467,7 @@ function App() {
                     console.error('Failed to dismiss suggestion:', error);
                   }
                 }}
+                existingTasks={tasks}
                 projectTags={(() => {
                   // Extract unique tags from all tasks
                   const tagMap = new Map();

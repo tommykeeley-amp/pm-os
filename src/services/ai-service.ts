@@ -169,6 +169,111 @@ ONLY return UP TO 5 tasks. If fewer than 5 are truly actionable right now, retur
   }
 
   /**
+   * Use AI to rewrite suggestions to be more action-oriented and specific
+   */
+  async enhanceSuggestionsWithActions(
+    suggestions: Suggestion[],
+    existingTasks: any[]
+  ): Promise<Suggestion[]> {
+    if (!this.isAvailable() || suggestions.length === 0) {
+      return suggestions;
+    }
+
+    try {
+      // Get task titles for context
+      const taskTitles = existingTasks.slice(0, 20).map(t => t.title);
+
+      const prompt = `You are a task management assistant. Rewrite these suggestions to be ACTION-ORIENTED and SPECIFIC.
+
+Current tasks in system (for context):
+${taskTitles.length > 0 ? taskTitles.map((t, i) => `${i + 1}. ${t}`).join('\n') : 'No existing tasks'}
+
+Suggestions to enhance:
+${suggestions.map((s, i) => `${i + 1}. "${s.title}" (${s.source}) - Context: ${s.context || 'none'}`).join('\n')}
+
+For EACH suggestion, rewrite the title to be:
+✅ **Action-oriented** - Start with a clear verb (Send, Create, Review, Reply, Schedule, Update, etc.)
+✅ **Specific** - Include WHO and WHAT (names, topics, specific deliverables)
+✅ **Concise** - Max 80 characters, focus on the core action
+✅ **Valuable** - Only suggest if it's a real task someone should do
+
+Examples of GOOD action-oriented tasks:
+- "Reply to Sarah's email about Q1 budget approval"
+- "Review and approve PR #234 from Mike"
+- "Send Slack message to @john about API deployment timeline"
+- "Create Jira ticket for customer bug in checkout flow"
+- "Schedule 1:1 with Emma to discuss project roadmap"
+- "Update Confluence doc with latest API changes"
+
+Examples of BAD (too vague):
+- "Prepare for meeting" ❌ (What meeting? What prep?)
+- "Reply to email" ❌ (Which email? From who? About what?)
+- "Respond to Slack" ❌ (Too generic, no context)
+
+Rules:
+1. ONLY enhance suggestions that are actually actionable tasks
+2. If a suggestion is not actionable (FYI emails, routine meetings with no prep), mark enhanced as null
+3. Keep the action specific but brief
+4. Avoid duplicating existing tasks
+5. Include person's name if available in context
+
+Respond in JSON:
+{
+  "enhanced": [
+    {
+      "originalIndex": 0,
+      "enhancedTitle": "Reply to John's email about API deadline extension",
+      "shouldKeep": true
+    },
+    {
+      "originalIndex": 1,
+      "enhancedTitle": null,
+      "shouldKeep": false
+    }
+  ]
+}`;
+
+      const response = await this.openai!.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: 'You are an expert at writing clear, actionable task descriptions. Be specific and concise.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.5,
+        max_tokens: 2000,
+      });
+
+      const content = response.choices[0].message.content;
+      if (!content) {
+        return suggestions;
+      }
+
+      console.log('[AIService] AI Enhanced Suggestions:', content);
+
+      const result = JSON.parse(content);
+
+      // Apply enhancements
+      const enhanced: Suggestion[] = [];
+      for (const item of result.enhanced) {
+        if (item.shouldKeep && item.enhancedTitle) {
+          const original = suggestions[item.originalIndex];
+          enhanced.push({
+            ...original,
+            title: item.enhancedTitle,
+          });
+        }
+      }
+
+      console.log(`[AIService] Enhanced ${enhanced.length} suggestions from ${suggestions.length} originals`);
+
+      return enhanced;
+    } catch (error) {
+      console.error('[AIService] Failed to enhance suggestions:', error);
+      return suggestions;
+    }
+  }
+
+  /**
    * Legacy method - redirects to new intelligent filtering
    */
   async matchSuggestionsToTags(

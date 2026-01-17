@@ -25,6 +25,7 @@ interface SmartSuggestionsProps {
   onAddTask: (suggestion: Suggestion) => void;
   onDismiss: (id: string) => void;
   projectTags?: TaskTag[];
+  existingTasks?: any[];
 }
 
 function getSourceColor(source: string) {
@@ -58,6 +59,7 @@ export default function SmartSuggestions({
   onAddTask,
   onDismiss,
   projectTags = [],
+  existingTasks = [],
 }: SmartSuggestionsProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [filteredSuggestions, setFilteredSuggestions] = useState<ScoredSuggestion[]>([]);
@@ -85,21 +87,32 @@ export default function SmartSuggestions({
     setIsLoading(true);
 
     try {
-      // Try AI-powered matching first
-      if (aiService.isAvailable() && projectTags.length > 0) {
-        console.log('[SmartSuggestions] Using AI to match suggestions to tags');
-        const scored = await aiService.matchSuggestionsToTags(suggestions, projectTags);
+      let enhancedSuggestions = suggestions;
+
+      // Step 1: Use AI to enhance suggestions with action-oriented titles
+      if (aiService.isAvailable()) {
+        console.log('[SmartSuggestions] Using AI to enhance suggestions with actions');
+        enhancedSuggestions = await aiService.enhanceSuggestionsWithActions(suggestions, existingTasks);
+        console.log(`[SmartSuggestions] AI enhanced ${enhancedSuggestions.length} of ${suggestions.length} suggestions`);
+      }
+
+      // Step 2: Try AI-powered relevance filtering if we have project tags
+      if (aiService.isAvailable() && projectTags.length > 0 && enhancedSuggestions.length > 0) {
+        console.log('[SmartSuggestions] Using AI to filter for relevance');
+        const scored = await aiService.matchSuggestionsToTags(enhancedSuggestions, projectTags);
 
         // Sort by relevance score
         scored.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
         // Return top 5
         setFilteredSuggestions(scored.slice(0, 5));
-      } else {
+      } else if (enhancedSuggestions.length > 0) {
         // Fallback to keyword matching
         console.log('[SmartSuggestions] Using keyword matching');
-        const scored = keywordMatchSuggestions(suggestions, projectTags);
+        const scored = keywordMatchSuggestions(enhancedSuggestions, projectTags);
         setFilteredSuggestions(scored.slice(0, 5));
+      } else {
+        setFilteredSuggestions([]);
       }
     } catch (error) {
       console.error('[SmartSuggestions] Error filtering suggestions:', error);
@@ -148,11 +161,11 @@ export default function SmartSuggestions({
     return scoredSuggestions;
   };
 
-  // Filter suggestions when suggestions or projectTags change
+  // Filter suggestions when suggestions, projectTags, or existingTasks change
   useEffect(() => {
     filterSuggestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestions, projectTags]);
+  }, [suggestions, projectTags, existingTasks]);
 
   if (filteredSuggestions.length === 0) return null;
 

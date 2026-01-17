@@ -90,16 +90,21 @@ export class ContextEngine {
         context += ` • ${event.location}`;
       }
 
-      suggestions.push({
-        id: `calendar_${event.id}`,
-        title: `Prepare for: ${event.title}`,
-        source: 'calendar',
-        sourceId: event.id,
-        priority,
-        context,
-        dueDate: event.start,
-        score,
-      });
+      // Only suggest prep for meetings that need it (>30 min, has description/location)
+      const needsPrep = minutesUntil > 30 && (event.description || event.location);
+
+      if (needsPrep) {
+        suggestions.push({
+          id: `calendar_${event.id}`,
+          title: `Review agenda and prep for ${event.title}`,
+          source: 'calendar',
+          sourceId: event.id,
+          priority,
+          context,
+          dueDate: event.start,
+          score,
+        });
+      }
     }
 
     return suggestions;
@@ -128,17 +133,30 @@ export class ContextEngine {
       }
 
       // Check for action words in subject
-      const actionWords = ['urgent', 'asap', 'action required', 'deadline', 'reminder', 'follow up', 'response needed'];
+      const actionWords = ['urgent', 'asap', 'action required', 'deadline', 'reminder', 'follow up', 'response needed', 'review', 'approve', 'feedback'];
       const subjectLower = email.subject.toLowerCase();
+      const snippetLower = email.snippet.toLowerCase();
 
       if (actionWords.some(word => subjectLower.includes(word))) {
         priority = 'high';
         score += 30;
       }
 
+      // Determine action verb based on content
+      let actionVerb = 'Reply to';
+      if (subjectLower.includes('review') || snippetLower.includes('please review')) {
+        actionVerb = 'Review and respond to';
+      } else if (subjectLower.includes('approve') || snippetLower.includes('approval')) {
+        actionVerb = 'Review and approve';
+      } else if (subjectLower.includes('feedback') || snippetLower.includes('your feedback')) {
+        actionVerb = 'Provide feedback on';
+      } else if (subjectLower.includes('action required') || subjectLower.includes('action needed')) {
+        actionVerb = 'Take action on';
+      }
+
       suggestions.push({
         id: `email_${email.id}`,
-        title: `Reply: ${email.subject}`,
+        title: `${actionVerb} email from ${this.extractName(email.from)}: ${email.subject}`,
         source: 'email',
         sourceId: email.id,
         priority,
@@ -164,24 +182,32 @@ export class ContextEngine {
       let priority: 'low' | 'medium' | 'high' = 'medium';
       let score = 50;
       let context = '';
+      let actionVerb = 'Respond to';
 
       // Priority based on message type
       if (message.type === 'mention') {
         priority = 'high';
         score = 85;
         context = 'You were mentioned';
+        actionVerb = 'Reply to mention from';
       } else if (message.type === 'dm') {
         priority = 'high';
         score = 80;
         context = 'Direct message';
+        actionVerb = 'Reply to DM from';
       } else if (message.type === 'saved') {
         priority = 'medium';
         score = 70;
         context = 'Saved item';
+        actionVerb = 'Follow up on';
       } else if (message.type === 'thread') {
         priority = 'medium';
         score = 60;
         context = 'Thread activity';
+        actionVerb = 'Respond in thread to';
+      } else {
+        // Skip regular channel messages
+        continue;
       }
 
       // Increase priority if recent (< 6 hours)
@@ -190,25 +216,37 @@ export class ContextEngine {
       }
 
       // Add user/channel context
+      let fromContext = '';
       if (message.userName) {
-        context += ` from ${message.userName}`;
+        fromContext = ` ${message.userName}`;
       }
       if (message.channelName) {
         context += ` in #${message.channelName}`;
       }
 
-      // Truncate message text for title
-      const title = message.text.length > 60
-        ? `${message.text.substring(0, 60)}...`
-        : message.text;
+      // Extract key topic from message for title
+      const messageLower = message.text.toLowerCase();
+      let topicHint = '';
+
+      // Check for question indicators
+      if (message.text.includes('?')) {
+        topicHint = ' (has question)';
+      } else if (messageLower.includes('need') || messageLower.includes('help')) {
+        topicHint = ' (needs help)';
+      } else if (messageLower.includes('urgent') || messageLower.includes('asap')) {
+        topicHint = ' (urgent)';
+        score += 20;
+      } else if (messageLower.includes('when') || messageLower.includes('eta')) {
+        topicHint = ' (asking for timing)';
+      }
 
       suggestions.push({
         id: `slack_${message.id}`,
-        title: `Respond: ${title}`,
+        title: `${actionVerb}${fromContext}${topicHint}`,
         source: 'slack',
         sourceId: message.id,
         priority,
-        context,
+        context: `${context} • "${message.text.substring(0, 50)}${message.text.length > 50 ? '...' : ''}"`,
         score,
       });
     }
