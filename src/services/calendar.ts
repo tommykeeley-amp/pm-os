@@ -77,13 +77,31 @@ export class CalendarService {
   }
 
   async exchangeCodeForTokens(code: string): Promise<TokenData> {
-    const { tokens } = await this.oauth2Client.getToken(code);
+    console.log('[CalendarService] ===== TOKEN EXCHANGE START =====');
+    console.log('[CalendarService] Code received (first 30 chars):', code.substring(0, 30) + '...');
+    console.log('[CalendarService] Client ID:', this._clientId);
+    console.log('[CalendarService] Redirect URI:', this._redirectUri);
+    console.log('[CalendarService] Client Secret (first 10 chars):', this._clientSecret.substring(0, 10) + '...');
 
-    return {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt: tokens.expiry_date,
-    };
+    try {
+      const { tokens } = await this.oauth2Client.getToken(code);
+
+      console.log('[CalendarService] Token exchange SUCCESS');
+      console.log('[CalendarService] Received access token:', tokens.access_token ? 'YES' : 'NO');
+      console.log('[CalendarService] Received refresh token:', tokens.refresh_token ? 'YES' : 'NO');
+      console.log('[CalendarService] Token expiry:', tokens.expiry_date);
+
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expiry_date,
+      };
+    } catch (error: any) {
+      console.error('[CalendarService] Token exchange FAILED');
+      console.error('[CalendarService] Error:', error.message);
+      console.error('[CalendarService] Error response:', JSON.stringify(error.response?.data, null, 2));
+      throw error;
+    }
   }
 
   async getUpcomingEvents(daysAhead: number = 7): Promise<CalendarEvent[]> {

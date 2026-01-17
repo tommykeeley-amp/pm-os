@@ -55,6 +55,12 @@
         "zip"
       ]
     },
+    "protocols": {
+      "name": "PM-OS Protocol",
+      "schemes": [
+        "pmos"
+      ]
+    },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",

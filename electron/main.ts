@@ -240,6 +240,7 @@ if (process.defaultApp) {
 
 // Handle custom protocol URLs (macOS)
 app.on('open-url', (event, url) => {
+  console.log('[Protocol] open-url event triggered:', url);
   event.preventDefault();
   handleProtocolUrl(url);
 });
@@ -247,9 +248,13 @@ app.on('open-url', (event, url) => {
 // Handle custom protocol URLs (Windows/Linux)
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  console.log('[Protocol] Second instance detected, quitting...');
   app.quit();
 } else {
-  app.on('second-instance', (event, commandLine) => {
+  app.on('second-instance', (_event, commandLine) => {
+    console.log('[Protocol] second-instance event triggered');
+    console.log('[Protocol] commandLine:', commandLine);
+
     // Someone tried to run a second instance, focus our window instead
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -258,6 +263,7 @@ if (!gotTheLock) {
 
     // Handle protocol URL from second instance
     const url = commandLine.find(arg => arg.startsWith('pmos://'));
+    console.log('[Protocol] Found URL in commandLine:', url);
     if (url) {
       handleProtocolUrl(url);
     }
@@ -492,106 +498,22 @@ ipcMain.handle('delete-task', (_event, id: string) => {
 
 // OAuth Handlers
 ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom') => {
-  return new Promise((resolve, reject) => {
-    let authWindow: BrowserWindow | null = new BrowserWindow({
-      width: 500,
-      height: 600,
-      show: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        // Add additional preferences to mimic a real browser
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-      },
-    });
+  // Encode provider in state parameter so callback knows which provider
+  const state = Buffer.from(JSON.stringify({ provider })).toString('base64');
 
-    // Set user agent to appear as the latest Chrome browser
-    // Updated to Chrome 131 (current as of Jan 2026)
-    authWindow.webContents.setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-    );
+  const authUrls = {
+    google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
+    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,chat:write,users:read,im:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
+    zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&state=${state}`,
+  };
 
-    // Set additional session properties to appear more like a real browser
-    authWindow.webContents.session.setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-    );
+  console.log(`[OAuth] Opening ${provider} auth URL in system browser`);
+  console.log(`[OAuth] Redirect URI: ${process.env.OAUTH_REDIRECT_URI}`);
 
-    const authUrls = {
-      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent`,
-      slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,chat:write,users:read,im:read&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}`,
-      zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}&response_type=code`,
-    };
+  // Open in system browser
+  await shell.openExternal(authUrls[provider]);
 
-    console.log(`[OAuth] Opening ${provider} auth URL:`, authUrls[provider]);
-    console.log(`[OAuth] Redirect URI: ${process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000/'}`);
-
-    // Open DevTools to debug the auth window
-    authWindow.webContents.openDevTools();
-
-    authWindow.loadURL(authUrls[provider]);
-
-    // Handle OAuth callback
-    const handleOAuthCallback = async (url: string) => {
-      console.log('[OAuth] Navigation detected:', url);
-      console.log('[OAuth] Expected redirect URI:', process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000');
-
-      const redirectUri = process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000';
-      // Check if URL starts with redirect URI (handle both with and without trailing slash and path)
-      if (url.startsWith(redirectUri)) {
-        console.log('[OAuth] Redirect URI matched!');
-        const urlObj = new URL(url);
-        const code = urlObj.searchParams.get('code');
-        console.log('[OAuth] Authorization code:', code ? 'received' : 'missing');
-
-        if (code) {
-          try {
-            console.log(`[OAuth] Exchanging ${provider} code for tokens...`);
-            // Exchange code for tokens using integration manager
-            if (provider === 'google') {
-              await integrationManager.connectGoogle(code);
-            } else if (provider === 'slack') {
-              await integrationManager.connectSlack(code);
-            } else if (provider === 'zoom') {
-              await integrationManager.connectZoom(code);
-            }
-            console.log(`[OAuth] ${provider} connection successful!`);
-            resolve({ code, provider, success: true });
-          } catch (error) {
-            console.error(`[OAuth] Failed to exchange ${provider} code:`, error);
-            resolve({ code, provider, success: false, error });
-          }
-          authWindow?.close();
-        }
-      } else {
-        console.log('[OAuth] Redirect URI did not match, ignoring');
-      }
-    };
-
-    // Listen for redirect - handle both will-redirect and did-navigate
-    authWindow.webContents.on('will-redirect', async (_event, url) => {
-      await handleOAuthCallback(url);
-    });
-
-    authWindow.webContents.on('did-navigate', async (_event, url) => {
-      await handleOAuthCallback(url);
-    });
-
-    // Catch navigation before it happens (prevents ERR_CONNECTION_REFUSED)
-    authWindow.webContents.on('will-navigate', async (event, url) => {
-      console.log('[OAuth] will-navigate event:', url);
-      const redirectUri = process.env.OAUTH_REDIRECT_URI || 'https://localhost:3000';
-      if (url.startsWith(redirectUri)) {
-        event.preventDefault(); // Prevent loading the URL
-        await handleOAuthCallback(url);
-      }
-    });
-
-    authWindow.on('closed', () => {
-      authWindow = null;
-      reject(new Error('OAuth window closed'));
-    });
-  });
+  return { success: true };
 });
 
 ipcMain.handle('get-oauth-tokens', (_event, provider: string) => {
