@@ -2,7 +2,7 @@ import { WebClient } from '@slack/web-api';
 
 interface SlackMessage {
   id: string;
-  type: 'mention' | 'dm' | 'thread' | 'saved';
+  type: 'mention' | 'dm' | 'thread' | 'saved' | 'channel';
   text: string;
   user: string;
   userName?: string;
@@ -208,6 +208,92 @@ export class SlackService {
     return uniqueMessages
       .sort((a, b) => parseFloat(b.timestamp) - parseFloat(a.timestamp))
       .slice(0, 20);
+  }
+
+  async getUnreadMessages(channelIds: string[] = []): Promise<SlackMessage[]> {
+    if (!this.client) throw new Error('Slack client not initialized');
+
+    try {
+      const messages: SlackMessage[] = [];
+
+      // Get DMs (always included)
+      const dmMessages = await this.getDirectMessages(20);
+      messages.push(...dmMessages);
+
+      // Get messages from specified channels
+      if (channelIds.length > 0) {
+        for (const channelId of channelIds) {
+          try {
+            // Get channel info
+            const channelInfo = await this.client.conversations.info({
+              channel: channelId,
+            });
+
+            const channelName = channelInfo.channel?.name || 'Unknown';
+
+            // Get unread messages from this channel
+            const history = await this.client.conversations.history({
+              channel: channelId,
+              limit: 10,
+            });
+
+            if (history.ok && history.messages) {
+              const parsedMessages = history.messages.map(msg => ({
+                id: `${channelId}_${msg.ts}`,
+                type: 'channel' as const,
+                text: msg.text || '',
+                user: msg.user || '',
+                userName: msg.username,
+                channel: channelId,
+                channelName,
+                timestamp: msg.ts || '',
+                permalink: '',
+                threadTs: msg.thread_ts,
+              }));
+
+              messages.push(...parsedMessages);
+            }
+          } catch (error) {
+            console.error(`Failed to get messages from channel ${channelId}:`, error);
+          }
+        }
+      }
+
+      // Deduplicate and sort
+      const uniqueMessages = Array.from(
+        new Map(messages.map(msg => [msg.id, msg])).values()
+      );
+
+      return uniqueMessages
+        .sort((a, b) => parseFloat(b.timestamp) - parseFloat(a.timestamp))
+        .slice(0, 50);
+    } catch (error) {
+      console.error('Failed to get unread Slack messages:', error);
+      return [];
+    }
+  }
+
+  async getChannels(): Promise<{ id: string; name: string }[]> {
+    if (!this.client) throw new Error('Slack client not initialized');
+
+    try {
+      const response = await this.client.conversations.list({
+        types: 'public_channel,private_channel',
+        limit: 200,
+      });
+
+      if (!response.ok || !response.channels) {
+        return [];
+      }
+
+      return response.channels.map(channel => ({
+        id: channel.id!,
+        name: channel.name || 'Unknown',
+      }));
+    } catch (error) {
+      console.error('Failed to get Slack channels:', error);
+      return [];
+    }
   }
 
   private parseMessages(messages: any[], type: SlackMessage['type']): SlackMessage[] {

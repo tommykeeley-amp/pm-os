@@ -170,4 +170,74 @@
   .icon-lg {
     @apply w-6 h-6;
   }
+
+  /* ========================================
+     TAB TRANSITIONS
+     ========================================
+
+     Smooth animations for tab switching.
+
+     Usage:
+       1. Import TabPanel component
+       2. Wrap tab content in <TabPanel isActive={condition}>
+       3. Tab buttons should use transition-all duration-200
+       4. Tab indicators should use animate-slide-in
+
+     Example:
+       <TabPanel isActive={activeTab === 'tasks'}>
+         <TaskList />
+       </TabPanel>
+
+     Features:
+       - Fade-in with subtle upward slide (0.3s)
+       - Prevents jarring switches between tabs
+       - Consistent with app's motion design
+     ======================================== */
+
+  .tab-panel {
+    @apply h-full;
+    animation: tabFadeIn 0.3s ease-out;
+  }
+
+  @keyframes tabFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes tabFadeOut {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+  }
+
+  .tab-panel-exit {
+    animation: tabFadeOut 0.15s ease-in;
+  }
+
+  /* Tab indicator slide-in animation */
+  .animate-slide-in {
+    animation: slideIn 0.2s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: scaleX(0);
+    }
+    to {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+  }
 }

@@ -27,7 +27,7 @@ interface EmailMessage {
 }
 interface SlackMessage {
     id: string;
-    type: 'mention' | 'dm' | 'thread' | 'saved';
+    type: 'mention' | 'dm' | 'thread' | 'saved' | 'channel';
     text: string;
     userName?: string;
     channelName?: string;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import SlackChannelsConfig from './SlackChannelsConfig';
 
 interface SettingsProps {
   onClose: () => void;
@@ -333,6 +334,11 @@ export default function Settings({ onClose }: SettingsProps) {
                   Your credentials are stored securely on your device and never sent to external servers.
                 </p>
               </div>
+
+              {/* Slack Channels Configuration */}
+              {integrations.find(i => i.id === 'slack')?.connected && (
+                <SlackChannelsConfig />
+              )}
 
               {/* Jira Configuration Section */}
               <div className="pt-6 border-t border-dark-border">

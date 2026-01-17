@@ -307,6 +307,88 @@ export class IntegrationManager {
     return suggestions;
   }
 
+  // Get Slack unread messages
+  async getSlackUnreadMessages() {
+    if (!this.slackService) {
+      return [];
+    }
+
+    try {
+      // Get selected channel IDs from user settings
+      const userSettings = store.get('user_settings', {}) as any;
+      const selectedChannelIds = userSettings.slackChannels || [];
+
+      const messages = await this.slackService.getUnreadMessages(selectedChannelIds);
+
+      // Enrich messages with user names
+      const enrichedMessages = await Promise.all(
+        messages.map(async (msg) => {
+          if (msg.user) {
+            const userInfo = await this.slackService!.getUserInfo(msg.user);
+            return {
+              ...msg,
+              user: userInfo?.realName || userInfo?.name || msg.user,
+            };
+          }
+          return msg;
+        })
+      );
+
+      return enrichedMessages;
+    } catch (error) {
+      console.error('Failed to get Slack unread messages:', error);
+      return [];
+    }
+  }
+
+  // Get starred emails
+  async getStarredEmails() {
+    if (!this.gmailService) {
+      return [];
+    }
+
+    try {
+      const emails = await this.gmailService.getUnreadStarredEmails(20);
+      return emails.map(email => ({
+        id: email.id,
+        subject: email.subject,
+        from: email.from,
+        snippet: email.snippet,
+        timestamp: email.date,
+        threadId: email.threadId,
+      }));
+    } catch (error: any) {
+      if (error.message?.includes('401') || error.message?.includes('unauthorized')) {
+        await this.refreshGoogleTokens();
+        const emails = await this.gmailService.getUnreadStarredEmails(20);
+        return emails.map(email => ({
+          id: email.id,
+          subject: email.subject,
+          from: email.from,
+          snippet: email.snippet,
+          timestamp: email.date,
+          threadId: email.threadId,
+        }));
+      }
+      console.error('Failed to get starred emails:', error);
+      return [];
+    }
+  }
+
+  // Get Slack channels
+  async getSlackChannels() {
+    if (!this.slackService) {
+      return [];
+    }
+
+    try {
+      return await this.slackService.getChannels();
+    } catch (error) {
+      console.error('Failed to get Slack channels:', error);
+      return [];
+    }
+  }
+
   // Refresh Google tokens
   private async refreshGoogleTokens() {
     if (!this.calendarService) return;

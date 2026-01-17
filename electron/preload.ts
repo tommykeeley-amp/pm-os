@@ -62,6 +62,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUserSettings: () => ipcRenderer.invoke('get-user-settings'),
   saveUserSettings: (settings: any) => ipcRenderer.invoke('save-user-settings', settings),
 
+  // Chats
+  getSlackUnreadMessages: () => ipcRenderer.invoke('get-slack-unread-messages'),
+  getStarredEmails: () => ipcRenderer.invoke('get-starred-emails'),
+  getSlackChannels: () => ipcRenderer.invoke('get-slack-channels'),
+
   // Events
   onFocusTaskInput: (callback: () => void) => {
     ipcRenderer.on('focus-task-input', callback);
@@ -110,6 +115,9 @@ export interface ElectronAPI {
   confluenceGetPage: (pageId: string) => Promise<any>;
   getUserSettings: () => Promise<any>;
   saveUserSettings: (settings: any) => Promise<void>;
+  getSlackUnreadMessages: () => Promise<any[]>;
+  getStarredEmails: () => Promise<any[]>;
+  getSlackChannels: () => Promise<any[]>;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
 }

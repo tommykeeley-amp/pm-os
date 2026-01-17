@@ -123,6 +123,38 @@ export class GmailService {
     }
   }
 
+  async getUnreadStarredEmails(maxResults: number = 20): Promise<EmailMessage[]> {
+    try {
+      const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+
+      const response = await gmail.users.messages.list({
+        userId: 'me',
+        q: 'is:starred is:unread',
+        maxResults,
+      });
+
+      const messages = response.data.messages || [];
+
+      const emailPromises = messages.map(async (msg: any) => {
+        const details = await gmail.users.messages.get({
+          userId: 'me',
+          id: msg.id,
+          format: 'full',
+        });
+
+        return this.parseEmailMessage(details.data);
+      });
+
+      return Promise.all(emailPromises);
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        await this.oauth2Client.refreshAccessToken();
+        return this.getUnreadStarredEmails(maxResults);
+      }
+      throw error;
+    }
+  }
+
   async getImportantEmails(maxResults: number = 20): Promise<EmailMessage[]> {
     try {
       const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });

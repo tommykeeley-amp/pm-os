@@ -679,6 +679,36 @@ ipcMain.handle('get-smart-suggestions', async () => {
   }
 });
 
+// Chats - Slack unread messages
+ipcMain.handle('get-slack-unread-messages', async () => {
+  try {
+    return await integrationManager.getSlackUnreadMessages();
+  } catch (error: any) {
+    console.error('Failed to get Slack unread messages:', error);
+    return [];
+  }
+});
+
+// Chats - Starred emails
+ipcMain.handle('get-starred-emails', async () => {
+  try {
+    return await integrationManager.getStarredEmails();
+  } catch (error: any) {
+    console.error('Failed to get starred emails:', error);
+    return [];
+  }
+});
+
+// Slack channels list
+ipcMain.handle('get-slack-channels', async () => {
+  try {
+    return await integrationManager.getSlackChannels();
+  } catch (error: any) {
+    console.error('Failed to get Slack channels:', error);
+    return [];
+  }
+});
+
 // Jira Integration Handlers
 ipcMain.handle('jira-test-connection', async () => {
   if (!jiraService) {
