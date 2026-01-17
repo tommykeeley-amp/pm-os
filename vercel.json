@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd oauth-callback && npm install && npm run build",
+  "outputDirectory": "oauth-callback/.next",
+  "installCommand": "cd oauth-callback && npm install"
+}
