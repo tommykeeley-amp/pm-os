@@ -73,12 +73,9 @@ async function captureSelection() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.getSelection().toString()
-    });
-
-    const selectedText = results[0].result;
+    // Send message to content script to get selection
+    const response = await chrome.tabs.sendMessage(tab.id, { action: 'getSelection' });
+    const selectedText = response?.text;
 
     if (!selectedText || !selectedText.trim()) {
       showNotification('No text selected', 'error');
@@ -102,7 +99,7 @@ async function captureSelection() {
     showNotification('Selection captured!');
   } catch (error) {
     console.error('Error capturing selection:', error);
-    showNotification('Could not capture selection', 'error');
+    showNotification('Cannot select text on this page', 'error');
   }
 }
 
@@ -165,17 +162,46 @@ window.deleteTask = async function(taskId) {
 
 // Sync with desktop app
 async function syncWithDesktop() {
-  showNotification('Syncing with desktop app...');
+  const PM_OS_SERVER = 'http://localhost:54321';
 
-  // Export tasks to a format the desktop app can import
-  const response = await chrome.runtime.sendMessage({ action: 'getTasks' });
-  const tasks = response.tasks || [];
+  try {
+    showNotification('Syncing with desktop app...');
 
-  // Copy to clipboard for manual import (for now)
-  const tasksJSON = JSON.stringify(tasks, null, 2);
-  await navigator.clipboard.writeText(tasksJSON);
+    // Check if PM-OS is running
+    const pingResponse = await fetch(`${PM_OS_SERVER}/ping`);
+    if (!pingResponse.ok) {
+      showNotification('Desktop app is not running', 'error');
+      return;
+    }
 
-  showNotification('Tasks copied to clipboard! Paste in desktop app.');
+    // Get tasks from desktop app
+    const response = await fetch(`${PM_OS_SERVER}/tasks`);
+    if (!response.ok) {
+      showNotification('Failed to sync with desktop app', 'error');
+      return;
+    }
+
+    const data = await response.json();
+    const desktopTasks = data.tasks || [];
+
+    // Merge with local tasks (avoid duplicates)
+    const localResponse = await chrome.runtime.sendMessage({ action: 'getTasks' });
+    const localTasks = localResponse.tasks || [];
+
+    const allTasks = [...desktopTasks, ...localTasks];
+    const uniqueTasks = Array.from(
+      new Map(allTasks.map(task => [task.id, task])).values()
+    );
+
+    // Save merged tasks to Chrome storage
+    await chrome.storage.local.set({ tasks: uniqueTasks });
+
+    loadTasks();
+    showNotification(`Synced ${desktopTasks.length} tasks from desktop app`);
+  } catch (error) {
+    console.error('Sync error:', error);
+    showNotification('Desktop app is not running', 'error');
+  }
 }
 
 // Open desktop app (placeholder - would need protocol handler)

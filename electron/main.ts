@@ -5,6 +5,7 @@ import Store from 'electron-store';
 import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
+import * as http from 'http';
 import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
@@ -420,6 +421,108 @@ async function handleProtocolUrl(url: string) {
   }
 }
 
+// Start local HTTP server for Chrome extension sync
+function startExtensionSyncServer() {
+  const PORT = 54321;
+
+  const server = http.createServer((req, res) => {
+    // Set CORS headers to allow requests from Chrome extension
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // Handle POST /tasks - Add task from extension
+    if (req.method === 'POST' && req.url === '/tasks') {
+      let body = '';
+
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+
+      req.on('end', async () => {
+        try {
+          const task = JSON.parse(body);
+
+          // Get existing tasks
+          const tasks = store.get('tasks', []) as Task[];
+
+          // Add new task
+          const newTask = {
+            ...task,
+            id: task.id || randomUUID(),
+          };
+
+          tasks.unshift(newTask);
+          store.set('tasks', tasks);
+
+          console.log('[Extension Sync] Task added from Chrome extension:', newTask.title);
+
+          // Notify renderer if window exists
+          if (mainWindow) {
+            mainWindow.webContents.send('task-added', newTask);
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, task: newTask }));
+        } catch (error) {
+          console.error('[Extension Sync] Error adding task:', error);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Invalid request' }));
+        }
+      });
+
+      return;
+    }
+
+    // Handle GET /tasks - Get all tasks for extension
+    if (req.method === 'GET' && req.url === '/tasks') {
+      try {
+        const tasks = store.get('tasks', []) as Task[];
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, tasks }));
+      } catch (error) {
+        console.error('[Extension Sync] Error getting tasks:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Server error' }));
+      }
+      return;
+    }
+
+    // Handle GET /ping - Health check
+    if (req.method === 'GET' && req.url === '/ping') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'PM-OS is running' }));
+      return;
+    }
+
+    // 404 for other routes
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, error: 'Not found' }));
+  });
+
+  server.listen(PORT, 'localhost', () => {
+    console.log(`[Extension Sync] Server running on http://localhost:${PORT}`);
+  });
+
+  // Handle server errors
+  server.on('error', (error: any) => {
+    if (error.code === 'EADDRINUSE') {
+      console.log(`[Extension Sync] Port ${PORT} is already in use, extension sync may not work`);
+    } else {
+      console.error('[Extension Sync] Server error:', error);
+    }
+  });
+
+  return server;
+}
+
 app.whenReady().then(async () => {
   app.setName('PM OS');
   createWindow();
@@ -429,6 +532,9 @@ app.whenReady().then(async () => {
   console.log('[Main] About to initialize integrationManager...');
   await integrationManager.initialize();
   console.log('[Main] integrationManager initialization complete');
+
+  // Start extension sync server
+  startExtensionSyncServer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

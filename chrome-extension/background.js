@@ -75,7 +75,7 @@ async function saveTask(task) {
   tasks.unshift(task);
   await chrome.storage.local.set({ tasks });
 
-  // Also save to PM-OS data file if possible
+  // Also save to PM-OS desktop app if running
   try {
     await syncToPMOS(task);
   } catch (error) {
@@ -85,9 +85,34 @@ async function saveTask(task) {
 
 // Try to sync with PM-OS desktop app
 async function syncToPMOS(task) {
-  // This will be enhanced to communicate with the Electron app
-  // For now, we just store in Chrome storage
-  console.log('Task saved:', task);
+  const PM_OS_SERVER = 'http://localhost:54321';
+
+  try {
+    // First check if PM-OS is running
+    const pingResponse = await fetch(`${PM_OS_SERVER}/ping`);
+    if (!pingResponse.ok) {
+      console.log('PM-OS desktop app is not running');
+      return;
+    }
+
+    // Send task to PM-OS
+    const response = await fetch(`${PM_OS_SERVER}/tasks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(task),
+    });
+
+    if (response.ok) {
+      console.log('Task synced to PM-OS desktop app:', task.title);
+    } else {
+      console.log('Failed to sync task to PM-OS:', response.statusText);
+    }
+  } catch (error) {
+    // Desktop app is not running or not accessible
+    console.log('PM-OS desktop app is not accessible:', error.message);
+  }
 }
 
 // Generate unique ID

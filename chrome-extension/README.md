@@ -134,15 +134,26 @@ EOF
 
 ## Desktop App Integration
 
-Currently, tasks are stored in Chrome's local storage. To sync with your PM-OS desktop app:
+Tasks captured in the extension **automatically sync** to your PM-OS desktop app when it's running!
 
-1. Click the sync button in the extension popup
-2. Tasks are copied to your clipboard as JSON
-3. Paste into PM-OS desktop app (import feature coming soon)
+### How It Works
 
-### Future Integration
+1. **Automatic Sync**: When you add a task via the extension, it's automatically sent to PM-OS desktop app (if running on localhost:54321)
+2. **Manual Sync**: Click the sync button (🔄) to pull tasks from the desktop app into the extension
+3. **Seamless Integration**: No manual copying or importing needed
 
-We'll add native messaging to automatically sync tasks between the extension and desktop app without manual copying.
+### Requirements
+
+- PM-OS desktop app must be running for automatic sync
+- Desktop app listens on `http://localhost:54321` for extension requests
+- Tasks are stored in both Chrome's local storage and the desktop app's storage
+
+### Troubleshooting Sync
+
+If sync isn't working:
+1. Make sure PM-OS desktop app is running
+2. Check the browser console for error messages (right-click extension → Inspect)
+3. Verify the desktop app is accessible at `http://localhost:54321/ping`
 
 ## File Structure
 

@@ -1,5 +1,53 @@
 # PM-OS Chrome Extension Changelog
 
+## Version 1.1.0 - Desktop App Sync (2026-01-17)
+
+### Major Features
+
+**Automatic Desktop Sync** - Tasks now automatically sync between the Chrome extension and PM-OS desktop app in real-time!
+
+#### What's New:
+
+1. **Real-time Sync**
+   - Tasks added in extension automatically appear in desktop app
+   - Desktop app runs HTTP server on `localhost:54321`
+   - No manual export/import needed
+
+2. **Fixed Selected Text Capture**
+   - Now uses content script messaging instead of `executeScript`
+   - Fixes "cannot select text" errors
+   - More reliable across different page types
+
+3. **Bi-directional Sync**
+   - Sync button (🔄) pulls tasks from desktop app to extension
+   - Automatic deduplication by task ID
+   - Merged storage between Chrome and desktop app
+
+#### Technical Changes:
+
+**Chrome Extension:**
+- `popup.js`: Updated `captureSelection()` to use content script messaging
+- `popup.js`: Updated `syncWithDesktop()` to fetch tasks from HTTP server
+- `background.js`: Updated `syncToPMOS()` to POST tasks to desktop app
+
+**Desktop App (main.ts):**
+- Added HTTP server on port 54321
+- Endpoints: `GET /ping`, `GET /tasks`, `POST /tasks`
+- CORS enabled for Chrome extension requests
+- Tasks automatically saved to Electron store
+
+### Benefits:
+
+- **Seamless workflow** - Capture tasks in browser, manage in desktop app
+- **No data loss** - Tasks saved in both Chrome storage and desktop app
+- **Automatic sync** - Works when desktop app is running
+- **Graceful fallback** - Extension still works offline in Chrome storage
+
+### Requirements:
+
+- PM-OS desktop app must be running for automatic sync
+- Desktop app version 0.1.0+ (with HTTP server support)
+
 ## Version 1.0.0 - Side Panel Update
 
 ### Major Changes
