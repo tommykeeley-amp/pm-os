@@ -12,7 +12,7 @@ export default function Home() {
       <div style={{ textAlign: 'center', maxWidth: '600px', padding: '20px' }}>
         <h1 style={{ fontSize: '48px', marginBottom: '20px' }}>PM-OS OAuth</h1>
         <p style={{ color: '#888', fontSize: '18px' }}>
-          This service handles OAuth callbacks for the PM-OS desktop application.
+          OAuth callback handler for PM-OS desktop application.
         </p>
       </div>
     </div>
