@@ -23,9 +23,10 @@ interface Email {
 
 interface ChatsProps {
   isPinned: boolean;
+  onCountChange?: (count: number) => void;
 }
 
-export default function Chats({ isPinned: _isPinned }: ChatsProps) {
+export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps) {
   const [slackMessages, setSlackMessages] = useState<SlackMessage[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +34,13 @@ export default function Chats({ isPinned: _isPinned }: ChatsProps) {
 
   useEffect(() => {
     loadMessages();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadMessages();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadMessages = async () => {
@@ -54,14 +62,19 @@ export default function Chats({ isPinned: _isPinned }: ChatsProps) {
       // Filter for starred emails only
       const starredEmails = emailData?.filter((email: any) => email.isStarred) || [];
       console.log('[Chats] Starred emails after filter:', starredEmails.length);
-      setEmails(starredEmails.map((email: any) => ({
+      const mappedEmails = starredEmails.map((email: any) => ({
         id: email.id,
         subject: email.subject,
         from: email.from,
         snippet: email.snippet,
         timestamp: email.date,
         threadId: email.threadId,
-      })));
+      }));
+      setEmails(mappedEmails);
+
+      // Update count for notification badge
+      const totalCount = (slackData?.length || 0) + mappedEmails.length;
+      onCountChange?.(totalCount);
     } catch (err: any) {
       console.error('[Chats] Failed to load messages:', err);
       setError(err.message || 'Failed to load messages');

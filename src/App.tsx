@@ -27,6 +27,7 @@ function App() {
   const [confluenceDocTask, setConfluenceDocTask] = useState<Task | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [chatsCount, setChatsCount] = useState(0);
 
   useEffect(() => {
     loadInitialData();
@@ -346,7 +347,14 @@ function App() {
                      ? 'text-dark-text-primary'
                      : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
         >
-          Chats
+          <span className="relative inline-block">
+            Chats
+            {chatsCount > 0 && (
+              <span className="absolute -top-1 -right-5 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-xs font-bold rounded-full">
+                {chatsCount > 99 ? '99+' : chatsCount}
+              </span>
+            )}
+          </span>
           {activeTab === 'chats' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
           )}
@@ -456,7 +464,7 @@ function App() {
 
             {/* Chats Tab */}
             <TabPanel isActive={activeTab === 'chats'} className="p-4">
-              <Chats isPinned={isPinned} />
+              <Chats isPinned={isPinned} onCountChange={setChatsCount} />
             </TabPanel>
           </>
         )}
