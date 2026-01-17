@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import ObsidianNoteModal from './ObsidianNoteModal';
 
@@ -30,9 +30,10 @@ interface TaskTag {
 
 interface DocsProps {
   onAddTask?: (title: string, tags?: TaskTag[]) => void;
+  isActive?: boolean;
 }
 
-export default function Docs({ onAddTask }: DocsProps) {
+export default function Docs({ onAddTask, isActive }: DocsProps) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [obsidianNotes, setObsidianNotes] = useState<ObsidianNote[]>([]);
   const [newDocTitle, setNewDocTitle] = useState('');
@@ -43,6 +44,7 @@ export default function Docs({ onAddTask }: DocsProps) {
   const [availableTags, setAvailableTags] = useState<TaskTag[]>([]);
   const [showObsidianModal, setShowObsidianModal] = useState(false);
   const [obsidianConfigured, setObsidianConfigured] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadDocs();
@@ -50,6 +52,16 @@ export default function Docs({ onAddTask }: DocsProps) {
     loadAvailableTags();
     checkObsidianConfig();
   }, []);
+
+  // Auto-focus when tab becomes active
+  useEffect(() => {
+    if (isActive && inputRef.current) {
+      // Small delay to ensure the tab panel is visible
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isActive]);
 
   const loadDocs = async () => {
     try {
@@ -222,6 +234,7 @@ export default function Docs({ onAddTask }: DocsProps) {
         <div className="flex items-center gap-3 mb-3">
           <div className="relative flex-1">
             <input
+              ref={inputRef}
               type="text"
               placeholder="Add document... (cmd+shift+d)"
               value={newDocTitle}

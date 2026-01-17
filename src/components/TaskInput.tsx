@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 
 interface TaskInputProps {
   onAddTask: (title: string) => void;
+  isActive?: boolean;
 }
 
-export default function TaskInput({ onAddTask }: TaskInputProps) {
+export default function TaskInput({ onAddTask, isActive }: TaskInputProps) {
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -26,6 +27,16 @@ export default function TaskInput({ onAddTask }: TaskInputProps) {
       unsubscribe();
     };
   }, []);
+
+  // Auto-focus when tab becomes active
+  useEffect(() => {
+    if (isActive && inputRef.current) {
+      // Small delay to ensure the tab panel is visible
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isActive]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && value.trim()) {

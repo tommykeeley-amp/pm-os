@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { startOfWeek, endOfWeek, parseISO, isWithinInterval } from 'date-fns';
+import { startOfWeek, endOfWeek, parseISO, isWithinInterval, startOfToday, isBefore, isSameDay } from 'date-fns';
 import TaskInput from './components/TaskInput';
 import TaskList from './components/TaskList';
 import SmartSuggestions from './components/SmartSuggestions';
@@ -30,6 +30,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [chatsCount, setChatsCount] = useState(0);
   const [nextMeetingTime, setNextMeetingTime] = useState<string | null>(null);
+  const [tasksCount, setTasksCount] = useState(0);
 
   useEffect(() => {
     loadInitialData();
@@ -296,6 +297,24 @@ function App() {
     }
   });
 
+  // Calculate today + overdue tasks count for notification badge
+  useEffect(() => {
+    const today = startOfToday();
+    const todayAndOverdueTasks = activeTasks.filter(task => {
+      if (!task.deadline && !task.dueDate) return false;
+
+      try {
+        const taskDate = parseISO(task.deadline || task.dueDate || '');
+        // Include tasks that are today or overdue
+        return isSameDay(taskDate, today) || isBefore(taskDate, today);
+      } catch {
+        return false;
+      }
+    });
+
+    setTasksCount(todayAndOverdueTasks.length);
+  }, [tasks]);
+
   return (
     <div className="relative w-screen h-screen bg-dark-bg animate-fade-in">
       {/* Header with drag region */}
@@ -382,7 +401,14 @@ function App() {
                      ? 'text-dark-text-primary'
                      : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
         >
-          Tasks
+          <span className="relative inline-block">
+            Tasks
+            {tasksCount > 0 && (
+              <span className="absolute -top-1 -right-4 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                {tasksCount > 99 ? '99+' : tasksCount}
+              </span>
+            )}
+          </span>
           {activeTab === 'tasks' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
           )}
@@ -450,7 +476,7 @@ function App() {
             {/* Tasks Tab */}
             <TabPanel isActive={activeTab === 'tasks'} className="p-4 space-y-4">
             {/* Quick add input */}
-            <TaskInput onAddTask={handleAddTask} />
+            <TaskInput onAddTask={handleAddTask} isActive={activeTab === 'tasks'} />
 
             {/* Smart suggestions */}
             {suggestions.length > 0 && (
@@ -557,7 +583,7 @@ function App() {
 
             {/* Docs Tab */}
             <TabPanel isActive={activeTab === 'docs'}>
-              <Docs onAddTask={handleAddTask} />
+              <Docs onAddTask={handleAddTask} isActive={activeTab === 'docs'} />
             </TabPanel>
 
             {/* Meetings Tab */}
