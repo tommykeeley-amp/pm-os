@@ -24,9 +24,10 @@ interface CalendarEvent {
 
 interface MeetingsProps {
   isPinned: boolean;
+  onNextMeetingChange?: (time: string | null) => void;
 }
 
-export default function Meetings({ isPinned }: MeetingsProps) {
+export default function Meetings({ isPinned, onNextMeetingChange }: MeetingsProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
@@ -63,6 +64,45 @@ export default function Meetings({ isPinned }: MeetingsProps) {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Calculate and update next meeting time
+  useEffect(() => {
+    if (!onNextMeetingChange) return;
+
+    const now = currentTime.getTime();
+
+    // Find the next meeting that hasn't started yet and isn't declined
+    const upcomingEvents = events
+      .filter(event => {
+        const userAttendee = event.attendees?.find(a => a.self);
+        const isDeclined = userAttendee?.responseStatus === 'declined';
+        const eventStart = parseISO(event.start).getTime();
+        return !isDeclined && eventStart > now;
+      })
+      .sort((a, b) => parseISO(a.start).getTime() - parseISO(b.start).getTime());
+
+    if (upcomingEvents.length === 0) {
+      onNextMeetingChange(null);
+      return;
+    }
+
+    const nextEvent = upcomingEvents[0];
+    const nextEventTime = parseISO(nextEvent.start).getTime();
+    const diffMs = nextEventTime - now;
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
+
+    let timeString: string | null;
+    if (diffMinutes < 60) {
+      timeString = `${diffMinutes}m`;
+    } else if (diffHours < 24) {
+      timeString = `${diffHours}h`;
+    } else {
+      timeString = null;
+    }
+
+    onNextMeetingChange(timeString);
+  }, [events, currentTime, onNextMeetingChange]);
 
   const loadSettings = async () => {
     try {

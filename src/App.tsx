@@ -29,6 +29,7 @@ function App() {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [chatsCount, setChatsCount] = useState(0);
+  const [nextMeetingTime, setNextMeetingTime] = useState<string | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -349,7 +350,14 @@ function App() {
                      ? 'text-dark-text-primary'
                      : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
         >
-          Meetings
+          <span className="relative inline-block">
+            Meetings
+            {nextMeetingTime && (
+              <span className="absolute -top-1 -right-8 flex items-center justify-center min-w-[28px] h-[14px] px-1 bg-blue-500 text-white text-[10px] font-bold rounded-full">
+                {nextMeetingTime}
+              </span>
+            )}
+          </span>
           {activeTab === 'meetings' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
           )}
@@ -364,7 +372,7 @@ function App() {
           <span className="relative inline-block">
             Chats
             {chatsCount > 0 && (
-              <span className="absolute -top-1 -right-5 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-xs font-bold rounded-full">
+              <span className="absolute -top-1 -right-4 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
                 {chatsCount > 99 ? '99+' : chatsCount}
               </span>
             )}
@@ -488,7 +496,7 @@ function App() {
 
             {/* Meetings Tab */}
             <TabPanel isActive={activeTab === 'meetings'} className="p-4">
-              <Meetings isPinned={isPinned} />
+              <Meetings isPinned={isPinned} onNextMeetingChange={setNextMeetingTime} />
             </TabPanel>
 
             {/* Chats Tab */}
