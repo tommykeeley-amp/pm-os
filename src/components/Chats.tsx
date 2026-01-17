@@ -47,11 +47,21 @@ export default function Chats({ isPinned: _isPinned }: ChatsProps) {
       console.log('[Chats] Slack messages received:', slackData?.length || 0);
       setSlackMessages(slackData || []);
 
-      // Fetch starred emails
-      console.log('[Chats] Fetching starred emails...');
-      const emailData = await window.electronAPI.getStarredEmails();
-      console.log('[Chats] Starred emails received:', emailData?.length || 0, emailData);
-      setEmails(emailData || []);
+      // Fetch important emails (includes starred emails)
+      console.log('[Chats] Fetching important emails...');
+      const emailData = await window.electronAPI.syncGmail();
+      console.log('[Chats] Emails received:', emailData?.length || 0, emailData);
+      // Filter for starred emails only
+      const starredEmails = emailData?.filter((email: any) => email.isStarred) || [];
+      console.log('[Chats] Starred emails after filter:', starredEmails.length);
+      setEmails(starredEmails.map((email: any) => ({
+        id: email.id,
+        subject: email.subject,
+        from: email.from,
+        snippet: email.snippet,
+        timestamp: email.date,
+        threadId: email.threadId,
+      })));
     } catch (err: any) {
       console.error('[Chats] Failed to load messages:', err);
       setError(err.message || 'Failed to load messages');

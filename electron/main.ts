@@ -725,9 +725,16 @@ ipcMain.handle('get-slack-unread-messages', async () => {
 // Chats - Starred emails
 ipcMain.handle('get-starred-emails', async () => {
   try {
-    return await integrationManager.getStarredEmails();
+    console.log('[IPC] Getting starred emails...');
+    const emails = await integrationManager.getStarredEmails();
+    console.log(`[IPC] Starred emails result: ${emails?.length || 0} emails`);
+    return emails;
   } catch (error: any) {
-    console.error('Failed to get starred emails:', error);
+    console.error('[IPC] Failed to get starred emails:', {
+      message: error?.message,
+      stack: error?.stack,
+      error: error,
+    });
     return [];
   }
 });
