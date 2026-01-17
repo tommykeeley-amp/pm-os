@@ -59,6 +59,19 @@ export default function Settings({ onClose }: SettingsProps) {
   useEffect(() => {
     loadSettings();
     checkConnections();
+
+    // Listen for OAuth success events
+    const handleOAuthSuccess = () => {
+      console.log('[Settings] OAuth success event received, refreshing connections...');
+      checkConnections();
+      setIsConnecting(null);
+    };
+
+    window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
+
+    return () => {
+      // Cleanup listener if needed
+    };
   }, []);
 
   const loadSettings = async () => {

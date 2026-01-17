@@ -39,6 +39,20 @@ export default function Meetings({ isPinned }: MeetingsProps) {
   useEffect(() => {
     loadTodaysEvents();
     loadSettings();
+
+    // Listen for OAuth success to refresh calendar
+    const handleOAuthSuccess = (data: { provider: string }) => {
+      if (data.provider === 'google') {
+        console.log('[Meetings] Google OAuth success, reloading events...');
+        loadTodaysEvents();
+      }
+    };
+
+    window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
+
+    return () => {
+      // Cleanup if needed
+    };
   }, []);
 
   // Update current time every minute

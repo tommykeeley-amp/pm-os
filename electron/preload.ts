@@ -67,6 +67,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('focus-task-input', callback);
     return () => ipcRenderer.removeListener('focus-task-input', callback);
   },
+  onOAuthSuccess: (callback: (data: { provider: string }) => void) => {
+    ipcRenderer.on('oauth-success', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('oauth-success');
+  },
 });
 
 // Type definitions for TypeScript
@@ -107,6 +111,7 @@ export interface ElectronAPI {
   getUserSettings: () => Promise<any>;
   saveUserSettings: (settings: any) => Promise<void>;
   onFocusTaskInput: (callback: () => void) => () => void;
+  onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
 }
 
 declare global {

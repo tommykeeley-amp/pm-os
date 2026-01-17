@@ -33,6 +33,19 @@ function App() {
     const handleOpenSettings = () => setShowSettings(true);
     window.addEventListener('open-settings', handleOpenSettings);
 
+    // Listen for OAuth success to reload smart suggestions
+    const handleOAuthSuccess = (data: { provider: string }) => {
+      if (data.provider === 'google' || data.provider === 'slack') {
+        console.log('[App] OAuth success, reloading smart suggestions...');
+        // Reload smart suggestions
+        window.electronAPI.getSmartSuggestions().then(smartSuggestions => {
+          setSuggestions(smartSuggestions || []);
+        });
+      }
+    };
+
+    window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
+
     return () => {
       window.removeEventListener('open-settings', handleOpenSettings);
     };
