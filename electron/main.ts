@@ -229,6 +229,82 @@ function registerHotkey() {
 }
 
 // App lifecycle
+// Register custom protocol
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('pmos', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('pmos');
+}
+
+// Handle custom protocol URLs (macOS)
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleProtocolUrl(url);
+});
+
+// Handle custom protocol URLs (Windows/Linux)
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine) => {
+    // Someone tried to run a second instance, focus our window instead
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+
+    // Handle protocol URL from second instance
+    const url = commandLine.find(arg => arg.startsWith('pmos://'));
+    if (url) {
+      handleProtocolUrl(url);
+    }
+  });
+}
+
+// Function to handle protocol URLs
+async function handleProtocolUrl(url: string) {
+  console.log('[Protocol] Received URL:', url);
+
+  try {
+    const urlObj = new URL(url);
+    const provider = urlObj.searchParams.get('provider');
+    const code = urlObj.searchParams.get('code');
+
+    console.log('[Protocol] Provider:', provider);
+    console.log('[Protocol] Code:', code ? 'received' : 'missing');
+
+    if (!provider || !code) {
+      console.error('[Protocol] Missing provider or code');
+      return;
+    }
+
+    // Exchange code for tokens
+    if (provider === 'google') {
+      await integrationManager.connectGoogle(code);
+      console.log('[Protocol] Google connection successful');
+    } else if (provider === 'slack') {
+      await integrationManager.connectSlack(code);
+      console.log('[Protocol] Slack connection successful');
+    } else if (provider === 'zoom') {
+      await integrationManager.connectZoom(code);
+      console.log('[Protocol] Zoom connection successful');
+    }
+
+    // Notify the renderer process
+    if (mainWindow) {
+      mainWindow.webContents.send('oauth-success', { provider });
+    }
+  } catch (error) {
+    console.error('[Protocol] Failed to handle OAuth callback:', error);
+    if (mainWindow) {
+      mainWindow.webContents.send('oauth-error', { error: String(error) });
+    }
+  }
+}
+
 app.whenReady().then(async () => {
   app.setName('PM OS');
   createWindow();

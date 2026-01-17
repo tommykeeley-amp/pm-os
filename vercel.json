@@ -1,5 +1,15 @@
 {
-  "buildCommand": "cd oauth-callback && npm install && npm run build",
-  "outputDirectory": "oauth-callback/.next",
-  "installCommand": "cd oauth-callback && npm install"
+  "version": 2,
+  "builds": [
+    {
+      "src": "oauth-callback/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/oauth-callback/$1"
+    }
+  ]
 }
