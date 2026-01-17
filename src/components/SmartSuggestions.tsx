@@ -65,6 +65,21 @@ export default function SmartSuggestions({
   const [filteredSuggestions, setFilteredSuggestions] = useState<ScoredSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Load saved expanded state on mount
+  useEffect(() => {
+    const loadExpandedState = async () => {
+      try {
+        const settings = await window.electronAPI.getUserSettings();
+        if (settings.smartSuggestionsExpanded !== undefined) {
+          setIsExpanded(settings.smartSuggestionsExpanded);
+        }
+      } catch (error) {
+        console.error('[SmartSuggestions] Failed to load expanded state:', error);
+      }
+    };
+    loadExpandedState();
+  }, []);
+
   // Initialize AI service
   useEffect(() => {
     const initAI = async () => {
@@ -167,13 +182,29 @@ export default function SmartSuggestions({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestions, projectTags, existingTasks]);
 
+  // Handle expand/collapse and persist state
+  const handleToggleExpanded = async () => {
+    const newExpandedState = !isExpanded;
+    setIsExpanded(newExpandedState);
+
+    try {
+      const settings = await window.electronAPI.getUserSettings();
+      await window.electronAPI.saveUserSettings({
+        ...settings,
+        smartSuggestionsExpanded: newExpandedState,
+      });
+    } catch (error) {
+      console.error('[SmartSuggestions] Failed to save expanded state:', error);
+    }
+  };
+
   if (filteredSuggestions.length === 0) return null;
 
   return (
     <div className="space-y-2">
       <div
         className="flex items-center justify-between cursor-pointer group"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleToggleExpanded}
       >
         <div className="flex items-center gap-2">
           {isLoading ? (

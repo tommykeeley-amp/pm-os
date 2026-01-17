@@ -300,18 +300,33 @@ function App() {
   // Calculate today + overdue tasks count for notification badge
   useEffect(() => {
     const today = startOfToday();
+    console.log('[Tasks Count] Calculating today/overdue tasks...');
+    console.log('[Tasks Count] Active tasks:', activeTasks.length);
+    console.log('[Tasks Count] Today:', today);
+
     const todayAndOverdueTasks = activeTasks.filter(task => {
-      if (!task.deadline && !task.dueDate) return false;
+      console.log('[Tasks Count] Checking task:', task.title, 'deadline:', task.deadline, 'dueDate:', task.dueDate);
+
+      if (!task.deadline && !task.dueDate) {
+        console.log('[Tasks Count] No deadline/dueDate, skipping');
+        return false;
+      }
 
       try {
         const taskDate = parseISO(task.deadline || task.dueDate || '');
+        console.log('[Tasks Count] Parsed date:', taskDate);
+        const isToday = isSameDay(taskDate, today);
+        const isOverdue = isBefore(taskDate, today);
+        console.log('[Tasks Count] isToday:', isToday, 'isOverdue:', isOverdue);
         // Include tasks that are today or overdue
-        return isSameDay(taskDate, today) || isBefore(taskDate, today);
-      } catch {
+        return isToday || isOverdue;
+      } catch (error) {
+        console.log('[Tasks Count] Parse error:', error);
         return false;
       }
     });
 
+    console.log('[Tasks Count] Final count:', todayAndOverdueTasks.length);
     setTasksCount(todayAndOverdueTasks.length);
   }, [tasks]);
 
