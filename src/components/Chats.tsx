@@ -59,9 +59,9 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
       console.log('[Chats] Fetching important emails...');
       const emailData = await window.electronAPI.syncGmail();
       console.log('[Chats] Emails received:', emailData?.length || 0, emailData);
-      // Filter for starred emails only
-      const starredEmails = emailData?.filter((email: any) => email.isStarred) || [];
-      console.log('[Chats] Starred emails after filter:', starredEmails.length);
+      // Filter for starred AND unread emails only
+      const starredEmails = emailData?.filter((email: any) => email.isStarred && email.isUnread) || [];
+      console.log('[Chats] Starred unread emails after filter:', starredEmails.length);
       const mappedEmails = starredEmails.map((email: any) => ({
         id: email.id,
         subject: email.subject,
@@ -138,11 +138,13 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
               <div
                 key={message.id}
                 onClick={() => message.permalink && handleOpenSlackMessage(message.permalink)}
-                className="bg-dark-surface border border-dark-border rounded-lg p-3 hover:border-dark-accent-primary transition-colors cursor-pointer"
+                className="bg-dark-surface border-l-4 border-l-blue-500 border-r border-t border-b border-dark-border rounded-lg p-3 hover:border-dark-accent-primary hover:border-l-blue-400 transition-colors cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                    </svg>
                     <span className="text-sm font-medium text-dark-text-primary truncate">
                       {message.type === 'dm' ? `DM from ${message.user}` : `#${message.channelName}`}
                     </span>
@@ -176,12 +178,12 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
               <div
                 key={email.id}
                 onClick={() => handleOpenEmail(email.threadId)}
-                className="bg-dark-surface border border-dark-border rounded-lg p-3 hover:border-dark-accent-primary transition-colors cursor-pointer"
+                className="bg-gradient-to-r from-purple-500/5 to-transparent border-l-4 border-l-purple-500 border-r border-t border-b border-dark-border rounded-lg p-3 hover:border-dark-accent-primary hover:border-l-purple-400 hover:from-purple-500/10 transition-all cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    <svg className="w-4 h-4 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                     <span className="text-sm font-medium text-dark-text-primary truncate">
                       {email.subject || '(No subject)'}
