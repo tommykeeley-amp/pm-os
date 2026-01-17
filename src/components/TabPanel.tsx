@@ -10,7 +10,8 @@ interface TabPanelProps {
  * TabPanel Component
  *
  * A reusable animated container for tab content.
- * Provides smooth fade-in/slide-up animation when tab becomes active.
+ * Keeps all tabs mounted for faster switching and pre-loading.
+ * Uses CSS to show/hide tabs instead of unmounting.
  *
  * @example
  * <TabPanel isActive={activeTab === 'tasks'}>
@@ -18,10 +19,11 @@ interface TabPanelProps {
  * </TabPanel>
  */
 export default function TabPanel({ children, isActive, className = '' }: TabPanelProps) {
-  if (!isActive) return null;
-
   return (
-    <div className={`tab-panel ${className}`}>
+    <div
+      className={`tab-panel ${className} ${isActive ? '' : 'hidden'}`}
+      style={{ display: isActive ? 'block' : 'none' }}
+    >
       {children}
     </div>
   );
