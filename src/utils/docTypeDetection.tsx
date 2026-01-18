@@ -8,6 +8,7 @@ export function detectDocType(url?: string, source?: string): LinkedItemType {
     if (url.includes('docs.google.com/document')) return 'google-docs';
     if (url.includes('docs.google.com/presentation')) return 'google-slides';
     if (url.includes('docs.google.com/spreadsheets')) return 'google-sheets';
+    if (url.includes('mail.google.com')) return 'gmail';
     if (url.includes('atlassian.net/wiki') || url.includes('confluence')) return 'confluence';
     if (url.includes('atlassian.net/browse') || url.includes('jira')) return 'jira';
     if (url.includes('slack.com')) return 'slack';
@@ -149,6 +150,19 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
         ),
         color: '#F24E1E'
       };
+    case 'gmail':
+      return {
+        icon: (
+          <svg className="w-4 h-4" viewBox="0 0 256 193" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M58.182 192.05V93.493L27.507 65.127 0 49.163v132.13c0 6.541 5.316 11.856 11.857 11.856h46.325z" fill="#4285F4"/>
+            <path d="M197.818 192.05h46.325c6.541 0 11.857-5.316 11.857-11.856V49.163l-27.507 15.964-30.675 28.366v98.557z" fill="#34A853"/>
+            <path d="M197.818 17.504v75.989L256 49.163V26.647c0-21.864-24.896-34.368-42.349-21.284l-15.833 12.141z" fill="#FBBC04"/>
+            <path d="M0 49.163l58.182 44.33V17.504L42.349 5.363C24.896-7.721 0 4.783 0 26.647v22.516z" fill="#EA4335"/>
+            <path d="M58.182 93.493l0-75.989 69.818 53.653 69.818-53.653v75.989l-69.818 53.653z" fill="#C5221F"/>
+          </svg>
+        ),
+        color: '#EA4335'
+      };
     default:
       return {
         icon: (
@@ -173,6 +187,8 @@ export function getDocTypeLabel(type: LinkedItemType): string {
       return 'Google Slides';
     case 'google-sheets':
       return 'Google Sheets';
+    case 'gmail':
+      return 'Gmail';
     case 'obsidian':
       return 'Obsidian';
     case 'slack':

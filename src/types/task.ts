@@ -15,6 +15,7 @@ export type LinkedItemType =
   | 'google-sheets'
   | 'obsidian'
   | 'figma'
+  | 'gmail'
   | 'other';
 
 export interface LinkedItem {
