@@ -8,6 +8,7 @@ export function detectDocType(url?: string, source?: string): LinkedItemType {
     if (url.includes('docs.google.com/document')) return 'google-docs';
     if (url.includes('docs.google.com/presentation')) return 'google-slides';
     if (url.includes('docs.google.com/spreadsheets')) return 'google-sheets';
+    if (url.includes('calendar.google.com')) return 'google-calendar';
     if (url.includes('mail.google.com')) return 'gmail';
     if (url.includes('atlassian.net/wiki') || url.includes('confluence')) return 'confluence';
     if (url.includes('atlassian.net/browse') || url.includes('jira')) return 'jira';
@@ -102,6 +103,28 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
         ),
         color: '#34A853'
       };
+    case 'google-calendar':
+      return {
+        icon: (
+          <svg className="w-4 h-4" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Blue header */}
+            <rect x="0" y="0" width="512" height="120" fill="#4285F4" rx="40"/>
+            {/* White main area */}
+            <rect x="0" y="120" width="382" height="352" fill="white"/>
+            {/* Yellow right stripe */}
+            <rect x="382" y="120" width="130" height="272" fill="#FBBC04"/>
+            {/* Green bottom */}
+            <rect x="0" y="392" width="382" height="80" fill="#34A853" rx="0"/>
+            {/* Red folded corner */}
+            <path d="M382 392 L512 392 L512 512 Z" fill="#EA4335"/>
+            {/* Green bottom corner under red fold */}
+            <path d="M382 392 L382 472 L462 392 Z" fill="#34A853"/>
+            {/* Calendar text "31" */}
+            <text x="100" y="320" fontFamily="Arial, sans-serif" fontSize="180" fontWeight="bold" fill="#4285F4">31</text>
+          </svg>
+        ),
+        color: '#4285F4'
+      };
     case 'obsidian':
       return {
         icon: (
@@ -187,6 +210,8 @@ export function getDocTypeLabel(type: LinkedItemType): string {
       return 'Google Slides';
     case 'google-sheets':
       return 'Google Sheets';
+    case 'google-calendar':
+      return 'Google Calendar';
     case 'gmail':
       return 'Gmail';
     case 'obsidian':

@@ -13,6 +13,7 @@ export type LinkedItemType =
   | 'google-docs'
   | 'google-slides'
   | 'google-sheets'
+  | 'google-calendar'
   | 'obsidian'
   | 'figma'
   | 'gmail'
