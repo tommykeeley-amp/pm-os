@@ -999,7 +999,7 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
 
   const authUrls = {
     google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
-    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,channels:history,groups:history,mpim:history,im:history,users:read,conversations.info,app_mentions:read,chat:write&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
+    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=app_mentions:read,chat:write&user_scope=channels:read,channels:history,groups:history,mpim:history,im:history,users:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
     zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&state=${state}`,
   };
 
