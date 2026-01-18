@@ -360,8 +360,9 @@ function App() {
       if (!task.deadline) return true; // No deadline = backlog
       try {
         const deadline = parseISO(task.deadline);
-        // Not this week (includes future weeks)
-        return !isWithinInterval(deadline, { start: weekStart, end: weekEnd });
+        // Not this week AND not overdue (only future weeks)
+        return !isWithinInterval(deadline, { start: weekStart, end: weekEnd })
+          && !isBefore(deadline, today);
       } catch {
         return true;
       }
