@@ -93,15 +93,28 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
     case 'google-sheets':
       return {
         icon: (
-          <svg className="w-4 h-4" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect fill="none" height="192" width="192"/>
-            <path d="M116 8L160 52H138L116 52V8Z" fill="#0F9D58"/>
-            <path d="M116 52V8H44C37.37 8 32 13.37 32 20V172C32 178.63 37.37 184 44 184H148C154.63 184 160 178.63 160 172V52H116Z" fill="#0F9D58"/>
-            <rect x="56" y="76" width="80" height="54" fill="white"/>
-            <path d="M56 98H136M96 76V130" stroke="#0F9D58" strokeWidth="2"/>
+          <svg className="w-4 h-4" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Main green document */}
+            <rect x="0" y="0" width="512" height="512" fill="#0F9D58" rx="50"/>
+            {/* Folded corner - light green */}
+            <path d="M312 0 L512 200 L512 0 Z" fill="#8ED1B1"/>
+            {/* Darker fold shadow */}
+            <path d="M312 0 L312 200 L512 200 Z" fill="#5BB974"/>
+            {/* White spreadsheet area */}
+            <rect x="130" y="335" width="242" height="220" fill="white"/>
+            {/* Grid cells - 3 rows x 2 columns */}
+            {/* Row 1 */}
+            <rect x="160" y="365" width="75" height="40" fill="#0F9D58"/>
+            <rect x="265" y="365" width="75" height="40" fill="#0F9D58"/>
+            {/* Row 2 */}
+            <rect x="160" y="425" width="75" height="40" fill="#0F9D58"/>
+            <rect x="265" y="425" width="75" height="40" fill="#0F9D58"/>
+            {/* Row 3 */}
+            <rect x="160" y="485" width="75" height="40" fill="#0F9D58"/>
+            <rect x="265" y="485" width="75" height="40" fill="#0F9D58"/>
           </svg>
         ),
-        color: '#34A853'
+        color: '#0F9D58'
       };
     case 'google-calendar':
       return {
