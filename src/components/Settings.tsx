@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import SlackChannelsConfig from './SlackChannelsConfig';
+import TabPanel from './TabPanel';
 
 interface SettingsProps {
   onClose: () => void;
@@ -216,9 +217,9 @@ export default function Settings({ onClose }: SettingsProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Personal Tab */}
-          {activeTab === 'personal' && (
+          <TabPanel isActive={activeTab === 'personal'}>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-dark-text-secondary mb-2">
@@ -254,10 +255,10 @@ export default function Settings({ onClose }: SettingsProps) {
                 </p>
               </div>
             </div>
-          )}
+          </TabPanel>
 
           {/* Integrations Tab */}
-          {activeTab === 'integrations' && (
+          <TabPanel isActive={activeTab === 'integrations'}>
             <div className="space-y-4">
               <p className="text-sm text-dark-text-secondary">
                 Connect your accounts to get smart task suggestions from your calendar, emails, and messages.
@@ -551,10 +552,10 @@ export default function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
             </div>
-          )}
+          </TabPanel>
 
           {/* Customizations Tab */}
-          {activeTab === 'customizations' && (
+          <TabPanel isActive={activeTab === 'customizations'}>
             <div className="space-y-4">
               <p className="text-sm text-dark-text-secondary">
                 Customize how PM-OS displays information.
@@ -693,7 +694,7 @@ export default function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
             </div>
-          )}
+          </TabPanel>
         </div>
     </div>
   );
