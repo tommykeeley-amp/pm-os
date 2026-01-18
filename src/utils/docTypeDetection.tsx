@@ -11,6 +11,7 @@ export function detectDocType(url?: string, source?: string): LinkedItemType {
     if (url.includes('atlassian.net/wiki') || url.includes('confluence')) return 'confluence';
     if (url.includes('atlassian.net/browse') || url.includes('jira')) return 'jira';
     if (url.includes('slack.com')) return 'slack';
+    if (url.includes('figma.com')) return 'figma';
   }
 
   // Check source field
@@ -45,10 +46,18 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
     case 'jira':
       return {
         icon: (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 256 256">
-            <path d="M 150 28 H 220 V 98 C 220 122 198 122 186 110 L 150 74 C 138 62 138 28 150 28 Z"/>
-            <path d="M 86 84 H 156 V 154 C 156 178 134 178 122 166 L 86 130 C 74 118 74 84 86 84 Z"/>
-            <path d="M 28 142 H 98 V 212 C 98 236 76 236 64 224 L 28 188 C 16 176 16 142 28 142 Z"/>
+          <svg className="w-4 h-4" preserveAspectRatio="xMidYMid" viewBox="0 -30.632388516510233 255.324 285.95638851651023" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="jira-gradient-a">
+                <stop offset=".18" stopColor="#0052cc"/>
+                <stop offset="1" stopColor="#2684ff"/>
+              </linearGradient>
+              <linearGradient id="jira-gradient-b" x1="98.031%" x2="58.888%" xlinkHref="#jira-gradient-a" y1=".161%" y2="40.766%"/>
+              <linearGradient id="jira-gradient-c" x1="100.665%" x2="55.402%" xlinkHref="#jira-gradient-a" y1=".455%" y2="44.727%"/>
+            </defs>
+            <path d="M244.658 0H121.707a55.502 55.502 0 0 0 55.502 55.502h22.649V77.37c.02 30.625 24.841 55.447 55.466 55.467V10.666C255.324 4.777 250.55 0 244.658 0z" fill="#2684ff"/>
+            <path d="M183.822 61.262H60.872c.019 30.625 24.84 55.447 55.466 55.467h22.649v21.938c.039 30.625 24.877 55.43 55.502 55.43V71.93c0-5.891-4.776-10.667-10.667-10.667z" fill="url(#jira-gradient-b)"/>
+            <path d="M122.951 122.489H0c0 30.653 24.85 55.502 55.502 55.502h22.72v21.867c.02 30.597 24.798 55.408 55.396 55.466V133.156c0-5.891-4.776-10.667-10.667-10.667z" fill="url(#jira-gradient-c)"/>
           </svg>
         ),
         color: '#0052CC'
@@ -127,6 +136,19 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
         ),
         color: '#4A154B'
       };
+    case 'figma':
+      return {
+        icon: (
+          <svg className="w-4 h-4" viewBox="0 0 200 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 300c27.6 0 50-22.4 50-50v-50H50c-27.6 0-50 22.4-50 50s22.4 50 50 50z" fill="#0ACF83"/>
+            <path d="M0 150c0-27.6 22.4-50 50-50h50v100H50c-27.6 0-50-22.4-50-50z" fill="#A259FF"/>
+            <path d="M0 50C0 22.4 22.4 0 50 0h50v100H50C22.4 100 0 77.6 0 50z" fill="#F24E1E"/>
+            <path d="M100 0h50c27.6 0 50 22.4 50 50s-22.4 50-50 50h-50V0z" fill="#FF7262"/>
+            <path d="M200 150c0 27.6-22.4 50-50 50s-50-22.4-50-50 22.4-50 50-50 50 22.4 50 50z" fill="#1ABCFE"/>
+          </svg>
+        ),
+        color: '#F24E1E'
+      };
     default:
       return {
         icon: (
@@ -155,6 +177,8 @@ export function getDocTypeLabel(type: LinkedItemType): string {
       return 'Obsidian';
     case 'slack':
       return 'Slack';
+    case 'figma':
+      return 'Figma';
     default:
       return 'Link';
   }
