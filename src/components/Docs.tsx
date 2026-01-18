@@ -53,13 +53,19 @@ export default function Docs({ isActive }: DocsProps) {
     checkObsidianConfig();
   }, []);
 
-  // Auto-focus when tab becomes active
+  // Auto-focus when tab becomes active and reload tags
   useEffect(() => {
-    if (isActive && inputRef.current) {
-      // Small delay to ensure the tab panel is visible
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+    if (isActive) {
+      // Reload tags to pick up any new tags created in Tasks tab
+      loadAvailableTags();
+
+      // Focus input
+      if (inputRef.current) {
+        // Small delay to ensure the tab panel is visible
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 100);
+      }
     }
   }, [isActive]);
 
@@ -512,7 +518,7 @@ export default function Docs({ isActive }: DocsProps) {
                       </div>
                     ) : (
                       <>
-                        {doc.tags && doc.tags.length > 0 ? (
+                        {doc.tags && doc.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {doc.tags.map((tag: any) => (
                               <span
@@ -524,16 +530,6 @@ export default function Docs({ isActive }: DocsProps) {
                               </span>
                             ))}
                           </div>
-                        ) : (
-                          <button
-                            onClick={() => handleStartEditingTags(doc)}
-                            className="text-xs text-dark-text-muted hover:text-dark-text-primary transition-colors flex items-center gap-1"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                            </svg>
-                            Add project tags
-                          </button>
                         )}
                       </>
                     )}
@@ -565,18 +561,16 @@ export default function Docs({ isActive }: DocsProps) {
                         </svg>
                       </button>
                     )}
-                    {/* Edit tags button - show for all docs with tags */}
-                    {doc.tags && doc.tags.length > 0 && (
-                      <button
-                        onClick={() => handleStartEditingTags(doc)}
-                        className="p-2 text-dark-text-muted hover:text-dark-accent-primary hover:bg-dark-bg rounded transition-colors"
-                        title="Edit project tags"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                        </svg>
-                      </button>
-                    )}
+                    {/* Tags button - always visible */}
+                    <button
+                      onClick={() => handleStartEditingTags(doc)}
+                      className="p-2 text-dark-text-muted hover:text-dark-accent-primary hover:bg-dark-bg rounded transition-colors"
+                      title={doc.tags && doc.tags.length > 0 ? "Edit project tags" : "Add project tags"}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                    </button>
                     {/* Delete button */}
                     <button
                       onClick={() => (doc as any).isObsidian ? handleDeleteObsidianNote((doc as any).id) : handleDeleteDoc(doc.id)}
