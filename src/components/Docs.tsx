@@ -468,7 +468,7 @@ export default function Docs({ isActive }: DocsProps) {
                         ) : doc.url && (
                           <button
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-xs text-dark-accent-primary hover:underline group-hover:truncate block max-w-full"
+                            className="text-xs text-dark-accent-primary hover:underline truncate block max-w-full text-left"
                           >
                             {doc.url}
                           </button>
