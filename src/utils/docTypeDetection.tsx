@@ -14,6 +14,7 @@ export function detectDocType(url?: string, source?: string): LinkedItemType {
     if (url.includes('atlassian.net/browse') || url.includes('jira')) return 'jira';
     if (url.includes('slack.com')) return 'slack';
     if (url.includes('figma.com')) return 'figma';
+    if (url.includes('amplitude.com')) return 'amplitude';
   }
 
   // Check source field
@@ -199,6 +200,23 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
         ),
         color: '#EA4335'
       };
+    case 'amplitude':
+      return {
+        icon: (
+          <svg className="w-4 h-4" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Blue circle background */}
+            <circle cx="256" cy="256" r="256" fill="#1F5FFF"/>
+            {/* White "A" waveform */}
+            <path d="M140 370 C140 370 160 280 200 250 C230 230 250 180 280 170 C310 160 330 200 330 250 L330 370 M330 250 C330 250 350 210 380 200 C410 190 430 210 450 240 M200 370 L200 290"
+                  stroke="white"
+                  strokeWidth="40"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"/>
+          </svg>
+        ),
+        color: '#1F5FFF'
+      };
     default:
       return {
         icon: (
@@ -233,6 +251,8 @@ export function getDocTypeLabel(type: LinkedItemType): string {
       return 'Slack';
     case 'figma':
       return 'Figma';
+    case 'amplitude':
+      return 'Amplitude';
     default:
       return 'Link';
   }

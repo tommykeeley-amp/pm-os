@@ -17,6 +17,7 @@ export type LinkedItemType =
   | 'obsidian'
   | 'figma'
   | 'gmail'
+  | 'amplitude'
   | 'other';
 
 export interface LinkedItem {
