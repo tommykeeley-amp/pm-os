@@ -355,16 +355,32 @@ function App() {
     }
   });
 
-  const backlogTasks = activeTasks.filter(task => {
-    if (!task.deadline) return true; // No deadline = backlog
-    try {
-      const deadline = parseISO(task.deadline);
-      // Not this week (includes future weeks)
-      return !isWithinInterval(deadline, { start: weekStart, end: weekEnd });
-    } catch {
-      return true;
-    }
-  });
+  const backlogTasks = activeTasks
+    .filter(task => {
+      if (!task.deadline) return true; // No deadline = backlog
+      try {
+        const deadline = parseISO(task.deadline);
+        // Not this week (includes future weeks)
+        return !isWithinInterval(deadline, { start: weekStart, end: weekEnd });
+      } catch {
+        return true;
+      }
+    })
+    .sort((a, b) => {
+      // Tasks without deadlines go to the end
+      if (!a.deadline && !b.deadline) return 0;
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+
+      // Sort by deadline (earliest first)
+      try {
+        const dateA = parseISO(a.deadline);
+        const dateB = parseISO(b.deadline);
+        return dateA.getTime() - dateB.getTime();
+      } catch {
+        return 0;
+      }
+    });
 
   // Calculate today + overdue tasks count for notification badge
   useEffect(() => {

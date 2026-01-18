@@ -17,6 +17,8 @@ interface TokenData {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: number;
+  botToken?: string;
+  teamUrl?: string;
 }
 
 export class SlackService {
@@ -49,9 +51,21 @@ export class SlackService {
       throw new Error('Failed to exchange code for tokens');
     }
 
-    return {
+    const result: TokenData = {
       accessToken: response.access_token,
     };
+
+    // Capture bot token if present
+    if (response.bot_user_id && response.access_token) {
+      result.botToken = response.access_token;
+    }
+
+    // Capture team URL
+    if (response.team && typeof response.team === 'object' && 'url' in response.team) {
+      result.teamUrl = (response.team as any).url;
+    }
+
+    return result;
   }
 
   async getMentions(limit: number = 20): Promise<SlackMessage[]> {
@@ -85,10 +99,15 @@ export class SlackService {
     if (!this.client) throw new Error('Slack client not initialized');
 
     try {
-      // Get DM conversations
+      // Get current user ID
+      const authTest = await this.client.auth.test();
+      const currentUserId = authTest.user_id;
+
+      // Get DM conversations with unread messages
       const conversations = await this.client.conversations.list({
         types: 'im',
-        limit: 50,
+        limit: 100,
+        exclude_archived: true,
       });
 
       if (!conversations.ok || !conversations.channels) {
@@ -97,22 +116,56 @@ export class SlackService {
 
       const messages: SlackMessage[] = [];
 
-      // Get recent messages from each DM
-      for (const channel of conversations.channels.slice(0, 10)) {
+      // Filter for DMs with unread messages
+      for (const channel of conversations.channels) {
+        const channelData = channel as any;
+
+        // Check if there are unread messages
+        if (!channelData.unread_count_display || channelData.unread_count_display === 0) {
+          continue;
+        }
+
+        // Get the other user's ID from the DM
+        const otherUserId = channelData.user;
+
+        // Get user info for display name
+        let userName = 'Unknown User';
+        if (otherUserId) {
+          const userInfo = await this.getUserInfo(otherUserId);
+          userName = userInfo?.realName || userInfo?.name || otherUserId;
+        }
+
+        // Get recent unread messages from this DM
         const history = await this.client.conversations.history({
           channel: channel.id!,
-          limit: 5,
+          limit: 10,
         });
 
         if (history.ok && history.messages) {
-          const parsedMessages = this.parseMessages(
-            history.messages.map(msg => ({
-              ...msg,
-              channel: { id: channel.id, name: 'DM' },
-            })),
-            'dm'
-          );
-          messages.push(...parsedMessages);
+          // Only include messages not sent by current user
+          const unreadMessages = history.messages
+            .filter(msg => msg.user !== currentUserId)
+            .slice(0, channelData.unread_count_display);
+
+          for (const msg of unreadMessages) {
+            messages.push({
+              id: `${channel.id}_${msg.ts}`,
+              type: 'dm',
+              text: msg.text || '',
+              user: otherUserId || '',
+              userName: userName,
+              channel: channel.id!,
+              channelName: `DM with ${userName}`,
+              timestamp: msg.ts || '',
+              permalink: await this.getPermalink(channel.id!, msg.ts!),
+              threadTs: msg.thread_ts,
+            });
+          }
+        }
+
+        // Stop if we've reached the limit
+        if (messages.length >= limit) {
+          break;
         }
       }
 
@@ -120,6 +173,22 @@ export class SlackService {
     } catch (error) {
       console.error('Failed to get Slack DMs:', error);
       return [];
+    }
+  }
+
+  private async getPermalink(channel: string, ts: string): Promise<string> {
+    if (!this.client) return '';
+
+    try {
+      const response = await this.client.chat.getPermalink({
+        channel,
+        message_ts: ts,
+      });
+
+      return response.ok && response.permalink ? response.permalink : '';
+    } catch (error) {
+      console.error('Failed to get permalink:', error);
+      return '';
     }
   }
 

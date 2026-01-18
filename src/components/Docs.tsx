@@ -460,7 +460,7 @@ export default function Docs({ isActive }: DocsProps) {
                         return <span className="w-5 h-5 flex-shrink-0 mt-0.5">{icon}</span>;
                       })()}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-medium text-dark-text-primary mb-1 truncate">
+                        <h3 className="text-sm font-medium text-dark-text-primary mb-1 group-hover:truncate">
                           {doc.title}
                         </h3>
                         {doc.isObsidian ? (
@@ -468,7 +468,7 @@ export default function Docs({ isActive }: DocsProps) {
                         ) : doc.url && (
                           <button
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-xs text-dark-accent-primary hover:underline truncate block max-w-full"
+                            className="text-xs text-dark-accent-primary hover:underline group-hover:truncate block max-w-full"
                           >
                             {doc.url}
                           </button>

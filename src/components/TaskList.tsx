@@ -58,10 +58,10 @@ function getDueDateDisplay(dueDate?: string) {
     displayText = 'Tomorrow';
     colorClass = 'text-dark-text-secondary';
   } else if (isOverdue) {
-    displayText = format(date, 'MMM d');
+    displayText = format(date, 'EEE, MMM d');
     colorClass = 'text-dark-accent-danger';
   } else {
-    displayText = format(date, 'MMM d');
+    displayText = format(date, 'EEE, MMM d');
     colorClass = 'text-dark-text-muted';
   }
 

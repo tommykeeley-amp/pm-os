@@ -219,10 +219,7 @@ export default function SmartSuggestions({
             </svg>
           )}
           <h2 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
-            Smart Suggestions ({filteredSuggestions.length})
-            {aiService.isAvailable() && (
-              <span className="ml-2 text-[10px] text-dark-accent-primary font-normal">AI</span>
-            )}
+            Suggested Tasks ({filteredSuggestions.length})
           </h2>
         </div>
         <svg

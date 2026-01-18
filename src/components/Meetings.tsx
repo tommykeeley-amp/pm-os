@@ -393,29 +393,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
     );
   }
 
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-        <svg
-          className="w-12 h-12 text-dark-text-muted mb-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-          />
-        </svg>
-        <div className="text-dark-text-secondary mb-2">No meetings today</div>
-        <div className="text-xs text-dark-text-muted">
-          Enjoy your free time!
-        </div>
-      </div>
-    );
-  }
+  // Always show the timeline, even if there are no events
 
   // Calculate event positioning based on time
   const getEventStyle = (event: CalendarEvent) => {

@@ -189,6 +189,12 @@ export class IntegrationManager {
     const tokens = await slackService.exchangeCodeForTokens(code);
     this.saveTokens('slack', tokens);
 
+    // Save bot token separately if present
+    if (tokens.botToken) {
+      store.set('slack_bot_token', tokens.botToken);
+      store.set('slack_team_url', tokens.teamUrl);
+    }
+
     // Initialize service
     this.slackService = slackService;
     this.slackService.setTokens(tokens);
@@ -329,21 +335,18 @@ export class IntegrationManager {
 
       const messages = await this.slackService.getUnreadMessages(selectedChannelIds);
 
-      // Enrich messages with user names
-      const enrichedMessages = await Promise.all(
-        messages.map(async (msg) => {
-          if (msg.user) {
-            const userInfo = await this.slackService!.getUserInfo(msg.user);
-            return {
-              ...msg,
-              user: userInfo?.realName || userInfo?.name || msg.user,
-            };
-          }
-          return msg;
-        })
-      );
-
-      return enrichedMessages;
+      // Map messages to the format expected by the UI
+      return messages.map(msg => ({
+        id: msg.id,
+        channelId: msg.channel,
+        channelName: msg.channelName || '',
+        type: msg.type,
+        text: msg.text,
+        user: msg.user,
+        userName: msg.userName || msg.user,
+        timestamp: msg.timestamp,
+        permalink: msg.permalink,
+      }));
     } catch (error) {
       console.error('Failed to get Slack unread messages:', error);
       return [];

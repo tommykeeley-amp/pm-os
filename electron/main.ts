@@ -10,6 +10,7 @@ import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
 import { ConfluenceService } from '../src/services/confluence';
+import { SlackEventsServer } from './slack-events';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -210,7 +211,12 @@ function registerHotkey() {
           console.log(`Switching to ${tab} tab after window creation`);
           mainWindow.webContents.send('switch-tab', tab);
           if (focusInput) {
-            mainWindow.webContents.send('focus-task-input');
+            // Add delay to allow React to mount the TaskInput component
+            setTimeout(() => {
+              if (mainWindow) {
+                mainWindow.webContents.send('focus-task-input');
+              }
+            }, 200);
           }
         }
       }, 500);
@@ -234,7 +240,12 @@ function registerHotkey() {
           console.log(`Switching to ${tab} tab`);
           mainWindow.webContents.send('switch-tab', tab);
           if (focusInput) {
-            mainWindow.webContents.send('focus-task-input');
+            // Add delay to allow React to mount the TaskInput component
+            setTimeout(() => {
+              if (mainWindow && mainWindow.webContents) {
+                mainWindow.webContents.send('focus-task-input');
+              }
+            }, 200);
           }
         }
       }, 150);
@@ -535,6 +546,45 @@ app.whenReady().then(async () => {
 
   // Start extension sync server
   startExtensionSyncServer();
+
+  // Start Slack events server
+  const slackEventsServer = new SlackEventsServer(3001);
+  slackEventsServer.setTaskCreateHandler(async (taskData) => {
+    try {
+      const tasks = store.get('tasks', []) as Task[];
+      const now = new Date().toISOString();
+      const newTask: Task = {
+        id: randomUUID(),
+        title: taskData.title,
+        completed: false,
+        source: taskData.source || 'slack',
+        sourceId: taskData.sourceId,
+        priority: taskData.priority || 'medium',
+        context: taskData.context,
+        linkedItems: taskData.linkedItems || [],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      tasks.push(newTask);
+      store.set('tasks', tasks);
+
+      console.log('[Main] Task created from Slack mention:', newTask.title);
+
+      // Notify renderer if window exists
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('task-created', newTask);
+      }
+    } catch (error) {
+      console.error('[Main] Failed to create task from Slack mention:', error);
+    }
+  });
+
+  slackEventsServer.start().then(() => {
+    console.log('[Main] Slack events server started successfully');
+  }).catch((error) => {
+    console.error('[Main] Failed to start Slack events server:', error);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -949,7 +999,7 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
 
   const authUrls = {
     google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
-    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,channels:history,groups:history,mpim:history,im:history,users:read,conversations.info&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
+    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=channels:read,channels:history,groups:history,mpim:history,im:history,users:read,conversations.info,app_mentions:read,chat:write&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
     zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&state=${state}`,
   };
 
