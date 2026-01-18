@@ -22,6 +22,7 @@ interface UserSettings {
   confluenceDefaultParentId?: string;
 
   // Obsidian Settings
+  obsidianEnabled?: boolean;
   obsidianVaultPath?: string;
 
   // Customization Settings
@@ -55,6 +56,13 @@ export default function Settings({ onClose }: SettingsProps) {
       name: 'Jira',
       description: 'Create tickets from tasks',
       type: 'api-token' as const,
+      connected: false,
+    },
+    {
+      id: 'obsidian' as const,
+      name: 'Obsidian',
+      description: 'Create and view notes',
+      type: 'config' as const,
       connected: false,
     },
   ]);
@@ -92,12 +100,15 @@ export default function Settings({ onClose }: SettingsProps) {
       const googleTokens = await window.electronAPI.getOAuthTokens('google');
       const slackTokens = await window.electronAPI.getOAuthTokens('slack');
       const jiraConfigured = await window.electronAPI.jiraIsConfigured();
+      const userSettings = await window.electronAPI.getUserSettings();
+      const obsidianEnabled = !!userSettings?.obsidianEnabled;
 
       setIntegrations(prev => prev.map(integration => ({
         ...integration,
         connected: integration.id === 'google' ? !!googleTokens.accessToken :
                    integration.id === 'slack' ? !!slackTokens.accessToken :
-                   integration.id === 'jira' ? jiraConfigured : false,
+                   integration.id === 'jira' ? jiraConfigured :
+                   integration.id === 'obsidian' ? obsidianEnabled : false,
       })));
     } catch (error) {
       console.error('Failed to check connections:', error);
@@ -278,6 +289,11 @@ export default function Settings({ onClose }: SettingsProps) {
                             <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 0 0-.84-.84H11.53zM2 11.53c0-2.4 1.97-4.35 4.35-4.35h1.78v-1.7c0-2.4 1.94-4.34 4.34-4.34V11.69a.84.84 0 0 1-.84.84H2zm9.53 9.47c0-2.4-1.97-4.35-4.35-4.35H5.4v-1.7c0-2.4-1.94-4.34-4.34-4.34v9.55c0 .46.37.84.84.84h9.63z" fill="#2684FF"/>
                           </svg>
                         )}
+                        {integration.id === 'obsidian' && (
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L19.82 8 12 11.82 4.18 8 12 4.18zM4 9.5l7 3.5v7l-7-3.5v-7zm9 10.5v-7l7-3.5v7l-7 3.5z"/>
+                          </svg>
+                        )}
                       </div>
                       <div>
                         <h3 className="text-sm font-medium text-dark-text-primary">
@@ -302,6 +318,24 @@ export default function Settings({ onClose }: SettingsProps) {
                           Not configured
                         </span>
                       )
+                    ) : integration.type === 'config' ? (
+                      <button
+                        onClick={async () => {
+                          await handleChange('obsidianEnabled', !integration.connected);
+                          checkConnections();
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          integration.connected
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            integration.connected ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
                     ) : (
                       integration.connected ? (
                         <div className="flex items-center gap-2">
@@ -330,6 +364,26 @@ export default function Settings({ onClose }: SettingsProps) {
                     )}
                   </div>
                 ))}
+
+                {/* Obsidian Vault Path - shows when Obsidian is enabled */}
+                {integrations.find(i => i.id === 'obsidian')?.connected && (
+                  <div className="bg-dark-surface border border-dark-border rounded-lg p-4 mt-3">
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Obsidian Vault Path
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.obsidianVaultPath || ''}
+                      onChange={(e) => handleChange('obsidianVaultPath', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                      placeholder="/Users/yourname/Documents/ObsidianVault"
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      Full path to your Obsidian vault folder. To find it: Open Obsidian → Settings (gear icon) → Files & Links → look for "Vault folder" path.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 border-t border-dark-border">
@@ -515,31 +569,6 @@ export default function Settings({ onClose }: SettingsProps) {
                       }`}
                     />
                   </button>
-                </div>
-              </div>
-
-              {/* Obsidian Integration Section */}
-              <div className="space-y-4 pt-6 border-t border-dark-border">
-                <h3 className="text-base font-semibold text-dark-text-primary">Obsidian Integration</h3>
-                <p className="text-sm text-dark-text-secondary">
-                  Connect your Obsidian vault to create and view notes directly from PM-OS.
-                </p>
-
-                <div>
-                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                    Vault Path
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.obsidianVaultPath || ''}
-                    onChange={(e) => handleChange('obsidianVaultPath', e.target.value)}
-                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                    placeholder="/Users/yourname/Documents/ObsidianVault"
-                  />
-                  <p className="text-xs text-dark-text-muted mt-1">
-                    Absolute path to your Obsidian vault folder. Notes created in PM-OS will be saved here.
-                  </p>
                 </div>
               </div>
 

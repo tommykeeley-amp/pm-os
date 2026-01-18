@@ -21,8 +21,6 @@ function App() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isPinned, setIsPinned] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [jiraConfigured, setJiraConfigured] = useState(false);
-  const [confluenceConfigured, setConfluenceConfigured] = useState(false);
   const [slackConfigured] = useState(false);
   const [jiraTicketTask, setJiraTicketTask] = useState<Task | null>(null);
   const [confluenceDocTask, setConfluenceDocTask] = useState<Task | null>(null);
@@ -31,6 +29,15 @@ function App() {
   const [chatsCount, setChatsCount] = useState(0);
   const [nextMeetingTime, setNextMeetingTime] = useState<string | null>(null);
   const [tasksCount, setTasksCount] = useState(0);
+  const [userName, setUserName] = useState<string>('');
+  const [taskInputKey, setTaskInputKey] = useState(0);
+
+  const getHeaderTitle = () => {
+    if (!userName) return 'PM-OS';
+    // Handle possessive form
+    const possessive = userName.toLowerCase().endsWith('s') ? "'" : "'s";
+    return `${userName}${possessive} PM-OS`;
+  };
 
   useEffect(() => {
     loadInitialData();
@@ -71,6 +78,10 @@ function App() {
       const settings = await window.electronAPI.getSettings();
       setIsPinned(settings.windowPosition?.isPinned || false);
 
+      // Load user settings for name
+      const userSettings = await window.electronAPI.getUserSettings();
+      setUserName(userSettings?.name || '');
+
       // Load tasks
       const loadedTasks = await window.electronAPI.getTasks();
       setTasks(loadedTasks || []);
@@ -78,14 +89,6 @@ function App() {
       // Load smart suggestions
       const smartSuggestions = await window.electronAPI.getSmartSuggestions();
       setSuggestions(smartSuggestions || []);
-
-      // Check if Jira is configured
-      const jiraIsConfigured = await window.electronAPI.jiraIsConfigured();
-      setJiraConfigured(jiraIsConfigured);
-
-      // Check if Confluence is configured
-      const confluenceIsConfigured = await window.electronAPI.confluenceIsConfigured();
-      setConfluenceConfigured(confluenceIsConfigured);
 
       setIsLoading(false);
     } catch (error) {
@@ -147,10 +150,6 @@ function App() {
     }
   };
 
-  const handleCreateJiraTicket = (task: Task) => {
-    setJiraTicketTask(task);
-  };
-
   const handleJiraTicketSuccess = async (issueKey: string, issueUrl: string) => {
     const task = jiraTicketTask;
     setJiraTicketTask(null);
@@ -185,10 +184,6 @@ function App() {
         alert(`Jira ticket created successfully!\n\n${issueKey}\n\nClick OK to open: ${issueUrl}`);
       }
     }
-  };
-
-  const handleCreateConfluenceDoc = (task: Task) => {
-    setConfluenceDocTask(task);
   };
 
   const handleConfluenceDocSuccess = async (pageId: string, pageUrl: string) => {
@@ -424,7 +419,10 @@ function App() {
       await debugLog(`[Tasks Count] FINAL COUNT: ${todayAndOverdueTasks.length}`);
       await debugLog('[Tasks Count] ==================== END CALCULATION ====================');
 
-      setTasksCount(todayAndOverdueTasks.length);
+      const count = todayAndOverdueTasks.length;
+      console.log(`[Tasks Count] Setting state to: ${count}`);
+      await debugLog(`[Tasks Count] Setting state to: ${count}`);
+      setTasksCount(count);
     };
 
     calculateCount();
@@ -436,7 +434,7 @@ function App() {
       <div className="drag-region bg-dark-surface border-b border-dark-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-brand-yellow animate-pulse-glow"></div>
-          <h1 className="text-sm font-semibold text-dark-text-primary no-drag">PM-OS</h1>
+          <h1 className="text-sm font-semibold text-dark-text-primary no-drag">{getHeaderTitle()}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -470,8 +468,8 @@ function App() {
             title={isPinned ? 'Unpin window' : 'Pin to right side'}
           >
             <svg
-              className={`w-4 h-4 transition-colors ${
-                isPinned ? 'text-dark-accent-primary' : 'text-dark-text-secondary'
+              className={`w-4 h-4 transition-all ${
+                isPinned ? 'text-dark-accent-primary -rotate-45' : 'text-dark-text-secondary'
               }`}
               fill="none"
               stroke="currentColor"
@@ -508,7 +506,7 @@ function App() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-dark-surface border-b border-dark-border flex">
+      <div className="bg-dark-surface border-b border-dark-border flex relative">
         <button
           onClick={() => setActiveTab('tasks')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
@@ -518,15 +516,15 @@ function App() {
         >
           <span className="relative inline-block">
             Tasks
-            {tasksCount > 0 && (
-              <span className="absolute -top-1 -right-4 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
-                {tasksCount > 99 ? '99+' : tasksCount}
-              </span>
-            )}
+            {(() => {
+              console.log('[Tasks Tab] Rendering badge with tasksCount:', tasksCount);
+              return tasksCount > 0 && (
+                <span className="absolute -top-1 -right-4 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                  {tasksCount > 99 ? '99+' : tasksCount}
+                </span>
+              );
+            })()}
           </span>
-          {activeTab === 'tasks' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
-          )}
         </button>
         <button
           onClick={() => setActiveTab('docs')}
@@ -536,9 +534,6 @@ function App() {
                      : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
         >
           Docs
-          {activeTab === 'docs' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
-          )}
         </button>
         <button
           onClick={() => setActiveTab('meetings')}
@@ -555,9 +550,6 @@ function App() {
               </span>
             )}
           </span>
-          {activeTab === 'meetings' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
-          )}
         </button>
         <button
           onClick={() => setActiveTab('chats')}
@@ -574,10 +566,20 @@ function App() {
               </span>
             )}
           </span>
-          {activeTab === 'chats' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-dark-accent-primary animate-slide-in"></div>
-          )}
         </button>
+        {/* Sliding indicator */}
+        <div
+          className="absolute bottom-0 left-0 h-0.5 bg-dark-accent-primary transition-transform duration-500 ease-spring"
+          style={{
+            width: '25%',
+            transform: `translateX(${
+              activeTab === 'tasks' ? '0%' :
+              activeTab === 'docs' ? '100%' :
+              activeTab === 'meetings' ? '200%' :
+              '300%'
+            })`
+          }}
+        />
       </div>
 
       {/* Main content */}
@@ -591,7 +593,7 @@ function App() {
             {/* Tasks Tab */}
             <TabPanel isActive={activeTab === 'tasks'} className="p-4 space-y-4">
             {/* Quick add input */}
-            <TaskInput onAddTask={handleAddTask} isActive={activeTab === 'tasks'} />
+            <TaskInput key={taskInputKey} onAddTask={handleAddTask} isActive={activeTab === 'tasks'} />
 
             {/* Smart suggestions */}
             {suggestions.length > 0 && (
@@ -648,10 +650,7 @@ function App() {
                   tasks={overdueTasks}
                   onToggle={handleToggleTask}
                   onDelete={handleDeleteTask}
-                  onCreateJiraTicket={handleCreateJiraTicket}
-                  jiraConfigured={jiraConfigured}
-                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
-                  confluenceConfigured={confluenceConfigured}
+                  onUpdateTask={handleUpdateTask}
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
@@ -681,10 +680,7 @@ function App() {
                   tasks={todayTasks}
                   onToggle={handleToggleTask}
                   onDelete={handleDeleteTask}
-                  onCreateJiraTicket={handleCreateJiraTicket}
-                  jiraConfigured={jiraConfigured}
-                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
-                  confluenceConfigured={confluenceConfigured}
+                  onUpdateTask={handleUpdateTask}
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
@@ -714,10 +710,7 @@ function App() {
                   tasks={thisWeekTasks}
                   onToggle={handleToggleTask}
                   onDelete={handleDeleteTask}
-                  onCreateJiraTicket={handleCreateJiraTicket}
-                  jiraConfigured={jiraConfigured}
-                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
-                  confluenceConfigured={confluenceConfigured}
+                  onUpdateTask={handleUpdateTask}
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
@@ -747,10 +740,7 @@ function App() {
                   tasks={backlogTasks}
                   onToggle={handleToggleTask}
                   onDelete={handleDeleteTask}
-                  onCreateJiraTicket={handleCreateJiraTicket}
-                  jiraConfigured={jiraConfigured}
-                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
-                  confluenceConfigured={confluenceConfigured}
+                  onUpdateTask={handleUpdateTask}
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
@@ -770,10 +760,7 @@ function App() {
                   tasks={completedTasks}
                   onToggle={handleToggleTask}
                   onDelete={handleDeleteTask}
-                  onCreateJiraTicket={handleCreateJiraTicket}
-                  jiraConfigured={jiraConfigured}
-                  onCreateConfluenceDoc={handleCreateConfluenceDoc}
-                  confluenceConfigured={confluenceConfigured}
+                  onUpdateTask={handleUpdateTask}
                   onLinkSlackChannel={handleLinkSlackChannel}
                   slackConfigured={slackConfigured}
                   onTaskClick={setDetailTask}
@@ -794,7 +781,7 @@ function App() {
 
             {/* Docs Tab */}
             <TabPanel isActive={activeTab === 'docs'}>
-              <Docs onAddTask={handleAddTask} isActive={activeTab === 'docs'} />
+              <Docs isActive={activeTab === 'docs'} />
             </TabPanel>
 
             {/* Meetings Tab */}
@@ -817,7 +804,12 @@ function App() {
       {/* Settings full-screen view */}
       {showSettings && (
         <div className="absolute inset-0 z-50 animate-fade-in">
-          <Settings onClose={() => setShowSettings(false)} />
+          <Settings onClose={async () => {
+            setShowSettings(false);
+            // Reload user name in case it was updated
+            const userSettings = await window.electronAPI.getUserSettings();
+            setUserName(userSettings?.name || '');
+          }} />
         </div>
       )}
 
@@ -845,7 +837,13 @@ function App() {
           <TaskDetailModal
             task={detailTask}
             existingTags={tasks.flatMap(t => t.tags || [])}
-            onClose={() => setDetailTask(null)}
+            onClose={() => {
+              setDetailTask(null);
+              // Refocus task input if we're on the tasks tab
+              if (activeTab === 'tasks') {
+                setTaskInputKey(prev => prev + 1);
+              }
+            }}
             onSave={(updates) => {
               handleUpdateTask(detailTask.id, updates);
               // Update the detailTask state to reflect changes immediately

@@ -3,10 +3,11 @@ import { useState } from 'react';
 interface CreateEventModalProps {
   onClose: () => void;
   onSuccess: (event: any) => void;
+  initialTitle?: string;
 }
 
-export default function CreateEventModal({ onClose, onSuccess }: CreateEventModalProps) {
-  const [title, setTitle] = useState('');
+export default function CreateEventModal({ onClose, onSuccess, initialTitle }: CreateEventModalProps) {
+  const [title, setTitle] = useState(initialTitle || '');
   const [attendees, setAttendees] = useState('');
   const [startTime, setStartTime] = useState(() => {
     const now = new Date();

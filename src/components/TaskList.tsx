@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { format, isToday, isTomorrow, isPast, parseISO, formatDistanceToNow } from 'date-fns';
-import type { Task } from '../types/task';
+import type { Task, LinkedItem } from '../types/task';
+import LinkedDocsSelector from './LinkedDocsSelector';
 
 interface TaskListProps {
   tasks: Task[];
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
-  onCreateJiraTicket?: (task: Task) => void;
-  jiraConfigured?: boolean;
-  onCreateConfluenceDoc?: (task: Task) => void;
-  confluenceConfigured?: boolean;
+  onUpdateTask?: (id: string, updates: Partial<Task>) => Promise<void>;
   onLinkSlackChannel?: (task: Task) => void;
   slackConfigured?: boolean;
   onTaskClick?: (task: Task) => void;
@@ -91,7 +89,7 @@ function getTaskTooltip(task: Task): string {
   return tooltip;
 }
 
-export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket, jiraConfigured, onCreateConfluenceDoc, confluenceConfigured, onLinkSlackChannel, slackConfigured, onTaskClick, onDragStart, onDragEnd }: TaskListProps) {
+export default function TaskList({ tasks, onToggle, onDelete, onUpdateTask, onLinkSlackChannel, slackConfigured, onTaskClick, onDragStart, onDragEnd }: TaskListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   return (
@@ -138,16 +136,18 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
             {/* Task content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <p className={`text-sm ${
-                  task.completed
-                    ? 'text-dark-text-muted line-through'
-                    : 'text-dark-text-primary'
-                }`}>
-                  {task.title}
-                </p>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${
+                    task.completed
+                      ? 'text-dark-text-muted line-through'
+                      : 'text-dark-text-primary'
+                  }`}>
+                    {task.title}
+                  </p>
+                </div>
 
                 {/* Actions dropdown */}
-                <div className="actions-menu relative opacity-0 group-hover:opacity-100 transition-all">
+                <div className="actions-menu relative opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -174,42 +174,8 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
 
                       <div className="dropdown-menu right-0 top-8">
                         {/* Integrations section */}
-                        {(confluenceConfigured || jiraConfigured || slackConfigured) && (
+                        {slackConfigured && (
                           <>
-                            {confluenceConfigured && onCreateConfluenceDoc && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onCreateConfluenceDoc(task);
-                                  setOpenMenuId(null);
-                                }}
-                                className="dropdown-item"
-                              >
-                                <svg className="icon-sm" fill="currentColor" viewBox="0 0 225 225">
-                                  <path d="M 43 16 L 15 66 L 16 73 L 74 107 L 55 117 L 37 134 L 14 174 L 16 182 L 60 207 L 70 210 L 76 206 L 91 178 L 99 172 L 104 172 L 173 210 L 181 208 L 209 158 L 208 151 L 150 117 L 173 104 L 187 90 L 210 50 L 208 42 L 164 17 L 154 14 L 148 18 L 133 46 L 125 52 L 120 52 L 51 14 Z M 36 170 L 38 168 L 48 149 L 62 134 L 75 126 L 77 126 L 83 123 L 90 122 L 91 121 L 112 121 L 113 122 L 123 124 L 134 129 L 136 131 L 143 134 L 145 136 L 163 145 L 165 147 L 172 150 L 174 152 L 181 155 L 187 159 L 187 162 L 185 164 L 182 171 L 180 173 L 177 180 L 175 182 L 172 188 L 169 188 L 167 186 L 149 177 L 147 175 L 120 161 L 118 159 L 108 155 L 95 155 L 85 159 L 77 167 L 67 186 L 65 188 L 62 188 L 60 186 L 36 173 Z M 37 65 L 37 62 L 39 60 L 42 53 L 44 51 L 47 44 L 49 42 L 52 36 L 55 36 L 57 38 L 75 47 L 77 49 L 104 63 L 106 65 L 116 69 L 129 69 L 130 68 L 135 67 L 140 64 L 147 57 L 157 38 L 159 36 L 162 36 L 164 38 L 171 41 L 173 43 L 180 46 L 182 48 L 188 51 L 188 54 L 186 56 L 176 75 L 162 90 L 149 98 L 147 98 L 141 101 L 134 102 L 133 103 L 112 103 L 111 102 L 107 102 L 106 101 L 101 100 L 90 95 L 88 93 L 81 90 L 79 88 L 72 85 L 70 83 L 63 80 L 61 78 L 52 74 L 50 72 L 43 69 Z" fillRule="evenodd" />
-                                </svg>
-                                Link Confluence
-                              </button>
-                            )}
-
-                            {jiraConfigured && onCreateJiraTicket && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onCreateJiraTicket(task);
-                                  setOpenMenuId(null);
-                                }}
-                                className="dropdown-item"
-                              >
-                                <svg className="icon-sm" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 256 256">
-                                  <path d="M 150 28 H 220 V 98 C 220 122 198 122 186 110 L 150 74 C 138 62 138 28 150 28 Z"/>
-                                  <path d="M 86 84 H 156 V 154 C 156 178 134 178 122 166 L 86 130 C 74 118 74 84 86 84 Z"/>
-                                  <path d="M 28 142 H 98 V 212 C 98 236 76 236 64 224 L 28 188 C 16 176 16 142 28 142 Z"/>
-                                </svg>
-                                Link Jira
-                              </button>
-                            )}
-
                             {slackConfigured && onLinkSlackChannel && (
                               <button
                                 onClick={(e) => {
@@ -253,7 +219,7 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
               </div>
 
               {/* Task metadata */}
-              {(task.source !== 'manual' || task.dueDate || task.context || task.tags?.length) && (
+              {(task.source !== 'manual' || task.context || task.tags?.length) && (
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   {/* Source icon */}
                   {task.source !== 'manual' && (
@@ -261,9 +227,6 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
                       {getSourceIcon(task.source)}
                     </span>
                   )}
-
-                  {/* Due date */}
-                  {getDueDateDisplay(task.dueDate)}
 
                   {/* Tags */}
                   {task.tags && task.tags.length > 0 && (
@@ -285,6 +248,35 @@ export default function TaskList({ tasks, onToggle, onDelete, onCreateJiraTicket
                     <span className="text-xs text-dark-text-muted truncate">
                       {task.context}
                     </span>
+                  )}
+                </div>
+              )}
+
+              {/* Linked Docs and Date row */}
+              {(onUpdateTask || task.deadline || task.dueDate) && (
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  {onUpdateTask && (
+                    <div className="flex-1 min-w-0">
+                      <LinkedDocsSelector
+                        linkedItems={task.linkedItems}
+                        taskTags={task.tags}
+                        onAddLink={(item: LinkedItem) => {
+                          const updatedLinkedItems = [...(task.linkedItems || []), item];
+                          onUpdateTask(task.id, { linkedItems: updatedLinkedItems });
+                        }}
+                        onRemoveLink={(itemId: string) => {
+                          const updatedLinkedItems = (task.linkedItems || []).filter(item => item.id !== itemId);
+                          onUpdateTask(task.id, { linkedItems: updatedLinkedItems });
+                        }}
+                        allowRemove={false}
+                      />
+                    </div>
+                  )}
+                  {/* Due date - bottom right aligned with docs */}
+                  {(task.deadline || task.dueDate) && (
+                    <div className="flex-shrink-0 ml-auto">
+                      {getDueDateDisplay(task.deadline || task.dueDate)}
+                    </div>
                   )}
                 </div>
               )}

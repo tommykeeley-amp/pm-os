@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import PendingRSVPCard from './PendingRSVPCard';
 import CreateEventModal from './CreateEventModal';
+import MeetingInput from './MeetingInput';
 
 interface Attendee {
   email: string;
@@ -37,6 +38,12 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   const [primaryTimezone, setPrimaryTimezone] = useState('America/New_York');
   const [secondaryTimezone, setSecondaryTimezone] = useState('America/Los_Angeles');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const [initialMeetingTitle, setInitialMeetingTitle] = useState<string | undefined>(undefined);
+
+  const handleCreateMeeting = (title: string) => {
+    setInitialMeetingTitle(title);
+    setShowCreateEventModal(true);
+  };
 
   useEffect(() => {
     loadTodaysEvents();
@@ -537,7 +544,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   };
 
   return (
-    <div className={`relative h-full ${!isPinned ? 'overflow-y-auto' : ''}`}>
+    <div className={`relative h-full flex flex-col ${!isPinned ? 'overflow-y-auto' : ''}`}>
       {/* Pending RSVPs Section */}
       {pendingRSVPs.length > 0 && (
         <div className="mb-6 space-y-2 px-4 pt-4">
@@ -554,6 +561,11 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </div>
       )}
 
+      {/* Meeting Input */}
+      <div className={`px-4 mb-4 ${pendingRSVPs.length === 0 ? 'pt-4' : ''}`}>
+        <MeetingInput onCreateMeeting={handleCreateMeeting} isActive={isActive} />
+      </div>
+
       {/* Header with Create Event Button */}
       <div className="flex items-center justify-between mb-4 px-4">
         <div className="flex items-center gap-3">
@@ -565,7 +577,10 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
           </span>
         </div>
         <button
-          onClick={() => setShowCreateEventModal(true)}
+          onClick={() => {
+            setInitialMeetingTitle(undefined);
+            setShowCreateEventModal(true);
+          }}
           className="px-3 py-1.5 text-xs bg-dark-accent-primary text-white rounded-lg hover:bg-dark-accent-primary/90 transition-colors flex items-center gap-1"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -575,7 +590,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </button>
       </div>
 
-      <div className={`${isPinned ? 'h-full' : 'min-h-[800px]'} relative px-4`}>
+      <div className="flex-1 relative px-4 overflow-hidden">
 
         {/* Time labels - Primary timezone with Secondary on hover */}
         <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-dark-text-muted py-2">
@@ -698,9 +713,14 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
       {/* Create Event Modal */}
       {showCreateEventModal && (
         <CreateEventModal
-          onClose={() => setShowCreateEventModal(false)}
+          initialTitle={initialMeetingTitle}
+          onClose={() => {
+            setShowCreateEventModal(false);
+            setInitialMeetingTitle(undefined);
+          }}
           onSuccess={() => {
             setShowCreateEventModal(false);
+            setInitialMeetingTitle(undefined);
             loadTodaysEvents();
           }}
         />

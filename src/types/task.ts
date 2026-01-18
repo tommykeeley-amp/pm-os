@@ -6,11 +6,21 @@ export interface TaskTag {
   color: string;
 }
 
+export type LinkedItemType =
+  | 'confluence'
+  | 'jira'
+  | 'slack'
+  | 'google-docs'
+  | 'google-slides'
+  | 'google-sheets'
+  | 'obsidian'
+  | 'other';
+
 export interface LinkedItem {
   id: string;
-  type: 'confluence' | 'jira' | 'slack' | 'other';
+  type: LinkedItemType;
   title: string;
-  url: string;
+  url?: string;
 }
 
 export interface Task {

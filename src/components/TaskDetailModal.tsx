@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Task, TaskTag, LinkedItem } from '../types/task';
 import { TAG_COLORS } from '../design-system/tokens';
+import LinkedDocsSelector from './LinkedDocsSelector';
 
 interface TaskDetailModalProps {
   task: Task;
@@ -69,10 +70,6 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [linkedItems, setLinkedItems] = useState<LinkedItem[]>(task.linkedItems || []);
-  const [showLinkInput, setShowLinkInput] = useState(false);
-  const [newLinkType, setNewLinkType] = useState<'confluence' | 'jira' | 'slack' | 'other'>('other');
-  const [newLinkTitle, setNewLinkTitle] = useState('');
-  const [newLinkUrl, setNewLinkUrl] = useState('');
 
   // Debounce timer refs
   const titleDebounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -176,55 +173,12 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
     setTags(tags.filter((_, i) => i !== index));
   };
 
-  const handleAddLink = () => {
-    if (newLinkTitle.trim() && newLinkUrl.trim()) {
-      const newLink: LinkedItem = {
-        id: `${Date.now()}-${Math.random()}`,
-        type: newLinkType,
-        title: newLinkTitle.trim(),
-        url: newLinkUrl.trim(),
-      };
-      setLinkedItems([...linkedItems, newLink]);
-      setNewLinkTitle('');
-      setNewLinkUrl('');
-      setNewLinkType('other');
-      setShowLinkInput(false);
-    }
+  const handleAddLink = (item: LinkedItem) => {
+    setLinkedItems([...linkedItems, item]);
   };
 
-  const handleRemoveLink = (id: string) => {
-    setLinkedItems(linkedItems.filter(item => item.id !== id));
-  };
-
-  const getLinkIcon = (type: string) => {
-    switch (type) {
-      case 'confluence':
-        return (
-          <svg className="icon-sm" fill="currentColor" viewBox="0 0 225 225">
-            <path d="M 43 16 L 15 66 L 16 73 L 74 107 L 55 117 L 37 134 L 14 174 L 16 182 L 60 207 L 70 210 L 76 206 L 91 178 L 99 172 L 104 172 L 173 210 L 181 208 L 209 158 L 208 151 L 150 117 L 173 104 L 187 90 L 210 50 L 208 42 L 164 17 L 154 14 L 148 18 L 133 46 L 125 52 L 120 52 L 51 14 Z M 36 170 L 38 168 L 48 149 L 62 134 L 75 126 L 77 126 L 83 123 L 90 122 L 91 121 L 112 121 L 113 122 L 123 124 L 134 129 L 136 131 L 143 134 L 145 136 L 163 145 L 165 147 L 172 150 L 174 152 L 181 155 L 187 159 L 187 162 L 185 164 L 182 171 L 180 173 L 177 180 L 175 182 L 172 188 L 169 188 L 167 186 L 149 177 L 147 175 L 120 161 L 118 159 L 108 155 L 95 155 L 85 159 L 77 167 L 67 186 L 65 188 L 62 188 L 60 186 L 36 173 Z M 37 65 L 37 62 L 39 60 L 42 53 L 44 51 L 47 44 L 49 42 L 52 36 L 55 36 L 57 38 L 75 47 L 77 49 L 104 63 L 106 65 L 116 69 L 129 69 L 130 68 L 135 67 L 140 64 L 147 57 L 157 38 L 159 36 L 162 36 L 164 38 L 171 41 L 173 43 L 180 46 L 182 48 L 188 51 L 188 54 L 186 56 L 176 75 L 162 90 L 149 98 L 147 98 L 141 101 L 134 102 L 133 103 L 112 103 L 111 102 L 107 102 L 106 101 L 101 100 L 90 95 L 88 93 L 81 90 L 79 88 L 72 85 L 70 83 L 63 80 L 61 78 L 52 74 L 50 72 L 43 69 Z" fillRule="evenodd" />
-          </svg>
-        );
-      case 'jira':
-        return (
-          <svg className="icon-sm" fill="none" stroke="currentColor" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 256 256">
-            <path d="M 150 28 H 220 V 98 C 220 122 198 122 186 110 L 150 74 C 138 62 138 28 150 28 Z"/>
-            <path d="M 86 84 H 156 V 154 C 156 178 134 178 122 166 L 86 130 C 74 118 74 84 86 84 Z"/>
-            <path d="M 28 142 H 98 V 212 C 98 236 76 236 64 224 L 28 188 C 16 176 16 142 28 142 Z"/>
-          </svg>
-        );
-      case 'slack':
-        return (
-          <svg className="icon-sm" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
-          </svg>
-        );
-      default:
-        return (
-          <svg className="icon-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-        );
-    }
+  const handleRemoveLink = (itemId: string) => {
+    setLinkedItems(linkedItems.filter(item => item.id !== itemId));
   };
 
   return (
@@ -447,104 +401,17 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
             )}
           </div>
 
-          {/* Links */}
+          {/* Docs */}
           <div>
             <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-              Links
+              Docs
             </label>
-            <div className="space-y-2">
-              {linkedItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                           hover:border-dark-border/60 transition-colors"
-                >
-                  <div className="text-dark-text-secondary flex-shrink-0">
-                    {getLinkIcon(item.type)}
-                  </div>
-                  <button
-                    onClick={() => window.electronAPI.openExternal(item.url)}
-                    className="flex-1 text-left text-sm text-dark-accent-primary hover:underline truncate"
-                    title={item.url}
-                  >
-                    {item.title}
-                  </button>
-                  <button
-                    onClick={() => handleRemoveLink(item.id)}
-                    className="text-dark-text-muted hover:text-dark-accent-danger transition-colors flex-shrink-0"
-                    title="Remove link"
-                  >
-                    <svg className="icon-sm" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-
-              {!showLinkInput ? (
-                <button
-                  onClick={() => setShowLinkInput(true)}
-                  className="w-full px-3 py-2 border border-dashed border-dark-border rounded-lg text-sm
-                           text-dark-text-secondary hover:text-dark-text-primary hover:border-dark-text-secondary transition-colors"
-                >
-                  + Add Link
-                </button>
-              ) : (
-                <div className="p-3 bg-dark-bg rounded-lg border border-dark-border space-y-2">
-                  <div className="flex gap-2">
-                    <select
-                      value={newLinkType}
-                      onChange={(e) => setNewLinkType(e.target.value as 'confluence' | 'jira' | 'slack' | 'other')}
-                      className="px-2 py-1 bg-dark-surface border border-dark-border rounded text-sm
-                               text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                    >
-                      <option value="other">Other</option>
-                      <option value="confluence">Confluence</option>
-                      <option value="jira">Jira</option>
-                      <option value="slack">Slack</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={newLinkTitle}
-                      onChange={(e) => setNewLinkTitle(e.target.value)}
-                      className="flex-1 px-2 py-1 bg-dark-surface border border-dark-border rounded text-sm
-                               text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                      placeholder="Link title"
-                      autoFocus
-                    />
-                  </div>
-                  <input
-                    type="url"
-                    value={newLinkUrl}
-                    onChange={(e) => setNewLinkUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddLink()}
-                    className="w-full px-2 py-1 bg-dark-surface border border-dark-border rounded text-sm
-                             text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                    placeholder="https://..."
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleAddLink}
-                      className="flex-1 btn-primary btn-sm"
-                    >
-                      Add
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowLinkInput(false);
-                        setNewLinkTitle('');
-                        setNewLinkUrl('');
-                        setNewLinkType('other');
-                      }}
-                      className="px-3 py-1.5 text-dark-text-muted hover:text-dark-text-primary transition-colors"
-                      title="Cancel"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <LinkedDocsSelector
+              linkedItems={linkedItems}
+              taskTags={tags}
+              onAddLink={handleAddLink}
+              onRemoveLink={handleRemoveLink}
+            />
           </div>
 
       </div>

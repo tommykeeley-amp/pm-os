@@ -79,6 +79,11 @@ export default {
         'slow': '300ms',    // Complex animations
       },
 
+      // TRANSITION TIMING FUNCTIONS
+      transitionTimingFunction: {
+        'spring': 'cubic-bezier(0.34, 1.56, 0.64, 1)',  // iOS-like spring with overshoot
+      },
+
       // Z-INDEX SCALE
       zIndex: {
         'base': 0,
