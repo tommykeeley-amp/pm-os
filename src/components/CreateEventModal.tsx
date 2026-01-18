@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 
 interface CreateEventModalProps {
   onClose: () => void;
@@ -9,15 +10,45 @@ interface CreateEventModalProps {
 export default function CreateEventModal({ onClose, onSuccess, initialTitle }: CreateEventModalProps) {
   const [title, setTitle] = useState(initialTitle || '');
   const [attendees, setAttendees] = useState('');
-  const [startTime, setStartTime] = useState(() => {
+  const [startDate, setStartDate] = useState(() => {
+    return format(new Date(), 'yyyy-MM-dd');
+  });
+  const [startTimeStr, setStartTimeStr] = useState(() => {
     const now = new Date();
-    now.setMinutes(Math.ceil(now.getMinutes() / 30) * 30);
-    return now.toISOString().slice(0, 16);
+    const nextHalfHour = Math.ceil(now.getMinutes() / 30) * 30;
+    now.setMinutes(nextHalfHour);
+    now.setSeconds(0);
+    return format(now, 'HH:mm');
   });
   const [duration, setDuration] = useState(30);
   const [addMeetLink, setAddMeetLink] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
+  const [timezone, setTimezone] = useState('America/New_York');
+
+  useEffect(() => {
+    // Load user's primary timezone
+    const loadTimezone = async () => {
+      try {
+        const settings = await window.electronAPI.getUserSettings();
+        if (settings?.primaryTimezone) {
+          setTimezone(settings.primaryTimezone);
+        }
+      } catch (error) {
+        console.error('Failed to load timezone:', error);
+      }
+    };
+    loadTimezone();
+  }, []);
+
+  // Generate time options (every 15 minutes)
+  const timeOptions = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      timeOptions.push(timeStr);
+    }
+  }
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -29,7 +60,8 @@ export default function CreateEventModal({ onClose, onSuccess, initialTitle }: C
     setError('');
 
     try {
-      const start = new Date(startTime);
+      // Combine date and time
+      const start = new Date(`${startDate}T${startTimeStr}`);
       const end = new Date(start.getTime() + duration * 60000);
 
       // Request Google Meet link if requested
@@ -100,18 +132,38 @@ export default function CreateEventModal({ onClose, onSuccess, initialTitle }: C
             />
           </div>
 
-          {/* Start time */}
+          {/* Start Date */}
           <div>
             <label className="text-sm font-medium text-dark-text-secondary mb-1.5 block">
-              Start Time
+              Start Date
             </label>
             <input
-              type="datetime-local"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              min={format(new Date(), 'yyyy-MM-dd')}
+              className="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary cursor-pointer [color-scheme:dark]"
               disabled={isCreating}
             />
+          </div>
+
+          {/* Start Time */}
+          <div>
+            <label className="text-sm font-medium text-dark-text-secondary mb-1.5 block">
+              Start Time ({timezone})
+            </label>
+            <select
+              value={startTimeStr}
+              onChange={(e) => setStartTimeStr(e.target.value)}
+              className="w-full px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+              disabled={isCreating}
+            >
+              {timeOptions.map(time => (
+                <option key={time} value={time}>
+                  {time}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Duration */}
