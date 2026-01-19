@@ -352,6 +352,47 @@ export default function Docs({ isActive }: DocsProps) {
       })()
     : null;
 
+  // Auto-expand groups with search matches
+  useEffect(() => {
+    if (groupByTags && searchQuery) {
+      // Re-compute groups with current search to find which have matches
+      const groups: Record<string, any[]> = {};
+      const docsToCheck = allDocs.filter((doc: any) => {
+        const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          doc.url?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          doc.content?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesSearch;
+      });
+
+      docsToCheck.forEach((doc: any) => {
+        if (doc.tags && doc.tags.length > 0) {
+          doc.tags.forEach((tag: TaskTag) => {
+            if (!groups[tag.label]) {
+              groups[tag.label] = [];
+            }
+            groups[tag.label].push(doc);
+          });
+        } else {
+          if (!groups['Untagged']) {
+            groups['Untagged'] = [];
+          }
+          groups['Untagged'].push(doc);
+        }
+      });
+
+      // Expand groups that have matches
+      const groupsWithMatches = Object.keys(groups);
+      setCollapsedGroups(prev => {
+        const newSet = new Set(prev);
+        groupsWithMatches.forEach(groupName => {
+          newSet.delete(groupName);
+        });
+        localStorage.setItem('docs-collapsed-groups', JSON.stringify(Array.from(newSet)));
+        return newSet;
+      });
+    }
+  }, [searchQuery, groupByTags]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
