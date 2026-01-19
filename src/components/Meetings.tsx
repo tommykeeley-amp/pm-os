@@ -395,24 +395,44 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
   // Always show the timeline, even if there are no events
 
+  // Calculate dynamic timeline boundaries based on events
+  const getTimelineBoundaries = () => {
+    // Default boundaries based on pinned mode
+    let defaultStart = isPinned ? 9 : 8;
+    let defaultEnd = isPinned ? 18 : 19;
+
+    // If there are events, expand boundaries to include all events
+    if (events.length > 0) {
+      const eventTimes = events.flatMap(event => {
+        const start = parseISO(event.start);
+        const end = parseISO(event.end);
+        return [start.getHours() + start.getMinutes() / 60, end.getHours() + end.getMinutes() / 60];
+      });
+
+      const earliestHour = Math.floor(Math.min(...eventTimes));
+      const latestHour = Math.ceil(Math.max(...eventTimes));
+
+      // Expand to include events, with minimum default range
+      defaultStart = Math.min(defaultStart, earliestHour);
+      defaultEnd = Math.max(defaultEnd, latestHour);
+    }
+
+    return { start: defaultStart, end: defaultEnd };
+  };
+
+  const timelineBounds = getTimelineBoundaries();
+
   // Calculate event positioning based on time
   const getEventStyle = (event: CalendarEvent) => {
     const startTime = parseISO(event.start);
     const endTime = parseISO(event.end);
 
-    // Define the day boundaries based on pinned mode
-    // Pinned: 9AM to 6PM (9 hours)
-    // Not pinned: 8AM to 7PM (11 hours) for more breathing room
+    // Define the day boundaries based on dynamic timeline
     const dayStart = new Date(startTime);
     const dayEnd = new Date(startTime);
 
-    if (isPinned) {
-      dayStart.setHours(9, 0, 0, 0);
-      dayEnd.setHours(18, 0, 0, 0);
-    } else {
-      dayStart.setHours(8, 0, 0, 0);
-      dayEnd.setHours(19, 0, 0, 0);
-    }
+    dayStart.setHours(timelineBounds.start, 0, 0, 0);
+    dayEnd.setHours(timelineBounds.end, 0, 0, 0);
 
     const totalMinutes = (dayEnd.getTime() - dayStart.getTime()) / (1000 * 60);
     const eventStartMinutes = (startTime.getTime() - dayStart.getTime()) / (1000 * 60);
@@ -428,11 +448,20 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
     };
   };
 
-  const timeLabels = isPinned
-    ? ['9 AM', '10 AM', '11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM', '6 PM']
-    : ['8 AM', '9 AM', '10 AM', '11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM', '6 PM', '7 PM'];
+  // Generate time labels based on dynamic boundaries
+  const generateTimeLabels = () => {
+    const labels = [];
+    for (let hour = timelineBounds.start; hour <= timelineBounds.end; hour++) {
+      if (hour === 0) labels.push('12 AM');
+      else if (hour < 12) labels.push(`${hour} AM`);
+      else if (hour === 12) labels.push('12 PM');
+      else labels.push(`${hour - 12} PM`);
+    }
+    return labels;
+  };
 
-  const gridLines = isPinned ? 9 : 11;
+  const timeLabels = generateTimeLabels();
+  const gridLines = timelineBounds.end - timelineBounds.start;
 
   // Calculate current time position
   const getCurrentTimePosition = () => {
@@ -440,13 +469,9 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
     const dayStart = new Date(now);
     const dayEnd = new Date(now);
 
-    if (isPinned) {
-      dayStart.setHours(9, 0, 0, 0);
-      dayEnd.setHours(18, 0, 0, 0);
-    } else {
-      dayStart.setHours(8, 0, 0, 0);
-      dayEnd.setHours(19, 0, 0, 0);
-    }
+    // Use dynamic timeline boundaries
+    dayStart.setHours(timelineBounds.start, 0, 0, 0);
+    dayEnd.setHours(timelineBounds.end, 0, 0, 0);
 
     // Only show line if current time is within the visible range
     if (now < dayStart || now > dayEnd) {
@@ -627,7 +652,20 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
               if (!showDeclinedMeetings && isDeclined(event)) {
                 return false;
               }
-              return true;
+
+              // Filter out events that are completely outside the visible time range
+              const startTime = parseISO(event.start);
+              const endTime = parseISO(event.end);
+              const dayStart = new Date(startTime);
+              const dayEnd = new Date(startTime);
+
+              // Use dynamic timeline boundaries
+              dayStart.setHours(timelineBounds.start, 0, 0, 0);
+              dayEnd.setHours(timelineBounds.end, 0, 0, 0);
+
+              // Only show events that overlap with the visible time range
+              // Event must end after visible start and start before visible end
+              return endTime.getTime() > dayStart.getTime() && startTime.getTime() < dayEnd.getTime();
             })
             .map((event) => {
             const startTime = parseISO(event.start);
