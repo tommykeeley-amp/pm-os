@@ -453,14 +453,13 @@ export default function Docs({ isActive }: DocsProps) {
                     <button
                       key={tag.label}
                       onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium text-white transition-all ${
                         isSelected
                           ? 'ring-2 ring-white/50'
                           : 'opacity-70 hover:opacity-100'
                       }`}
                       style={{
-                        backgroundColor: `${tag.color}40`,
-                        color: tag.color,
+                        backgroundColor: tag.color,
                       }}
                     >
                       {tag.label}
@@ -478,10 +477,9 @@ export default function Docs({ isActive }: DocsProps) {
             {selectedTags.map(tag => (
               <span
                 key={tag.label}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
                 style={{
-                  backgroundColor: `${tag.color}20`,
-                  color: tag.color,
+                  backgroundColor: tag.color,
                 }}
               >
                 {tag.label}
@@ -587,10 +585,9 @@ export default function Docs({ isActive }: DocsProps) {
                         </span>
                       ) : (
                         <span
-                          className="px-3 py-1 rounded-full text-sm font-medium"
+                          className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
                           style={{
-                            backgroundColor: groupTag ? `${groupTag.color}40` : '#666666',
-                            color: groupTag?.color || '#999999',
+                            backgroundColor: groupTag?.color || '#666666',
                           }}
                         >
                           {groupName}
@@ -645,14 +642,13 @@ export default function Docs({ isActive }: DocsProps) {
                               <button
                                 key={tag.label}
                                 onClick={() => toggleEditingTag(tag)}
-                                className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium text-white transition-all ${
                                   isSelected
                                     ? 'ring-2 ring-white/50'
                                     : 'opacity-70 hover:opacity-100'
                                 }`}
                                 style={{
-                                  backgroundColor: `${tag.color}40`,
-                                  color: tag.color,
+                                  backgroundColor: tag.color,
                                 }}
                               >
                                 {tag.label}
@@ -798,14 +794,13 @@ export default function Docs({ isActive }: DocsProps) {
                               <button
                                 key={tag.label}
                                 onClick={() => toggleEditingTag(tag)}
-                                className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium text-white transition-all ${
                                   isSelected
                                     ? 'ring-2 ring-white/50'
                                     : 'opacity-70 hover:opacity-100'
                                 }`}
                                 style={{
-                                  backgroundColor: `${tag.color}40`,
-                                  color: tag.color,
+                                  backgroundColor: tag.color,
                                 }}
                               >
                                 {tag.label}
