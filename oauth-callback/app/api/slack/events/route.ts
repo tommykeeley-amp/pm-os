@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // Handle app mention events
     if (body.type === 'event_callback' && body.event?.type === 'app_mention') {
       console.log('[Slack Events] Received app mention:', body.event);
-      await handleTaskCreation(body.event);
+      await handleTaskCreation(body.event, body.team_id);
       return NextResponse.json({ ok: true });
     }
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
       // Ignore bot messages and message updates
       if (!body.event.bot_id && !body.event.subtype) {
-        await handleTaskCreation(body.event);
+        await handleTaskCreation(body.event, body.team_id);
       }
       return NextResponse.json({ ok: true });
     }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleTaskCreation(event: any) {
+async function handleTaskCreation(event: any, teamId: string) {
   const text = event.text.toLowerCase();
   const channel = event.channel;
   const messageTs = event.ts;
@@ -79,6 +79,7 @@ async function handleTaskCreation(event: any) {
       messageTs,
       threadTs: event.thread_ts || event.ts,
       user: event.user,
+      teamId,
       timestamp: Date.now(),
       processed: false,
     };
