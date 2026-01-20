@@ -1,0 +1,9 @@
+{
+  "deploymentProtection": {
+    "bypassForPaths": [
+      "/api/slack/events",
+      "/api/slack/pending-tasks",
+      "/api/slack/reply"
+    ]
+  }
+}
