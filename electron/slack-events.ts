@@ -75,9 +75,6 @@ export class SlackEventsServer {
     try {
       const { title, channel, messageTs, threadTs, user, teamId } = taskData;
 
-      // Add eyes emoji to show we're processing
-      await this.addReaction(channel, messageTs, 'eyes');
-
       // Build permalink to the message
       // Convert timestamp (e.g., "1234567890.123456") to message ID (e.g., "p1234567890123456")
       const messageId = 'p' + messageTs.replace('.', '');
@@ -105,12 +102,8 @@ export class SlackEventsServer {
         await this.onTaskCreate(task);
       }
 
-      // Send confirmation reply in Slack
+      // Send confirmation reply in Slack (no reactions to avoid clutter)
       await this.sendSlackReply(channel, threadTs, `✅ Task created: "${title}"`);
-
-      // Replace eyes with green checkmark
-      await this.removeReaction(channel, messageTs, 'eyes');
-      await this.addReaction(channel, messageTs, 'white_check_mark');
     } catch (error) {
       console.error('[SlackEvents] Error processing task:', error);
     }
@@ -146,63 +139,5 @@ export class SlackEventsServer {
     }
   }
 
-  private async addReaction(channel: string, timestamp: string, emoji: string): Promise<void> {
-    try {
-      const botToken = store.get('slack_bot_token') as string;
-      if (!botToken) {
-        console.error('[SlackEvents] No bot token found');
-        return;
-      }
-
-      const response = await fetch('https://slack.com/api/reactions.add', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${botToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          channel,
-          timestamp,
-          name: emoji,
-        }),
-      });
-
-      const data = await response.json();
-      if (!data.ok) {
-        console.error('[SlackEvents] Failed to add reaction:', data.error);
-      }
-    } catch (error) {
-      console.error('[SlackEvents] Error adding reaction:', error);
-    }
-  }
-
-  private async removeReaction(channel: string, timestamp: string, emoji: string): Promise<void> {
-    try {
-      const botToken = store.get('slack_bot_token') as string;
-      if (!botToken) {
-        console.error('[SlackEvents] No bot token found');
-        return;
-      }
-
-      const response = await fetch('https://slack.com/api/reactions.remove', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${botToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          channel,
-          timestamp,
-          name: emoji,
-        }),
-      });
-
-      const data = await response.json();
-      if (!data.ok) {
-        console.error('[SlackEvents] Failed to remove reaction:', data.error);
-      }
-    } catch (error) {
-      console.error('[SlackEvents] Error removing reaction:', error);
-    }
-  }
+  // Removed reaction methods since we no longer add reactions to messages
 }

@@ -67,6 +67,14 @@ function App() {
 
     window.electronAPI.onSwitchTab?.(handleSwitchTab);
 
+    // Listen for new tasks created from Slack
+    const handleTaskCreated = (task: any) => {
+      console.log('[App] New task created from Slack:', task.title);
+      setTasks(prevTasks => [...prevTasks, task]);
+    };
+
+    window.electronAPI.onTaskCreated?.(handleTaskCreated);
+
     return () => {
       window.removeEventListener('open-settings', handleOpenSettings);
     };

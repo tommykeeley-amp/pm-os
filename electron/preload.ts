@@ -100,6 +100,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('switch-tab', handler);
     return () => ipcRenderer.removeListener('switch-tab', handler);
   },
+  onTaskCreated: (callback: (task: any) => void) => {
+    const handler = (_event: any, task: any) => callback(task);
+    ipcRenderer.on('task-created', handler);
+    return () => ipcRenderer.removeListener('task-created', handler);
+  },
 });
 
 // Type definitions for TypeScript
@@ -156,6 +161,7 @@ export interface ElectronAPI {
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => () => void;
+  onTaskCreated: (callback: (task: any) => void) => () => void;
 }
 
 declare global {
