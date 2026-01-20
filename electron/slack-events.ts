@@ -73,10 +73,15 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      const { title, channel, messageTs, threadTs, user } = taskData;
+      const { title, channel, messageTs, threadTs, user, teamId } = taskData;
+
+      // Add eyes emoji to show we're processing
+      await this.addReaction(channel, messageTs, 'eyes');
 
       // Build permalink to the message
-      const permalink = `slack://channel?team=&id=${channel}`;
+      // Convert timestamp (e.g., "1234567890.123456") to message ID (e.g., "p1234567890123456")
+      const messageId = 'p' + messageTs.replace('.', '');
+      const permalink = `slack://channel?team=${teamId}&id=${channel}&message=${messageId}`;
 
       // Create the task
       const task = {
@@ -102,6 +107,10 @@ export class SlackEventsServer {
 
       // Send confirmation reply in Slack
       await this.sendSlackReply(channel, threadTs, `✅ Task created: "${title}"`);
+
+      // Replace eyes with green checkmark
+      await this.removeReaction(channel, messageTs, 'eyes');
+      await this.addReaction(channel, messageTs, 'white_check_mark');
     } catch (error) {
       console.error('[SlackEvents] Error processing task:', error);
     }
@@ -134,6 +143,66 @@ export class SlackEventsServer {
       }
     } catch (error) {
       console.error('[SlackEvents] Error sending Slack reply:', error);
+    }
+  }
+
+  private async addReaction(channel: string, timestamp: string, emoji: string): Promise<void> {
+    try {
+      const botToken = store.get('slack_bot_token') as string;
+      if (!botToken) {
+        console.error('[SlackEvents] No bot token found');
+        return;
+      }
+
+      const response = await fetch('https://slack.com/api/reactions.add', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${botToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel,
+          timestamp,
+          name: emoji,
+        }),
+      });
+
+      const data = await response.json();
+      if (!data.ok) {
+        console.error('[SlackEvents] Failed to add reaction:', data.error);
+      }
+    } catch (error) {
+      console.error('[SlackEvents] Error adding reaction:', error);
+    }
+  }
+
+  private async removeReaction(channel: string, timestamp: string, emoji: string): Promise<void> {
+    try {
+      const botToken = store.get('slack_bot_token') as string;
+      if (!botToken) {
+        console.error('[SlackEvents] No bot token found');
+        return;
+      }
+
+      const response = await fetch('https://slack.com/api/reactions.remove', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${botToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel,
+          timestamp,
+          name: emoji,
+        }),
+      });
+
+      const data = await response.json();
+      if (!data.ok) {
+        console.error('[SlackEvents] Failed to remove reaction:', data.error);
+      }
+    } catch (error) {
+      console.error('[SlackEvents] Error removing reaction:', error);
     }
   }
 }
