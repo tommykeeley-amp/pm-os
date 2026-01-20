@@ -62,7 +62,7 @@ export default function TaskDetailModal({ task, existingTags, onClose, onSave }:
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
   const [tags, setTags] = useState<TaskTag[]>(task.tags || []);
-  const [deadline, setDeadline] = useState(task.deadline || '');
+  const [deadline, setDeadline] = useState(task.deadline || new Date().toISOString().split('T')[0]);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [showTagInput, setShowTagInput] = useState(false);
   const [newTagLabel, setNewTagLabel] = useState('');
