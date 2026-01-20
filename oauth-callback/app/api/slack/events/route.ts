@@ -8,7 +8,12 @@ export async function POST(request: NextRequest) {
     // Handle URL verification challenge
     if (body.type === 'url_verification') {
       console.log('[Slack Events] Handling URL verification');
-      return NextResponse.json({ challenge: body.challenge });
+      return new NextResponse(body.challenge, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+      });
     }
 
     // Handle app mention events
