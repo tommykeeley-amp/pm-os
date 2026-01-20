@@ -137,15 +137,19 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
       // Check if Google is connected
       const tokens = await window.electronAPI.getOAuthTokens('google');
       const connected = !!tokens.accessToken;
+      console.log('[Meetings] Google connected:', connected);
       setIsConnected(connected);
 
       if (!connected) {
+        console.log('[Meetings] Google not connected, skipping calendar fetch');
         setIsLoading(false);
         return;
       }
 
       // Fetch calendar events
+      console.log('[Meetings] Fetching calendar events...');
       const calendarEvents = await window.electronAPI.syncCalendar();
+      console.log('[Meetings] Fetched', calendarEvents?.length || 0, 'calendar events');
 
       // Filter for today's events
       const today = new Date();
@@ -157,6 +161,8 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         const eventStart = new Date(event.start);
         return eventStart >= today && eventStart < tomorrow;
       });
+
+      console.log('[Meetings] Today\'s events:', todaysEvents.length);
 
       // Sort by start time
       todaysEvents.sort((a: CalendarEvent, b: CalendarEvent) => {
