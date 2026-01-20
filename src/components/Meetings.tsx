@@ -429,39 +429,8 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
   // Always show the timeline, even if there are no events
 
-  // Calculate dynamic timeline boundaries based on events
-  const getTimelineBoundaries = () => {
-    // Default boundaries based on pinned mode
-    let defaultStart = isPinned ? 9 : 8;
-    let defaultEnd = isPinned ? 18 : 19;
-
-    console.log('[Meetings] Initial bounds:', defaultStart, '-', defaultEnd, 'isPinned:', isPinned, 'events.length:', events.length);
-
-    // If there are events, expand boundaries to include all events
-    if (events.length > 0) {
-      const eventTimes = events.flatMap(event => {
-        const start = parseISO(event.start);
-        const end = parseISO(event.end);
-        return [start.getHours() + start.getMinutes() / 60, end.getHours() + end.getMinutes() / 60];
-      });
-
-      const earliestHour = Math.floor(Math.min(...eventTimes));
-      const latestHour = Math.ceil(Math.max(...eventTimes));
-
-      console.log('[Meetings] Event time range:', earliestHour, '-', latestHour);
-
-      // Expand to include events, with minimum default range
-      defaultStart = Math.min(defaultStart, earliestHour);
-      defaultEnd = Math.max(defaultEnd, latestHour);
-
-      console.log('[Meetings] Final bounds:', defaultStart, '-', defaultEnd);
-    }
-
-    return { start: defaultStart, end: defaultEnd };
-  };
-
-  const timelineBounds = getTimelineBoundaries();
-  console.log('[Meetings] Using timeline bounds:', timelineBounds);
+  // Fixed timeline boundaries: 8 AM to 8 PM
+  const timelineBounds = { start: 8, end: 20 };
 
   // Calculate event positioning based on time
   const getEventStyle = (event: CalendarEvent) => {
@@ -634,7 +603,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </button>
       </div>
 
-      <div className="flex-1 relative px-4 min-h-[600px]">
+      <div className="flex-1 relative px-4">
 
         {/* Time labels - Primary timezone with Secondary on hover */}
         <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-dark-text-muted py-2">
