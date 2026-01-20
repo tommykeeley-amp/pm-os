@@ -91,6 +91,7 @@ function getTaskTooltip(task: Task): string {
 
 export default function TaskList({ tasks, onToggle, onDelete, onUpdateTask, onLinkSlackChannel, slackConfigured, onTaskClick, onDragStart, onDragEnd }: TaskListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
 
   return (
     <div className="space-y-1">
@@ -274,8 +275,40 @@ export default function TaskList({ tasks, onToggle, onDelete, onUpdateTask, onLi
                   )}
                   {/* Due date - bottom right aligned with docs */}
                   {(task.deadline || task.dueDate) && (
-                    <div className="flex-shrink-0 ml-auto">
-                      {getDueDateDisplay(task.deadline || task.dueDate)}
+                    <div className="flex-shrink-0 ml-auto relative">
+                      {datePickerOpenId === task.id ? (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setDatePickerOpenId(null)}
+                          />
+                          <input
+                            type="date"
+                            value={task.deadline || task.dueDate || ''}
+                            onChange={(e) => {
+                              if (onUpdateTask) {
+                                onUpdateTask(task.id, { deadline: e.target.value });
+                              }
+                              setDatePickerOpenId(null);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="relative z-20 px-2 py-1 text-xs bg-dark-surface border border-dark-accent-primary rounded
+                                     text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary
+                                     cursor-pointer [color-scheme:dark]"
+                            autoFocus
+                          />
+                        </>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDatePickerOpenId(task.id);
+                          }}
+                          className="hover:opacity-80 transition-opacity"
+                        >
+                          {getDueDateDisplay(task.deadline || task.dueDate)}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
