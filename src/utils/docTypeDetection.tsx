@@ -203,14 +203,9 @@ export function getDocTypeIcon(type: LinkedItemType): { icon: JSX.Element; color
     case 'amplitude':
       return {
         icon: (
-          <svg className="w-4 h-4" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="100" cy="100" r="100" fill="#1F5FFF"/>
-            <path d="M75 145L75 115L90 75L105 115L120 55L135 95L150 75"
-                  stroke="white"
-                  strokeWidth="12"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"/>
+          <svg className="w-4 h-4" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="3" fill="#1F5FFF"/>
+            <path d="M9 24V18L12 10L15 20L18 6L21 16L24 12V24" stroke="white" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         ),
         color: '#1F5FFF'
