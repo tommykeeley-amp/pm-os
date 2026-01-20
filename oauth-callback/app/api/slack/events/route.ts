@@ -48,7 +48,7 @@ async function handleTaskCreation(event: any, teamId: string) {
   const messageTs = event.ts;
 
   // Check if the message contains task creation keywords
-  if (text.includes('make a task') || text.includes('create a task') || text.includes('add a task')) {
+  if (text.includes('make') && text.includes('task') || text.includes('create a task') || text.includes('add a task')) {
     // Extract task title from the message
     let taskTitle = event.text
       .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
@@ -56,9 +56,9 @@ async function handleTaskCreation(event: any, teamId: string) {
 
     // Remove common phrasing patterns
     taskTitle = taskTitle
-      .replace(/^(can you |could you |please )?make a task (for |called |to )?/gi, '')
-      .replace(/^(can you |could you |please )?create a task (for |called |to )?/gi, '')
-      .replace(/^(can you |could you |please )?add a task (for |called |to )?/gi, '')
+      .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+      .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+      .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
       .trim();
 
     // If there's a colon, use everything after it as the task title
