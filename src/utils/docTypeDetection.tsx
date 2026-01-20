@@ -14,7 +14,7 @@ export function detectDocType(url?: string, source?: string): LinkedItemType {
     if (url.includes('atlassian.net/browse') || url.includes('jira')) return 'jira';
     if (url.includes('slack.com')) return 'slack';
     if (url.includes('figma.com')) return 'figma';
-    if (url.includes('amplitude.com')) return 'amplitude';
+    if (url.includes('amplitude')) return 'amplitude';
   }
 
   // Check source field
