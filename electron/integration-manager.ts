@@ -324,7 +324,11 @@ export class IntegrationManager {
 
   // Get Slack unread messages
   async getSlackUnreadMessages() {
+    console.log('[IntegrationManager.getSlackUnreadMessages] ========== START ==========');
+    console.log('[IntegrationManager.getSlackUnreadMessages] Slack service initialized:', !!this.slackService);
+
     if (!this.slackService) {
+      console.log('[IntegrationManager.getSlackUnreadMessages] Slack service not initialized, returning empty array');
       return [];
     }
 
@@ -332,11 +336,21 @@ export class IntegrationManager {
       // Get selected channel IDs from user settings
       const userSettings = store.get('user_settings', {}) as any;
       const selectedChannelIds = userSettings.slackChannels || [];
+      console.log('[IntegrationManager.getSlackUnreadMessages] User settings:', {
+        hasSettings: !!userSettings,
+        selectedChannelIds: selectedChannelIds,
+        channelCount: selectedChannelIds.length
+      });
 
+      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getUnreadMessages...');
       const messages = await this.slackService.getUnreadMessages(selectedChannelIds);
+      console.log('[IntegrationManager.getSlackUnreadMessages] Raw messages from service:', {
+        count: messages?.length || 0,
+        messages: messages
+      });
 
       // Map messages to the format expected by the UI
-      return messages.map(msg => ({
+      const mappedMessages = messages.map(msg => ({
         id: msg.id,
         channelId: msg.channel,
         channelName: msg.channelName || '',
@@ -347,24 +361,42 @@ export class IntegrationManager {
         timestamp: msg.timestamp,
         permalink: msg.permalink,
       }));
+
+      console.log('[IntegrationManager.getSlackUnreadMessages] Mapped messages:', {
+        count: mappedMessages.length,
+        messages: mappedMessages
+      });
+      console.log('[IntegrationManager.getSlackUnreadMessages] ========== COMPLETE ==========');
+      return mappedMessages;
     } catch (error) {
-      console.error('Failed to get Slack unread messages:', error);
+      console.error('[IntegrationManager.getSlackUnreadMessages] ERROR:', {
+        error: error,
+        message: (error as any)?.message,
+        stack: (error as any)?.stack
+      });
       return [];
     }
   }
 
   // Get starred emails
   async getStarredEmails() {
+    console.log('[IntegrationManager.getStarredEmails] ========== START ==========');
+    console.log('[IntegrationManager.getStarredEmails] Gmail service initialized:', !!this.gmailService);
+
     if (!this.gmailService) {
-      console.error('[getStarredEmails] Gmail service not initialized');
+      console.error('[IntegrationManager.getStarredEmails] Gmail service not initialized, returning empty array');
       return [];
     }
 
     try {
-      console.log('[getStarredEmails] Fetching unread starred emails...');
+      console.log('[IntegrationManager.getStarredEmails] Calling gmailService.getUnreadStarredEmails...');
       const emails = await this.gmailService.getUnreadStarredEmails(20);
-      console.log(`[getStarredEmails] Found ${emails.length} unread starred emails`);
-      return emails.map(email => ({
+      console.log('[IntegrationManager.getStarredEmails] Raw emails from service:', {
+        count: emails.length,
+        emails: emails
+      });
+
+      const mappedEmails = emails.map(email => ({
         id: email.id,
         subject: email.subject,
         from: email.from,
@@ -372,19 +404,28 @@ export class IntegrationManager {
         timestamp: email.date,
         threadId: email.threadId,
       }));
+
+      console.log('[IntegrationManager.getStarredEmails] Mapped emails:', {
+        count: mappedEmails.length,
+        emails: mappedEmails
+      });
+      console.log('[IntegrationManager.getStarredEmails] ========== COMPLETE ==========');
+      return mappedEmails;
     } catch (error: any) {
-      console.error('[getStarredEmails] Error details:', {
+      console.error('[IntegrationManager.getStarredEmails] ERROR:', {
+        error: error,
         message: error.message,
         code: error.code,
         status: error.response?.status,
         statusText: error.response?.statusText,
+        stack: error.stack
       });
 
       if (error.response?.status === 401 || error.message?.includes('401') || error.message?.includes('unauthorized')) {
-        console.log('[getStarredEmails] Refreshing tokens and retrying...');
+        console.log('[IntegrationManager.getStarredEmails] Refreshing tokens and retrying...');
         await this.refreshGoogleTokens();
         const emails = await this.gmailService.getUnreadStarredEmails(20);
-        return emails.map(email => ({
+        const mappedEmails = emails.map(email => ({
           id: email.id,
           subject: email.subject,
           from: email.from,
@@ -392,8 +433,13 @@ export class IntegrationManager {
           timestamp: email.date,
           threadId: email.threadId,
         }));
+        console.log('[IntegrationManager.getStarredEmails] After token refresh:', {
+          count: mappedEmails.length,
+          emails: mappedEmails
+        });
+        return mappedEmails;
       }
-      console.error('Failed to get starred emails:', error);
+      console.error('[IntegrationManager.getStarredEmails] Failed to get starred emails:', error);
       return [];
     }
   }

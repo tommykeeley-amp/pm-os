@@ -26,6 +26,9 @@ interface UserSettings {
   obsidianEnabled?: boolean;
   obsidianVaultPath?: string;
 
+  // Slack Settings
+  slackBotToken?: string;
+
   // Customization Settings
   showDeclinedMeetings?: boolean;
   primaryTimezone?: string;
@@ -380,6 +383,26 @@ export default function Settings({ onClose }: SettingsProps) {
                     )}
                   </div>
                 ))}
+
+                {/* Slack Bot Token - shows when Slack is connected */}
+                {integrations.find(i => i.id === 'slack')?.connected && (
+                  <div className="bg-dark-surface border border-dark-border rounded-lg p-4 mt-3">
+                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                      Slack Bot Token (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.slackBotToken || ''}
+                      onChange={(e) => handleChange('slackBotToken', e.target.value)}
+                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary font-mono text-xs"
+                      placeholder="xoxb-..."
+                    />
+                    <p className="text-xs text-dark-text-muted mt-1">
+                      For reactions and replies on Slack messages. Get your bot token from <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-dark-accent-primary hover:underline">api.slack.com/apps</a> → Your App → OAuth & Permissions → Bot User OAuth Token
+                    </p>
+                  </div>
+                )}
 
                 {/* Obsidian Vault Path - shows when Obsidian is enabled */}
                 {integrations.find(i => i.id === 'obsidian')?.connected && (

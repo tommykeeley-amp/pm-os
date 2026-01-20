@@ -96,34 +96,56 @@ export class SlackService {
   }
 
   async getDirectMessages(limit: number = 20): Promise<SlackMessage[]> {
+    console.log('[SlackService.getDirectMessages] ========== START ==========');
+    console.log('[SlackService.getDirectMessages] Limit:', limit);
+
     if (!this.client) throw new Error('Slack client not initialized');
 
     try {
       // Get current user ID
+      console.log('[SlackService.getDirectMessages] Getting current user ID...');
       const authTest = await this.client.auth.test();
       const currentUserId = authTest.user_id;
+      console.log('[SlackService.getDirectMessages] Current user ID:', currentUserId);
 
       // Get DM conversations with unread messages
+      console.log('[SlackService.getDirectMessages] Fetching IM conversations...');
       const conversations = await this.client.conversations.list({
         types: 'im',
         limit: 100,
         exclude_archived: true,
       });
 
+      console.log('[SlackService.getDirectMessages] Conversations result:', {
+        ok: conversations.ok,
+        channelCount: conversations.channels?.length || 0
+      });
+
       if (!conversations.ok || !conversations.channels) {
+        console.log('[SlackService.getDirectMessages] No conversations found, returning empty array');
         return [];
       }
 
       const messages: SlackMessage[] = [];
+      let totalUnreadConversations = 0;
 
       // Filter for DMs with unread messages
       for (const channel of conversations.channels) {
         const channelData = channel as any;
 
+        console.log('[SlackService.getDirectMessages] Checking channel:', {
+          id: channel.id,
+          unread_count_display: channelData.unread_count_display,
+          user: channelData.user
+        });
+
         // Check if there are unread messages
         if (!channelData.unread_count_display || channelData.unread_count_display === 0) {
           continue;
         }
+
+        totalUnreadConversations++;
+        console.log(`[SlackService.getDirectMessages] Found DM with ${channelData.unread_count_display} unread messages`);
 
         // Get the other user's ID from the DM
         const otherUserId = channelData.user;
@@ -133,6 +155,7 @@ export class SlackService {
         if (otherUserId) {
           const userInfo = await this.getUserInfo(otherUserId);
           userName = userInfo?.realName || userInfo?.name || otherUserId;
+          console.log('[SlackService.getDirectMessages] User name:', userName);
         }
 
         // Get recent unread messages from this DM
@@ -142,10 +165,14 @@ export class SlackService {
         });
 
         if (history.ok && history.messages) {
+          console.log(`[SlackService.getDirectMessages] Got ${history.messages.length} messages from history`);
+
           // Only include messages not sent by current user
           const unreadMessages = history.messages
             .filter(msg => msg.user !== currentUserId)
             .slice(0, channelData.unread_count_display);
+
+          console.log(`[SlackService.getDirectMessages] Filtered to ${unreadMessages.length} unread messages from others`);
 
           for (const msg of unreadMessages) {
             messages.push({
@@ -165,13 +192,24 @@ export class SlackService {
 
         // Stop if we've reached the limit
         if (messages.length >= limit) {
+          console.log('[SlackService.getDirectMessages] Reached message limit, stopping');
           break;
         }
       }
 
+      console.log('[SlackService.getDirectMessages] Summary:', {
+        totalConversations: conversations.channels.length,
+        unreadConversations: totalUnreadConversations,
+        totalMessages: messages.length
+      });
+      console.log('[SlackService.getDirectMessages] ========== COMPLETE ==========');
       return messages.slice(0, limit);
     } catch (error) {
-      console.error('Failed to get Slack DMs:', error);
+      console.error('[SlackService.getDirectMessages] ERROR:', {
+        error: error,
+        message: (error as any)?.message,
+        stack: (error as any)?.stack
+      });
       return [];
     }
   }
@@ -280,17 +318,27 @@ export class SlackService {
   }
 
   async getUnreadMessages(channelIds: string[] = []): Promise<SlackMessage[]> {
+    console.log('[SlackService.getUnreadMessages] ========== START ==========');
+    console.log('[SlackService.getUnreadMessages] Client initialized:', !!this.client);
+    console.log('[SlackService.getUnreadMessages] Channel IDs to monitor:', channelIds);
+
     if (!this.client) throw new Error('Slack client not initialized');
 
     try {
       const messages: SlackMessage[] = [];
 
       // Get DMs (always included)
+      console.log('[SlackService.getUnreadMessages] Fetching direct messages...');
       const dmMessages = await this.getDirectMessages(20);
+      console.log('[SlackService.getUnreadMessages] DM messages received:', {
+        count: dmMessages.length,
+        messages: dmMessages
+      });
       messages.push(...dmMessages);
 
       // Get messages from specified channels
       if (channelIds.length > 0) {
+        console.log('[SlackService.getUnreadMessages] Fetching from specified channels...');
         for (const channelId of channelIds) {
           try {
             // Get channel info
@@ -299,6 +347,7 @@ export class SlackService {
             });
 
             const channelName = channelInfo.channel?.name || 'Unknown';
+            console.log(`[SlackService.getUnreadMessages] Channel ${channelId} (${channelName})`);
 
             // Get unread messages from this channel
             const history = await this.client.conversations.history({
@@ -307,6 +356,7 @@ export class SlackService {
             });
 
             if (history.ok && history.messages) {
+              console.log(`[SlackService.getUnreadMessages] Channel ${channelName} has ${history.messages.length} recent messages`);
               const parsedMessages = history.messages.map(msg => ({
                 id: `${channelId}_${msg.ts}`,
                 type: 'channel' as const,
@@ -323,9 +373,11 @@ export class SlackService {
               messages.push(...parsedMessages);
             }
           } catch (error) {
-            console.error(`Failed to get messages from channel ${channelId}:`, error);
+            console.error(`[SlackService.getUnreadMessages] Failed to get messages from channel ${channelId}:`, error);
           }
         }
+      } else {
+        console.log('[SlackService.getUnreadMessages] No channels specified, skipping channel messages');
       }
 
       // Deduplicate and sort
@@ -333,11 +385,24 @@ export class SlackService {
         new Map(messages.map(msg => [msg.id, msg])).values()
       );
 
-      return uniqueMessages
+      const sortedMessages = uniqueMessages
         .sort((a, b) => parseFloat(b.timestamp) - parseFloat(a.timestamp))
         .slice(0, 50);
+
+      console.log('[SlackService.getUnreadMessages] Final result:', {
+        totalMessages: messages.length,
+        uniqueMessages: uniqueMessages.length,
+        finalCount: sortedMessages.length,
+        messages: sortedMessages
+      });
+      console.log('[SlackService.getUnreadMessages] ========== COMPLETE ==========');
+      return sortedMessages;
     } catch (error) {
-      console.error('Failed to get unread Slack messages:', error);
+      console.error('[SlackService.getUnreadMessages] ERROR:', {
+        error: error,
+        message: (error as any)?.message,
+        stack: (error as any)?.stack
+      });
       return [];
     }
   }

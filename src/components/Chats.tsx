@@ -45,7 +45,7 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
   }, []);
 
   const loadMessages = async () => {
-    console.log('[Chats] Loading messages...');
+    console.log('[Chats] ========== LOADING MESSAGES START ==========');
     setIsLoading(true);
     setError(null);
 
@@ -53,24 +53,39 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
       // Fetch Slack messages
       console.log('[Chats] Fetching Slack messages...');
       const slackData = await window.electronAPI.getSlackUnreadMessages();
-      console.log('[Chats] Slack messages received:', slackData?.length || 0);
+      console.log('[Chats] Slack messages received:', {
+        count: slackData?.length || 0,
+        messages: slackData,
+        isArray: Array.isArray(slackData),
+        type: typeof slackData
+      });
       setSlackMessages(slackData || []);
 
       // Fetch starred unread emails
       console.log('[Chats] Fetching starred emails...');
       const emailData = await window.electronAPI.getStarredEmails();
-      console.log('[Chats] Starred emails received:', emailData?.length || 0, emailData);
+      console.log('[Chats] Starred emails received:', {
+        count: emailData?.length || 0,
+        emails: emailData,
+        isArray: Array.isArray(emailData),
+        type: typeof emailData
+      });
       setEmails(emailData || []);
 
       // Update count for notification badge
       const totalCount = (slackData?.length || 0) + (emailData?.length || 0);
+      console.log('[Chats] Total message count:', totalCount);
       onCountChange?.(totalCount);
     } catch (err: any) {
-      console.error('[Chats] Failed to load messages:', err);
+      console.error('[Chats] Failed to load messages:', {
+        error: err,
+        message: err.message,
+        stack: err.stack
+      });
       setError(err.message || 'Failed to load messages');
     } finally {
       setIsLoading(false);
-      console.log('[Chats] Loading complete');
+      console.log('[Chats] ========== LOADING MESSAGES COMPLETE ==========');
     }
   };
 

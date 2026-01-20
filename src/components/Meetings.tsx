@@ -432,29 +432,27 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   // Fixed timeline boundaries: 8 AM to 8 PM
   const timelineBounds = { start: 8, end: 20 };
 
-  // Calculate event positioning based on time
+  // Calculate event positioning based on time with fixed pixel heights
+  const PIXELS_PER_HOUR = 120;
   const getEventStyle = (event: CalendarEvent) => {
     const startTime = parseISO(event.start);
     const endTime = parseISO(event.end);
 
-    // Define the day boundaries based on dynamic timeline
+    // Position events relative to midnight (start of day)
     const dayStart = new Date(startTime);
-    const dayEnd = new Date(startTime);
+    dayStart.setHours(0, 0, 0, 0);
 
-    dayStart.setHours(timelineBounds.start, 0, 0, 0);
-    dayEnd.setHours(timelineBounds.end, 0, 0, 0);
-
-    const totalMinutes = (dayEnd.getTime() - dayStart.getTime()) / (1000 * 60);
+    // Calculate minutes from midnight
     const eventStartMinutes = (startTime.getTime() - dayStart.getTime()) / (1000 * 60);
     const eventDuration = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
 
-    // Calculate percentages
-    const topPercent = (eventStartMinutes / totalMinutes) * 100;
-    const heightPercent = (eventDuration / totalMinutes) * 100;
+    // Convert to pixels (120px per hour = 2px per minute)
+    const topPx = (eventStartMinutes / 60) * PIXELS_PER_HOUR;
+    const heightPx = Math.max(20, (eventDuration / 60) * PIXELS_PER_HOUR); // Minimum 20px height
 
     return {
-      top: `${Math.max(0, topPercent)}%`,
-      height: `${Math.max(2, heightPercent)}%`, // Minimum 2% height for visibility
+      top: `${topPx}px`,
+      height: `${heightPx}px`,
     };
   };
 
@@ -473,26 +471,17 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   const timeLabels = generateTimeLabels();
   const gridLines = timelineBounds.end - timelineBounds.start;
 
-  // Calculate current time position
+  // Calculate current time position in pixels
   const getCurrentTimePosition = () => {
     const now = currentTime;
     const dayStart = new Date(now);
-    const dayEnd = new Date(now);
+    dayStart.setHours(0, 0, 0, 0); // Midnight
 
-    // Use dynamic timeline boundaries
-    dayStart.setHours(timelineBounds.start, 0, 0, 0);
-    dayEnd.setHours(timelineBounds.end, 0, 0, 0);
-
-    // Only show line if current time is within the visible range
-    if (now < dayStart || now > dayEnd) {
-      return null;
-    }
-
-    const totalMinutes = (dayEnd.getTime() - dayStart.getTime()) / (1000 * 60);
+    // Always show the current time line (no range restriction)
     const currentMinutes = (now.getTime() - dayStart.getTime()) / (1000 * 60);
-    const topPercent = (currentMinutes / totalMinutes) * 100;
+    const topPx = (currentMinutes / 60) * PIXELS_PER_HOUR;
 
-    return topPercent;
+    return topPx;
   };
 
   const currentTimePosition = getCurrentTimePosition();
@@ -603,22 +592,24 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </button>
       </div>
 
-      <div className="flex-1 relative px-4">
+      {/* Timeline container - scrollable with fixed height per hour */}
+      <div className="flex-1 px-4 flex flex-row overflow-y-auto">
 
-        {/* Time labels - Primary timezone with Secondary on hover */}
-        <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-dark-text-muted py-2">
+        {/* Time labels column - fixed height per hour block */}
+        <div className="w-16 flex flex-col text-xs text-dark-text-muted flex-shrink-0" style={{ paddingTop: `${timelineBounds.start * PIXELS_PER_HOUR}px`, paddingBottom: '8px' }}>
           {timeLabels.map((label, i) => {
             const secondaryLabel = convertToSecondaryTimezone(label);
             return (
               <div
                 key={i}
-                className="flex-1 group relative cursor-default pr-2 flex flex-col justify-start text-right"
+                className="group relative cursor-default pr-2 flex flex-col justify-start text-right"
+                style={{ minHeight: '120px' }}
               >
                 <div className="group-hover:text-dark-text-primary transition-colors">
                   {label}
                 </div>
                 {/* Secondary timezone label on hover */}
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-dark-text-muted mt-0.5">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-dark-text-muted mt-0.5 whitespace-nowrap">
                   {secondaryLabel}
                 </div>
               </div>
@@ -626,15 +617,15 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
           })}
         </div>
 
-        {/* Events container */}
-        <div className="absolute left-16 right-0 top-0 bottom-0 ml-3">
+        {/* Events container - relative positioning with full 24-hour height */}
+        <div className="relative ml-3" style={{ minHeight: `${24 * PIXELS_PER_HOUR}px`, flex: 1 }}>
           {/* Hour grid lines */}
           <div className="absolute inset-0">
             {[...Array(gridLines)].map((_, i) => (
               <div
                 key={i}
                 className="absolute left-0 right-0 border-t border-dark-border/30"
-                style={{ top: `${(i / (gridLines - 1)) * 100}%` }}
+                style={{ top: `${(timelineBounds.start + i) * PIXELS_PER_HOUR}px` }}
               />
             ))}
           </div>
@@ -643,7 +634,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
           {currentTimePosition !== null && (
             <div
               className="absolute left-0 right-0 z-10 pointer-events-none"
-              style={{ top: `${currentTimePosition}%` }}
+              style={{ top: `${currentTimePosition}px` }}
             >
               <div className="relative">
                 {/* Circle dot on the left */}
@@ -654,8 +645,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
             </div>
           )}
 
-        {/* Events */}
-        <div className="relative h-full">
+          {/* Events */}
           {(() => {
             const filteredEvents = events.filter(event => {
               // Filter out declined events if showDeclinedMeetings is false
@@ -664,36 +654,96 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
                 return false;
               }
 
-              // Filter out events that are completely outside the visible time range
-              const startTime = parseISO(event.start);
-              const endTime = parseISO(event.end);
-              const dayStart = new Date(startTime);
-              const dayEnd = new Date(startTime);
-
-              // Use dynamic timeline boundaries
-              dayStart.setHours(timelineBounds.start, 0, 0, 0);
-              dayEnd.setHours(timelineBounds.end, 0, 0, 0);
-
-              // Only show events that overlap with the visible time range
-              // Event must end after visible start and start before visible end
-              const isInRange = endTime.getTime() > dayStart.getTime() && startTime.getTime() < dayEnd.getTime();
-              if (!isInRange) {
-                console.log('[Meetings] Event outside time range:', event.title, 'start:', startTime.getHours(), 'end:', endTime.getHours(), 'range:', timelineBounds.start, '-', timelineBounds.end);
-              }
-              return isInRange;
+              // Show all events regardless of time range (Option 3)
+              return true;
             });
             console.log('[Meetings] Filtered events count:', filteredEvents.length, 'of', events.length);
-            return filteredEvents.map((event) => {
+
+            // Calculate overlapping event columns for side-by-side layout
+            const eventsWithLayout = filteredEvents.map(event => ({
+              event,
+              startTime: parseISO(event.start),
+              endTime: parseISO(event.end),
+              column: 0,
+              totalColumns: 1,
+            }));
+
+            // Sort by start time
+            eventsWithLayout.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+            // Assign columns to overlapping events
+            for (let i = 0; i < eventsWithLayout.length; i++) {
+              const current = eventsWithLayout[i];
+              const overlapping = [current];
+
+              // Find all events that overlap with current
+              for (let j = 0; j < eventsWithLayout.length; j++) {
+                if (i === j) continue;
+                const other = eventsWithLayout[j];
+
+                // Check if events overlap
+                if (current.startTime < other.endTime && current.endTime > other.startTime) {
+                  overlapping.push(other);
+                }
+              }
+
+              // Assign columns
+              if (overlapping.length > 1) {
+                // Sort overlapping events by start time
+                overlapping.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+                // Use column packing algorithm
+                const columns: Array<{ endTime: Date }> = [];
+
+                overlapping.forEach(item => {
+                  // Find first available column
+                  let assignedColumn = -1;
+                  for (let c = 0; c < columns.length; c++) {
+                    if (columns[c].endTime <= item.startTime) {
+                      assignedColumn = c;
+                      columns[c].endTime = item.endTime;
+                      break;
+                    }
+                  }
+
+                  // No available column, create new one
+                  if (assignedColumn === -1) {
+                    assignedColumn = columns.length;
+                    columns.push({ endTime: item.endTime });
+                  }
+
+                  item.column = assignedColumn;
+                  item.totalColumns = columns.length;
+                });
+
+                // Update all overlapping events with final column count
+                overlapping.forEach(item => {
+                  item.totalColumns = columns.length;
+                });
+              }
+            }
+
+            return eventsWithLayout.map(({ event, column, totalColumns }) => {
             const startTime = parseISO(event.start);
             const endTime = parseISO(event.end);
             const colorClass = getEventColor(event);
             const meetingLink = extractMeetingLink(event);
-            const style = getEventStyle(event);
+            const baseStyle = getEventStyle(event);
+
+            // Calculate width and left offset based on column
+            const widthPercent = 100 / totalColumns;
+            const leftPercent = (column / totalColumns) * 100;
+
+            const style = {
+              ...baseStyle,
+              width: `${widthPercent}%`,
+              left: `${leftPercent}%`,
+            };
 
             return (
               <div
                 key={event.id}
-                className={`${colorClass} border-l-4 rounded-lg p-2 absolute left-0 right-0 group
+                className={`${colorClass} border-l-4 rounded-lg p-2 absolute group
                            hover:bg-opacity-30 transition-all overflow-hidden ${
                              isDeclined(event) ? 'opacity-70' : ''
                            }`}
@@ -740,7 +790,6 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
           });
           })()}
         </div>
-      </div>
       </div>
 
       {/* Create Event Modal */}

@@ -689,11 +689,23 @@ ipcMain.handle('update-settings', (_event, settings: any) => {
 
 // User Settings IPC Handlers
 ipcMain.handle('get-user-settings', () => {
-  return store.get('userSettings', {});
+  const settings = store.get('userSettings', {}) as any;
+  // Include slack_bot_token from store
+  const slackBotToken = store.get('slack_bot_token') as string;
+  if (slackBotToken) {
+    settings.slackBotToken = slackBotToken;
+  }
+  return settings;
 });
 
 ipcMain.handle('save-user-settings', (_event, settings: any) => {
   store.set('userSettings', settings);
+
+  // If Slack bot token changed, save it separately for SlackEvents
+  if (settings.slackBotToken) {
+    store.set('slack_bot_token', settings.slackBotToken);
+    console.log('[Settings] Slack bot token saved');
+  }
 
   // If Jira/Confluence credentials changed, reinitialize services
   if (settings.jiraDomain || settings.jiraEmail || settings.jiraApiToken) {
@@ -1108,10 +1120,10 @@ ipcMain.handle('get-smart-suggestions', async (_event, forceRefresh = false) => 
     const lastFetch = store.get('smart_suggestions_last_fetch', 0) as number;
     const cachedSuggestions = store.get('smart_suggestions_cache', []) as any[];
     const now = Date.now();
-    const twelveHours = 12 * 60 * 60 * 1000; // 12 hours
+    const oneDay = 24 * 60 * 60 * 1000; // 24 hours (once per day)
 
-    // Return cached suggestions if less than 12 hours old and not forcing refresh
-    if (!forceRefresh && cachedSuggestions.length > 0 && (now - lastFetch) < twelveHours) {
+    // Return cached suggestions if less than 24 hours old and not forcing refresh
+    if (!forceRefresh && cachedSuggestions.length > 0 && (now - lastFetch) < oneDay) {
       console.log('[Smart Suggestions] Using cached suggestions (last fetch:', new Date(lastFetch).toISOString(), ')');
       return cachedSuggestions;
     }
@@ -1190,9 +1202,16 @@ ipcMain.handle('dismiss-suggestion', async (_event, suggestionId: string) => {
 // Chats - Slack unread messages
 ipcMain.handle('get-slack-unread-messages', async () => {
   try {
-    return await integrationManager.getSlackUnreadMessages();
+    console.log('[IPC] Getting Slack unread messages...');
+    const messages = await integrationManager.getSlackUnreadMessages();
+    console.log(`[IPC] Slack unread messages result: ${messages?.length || 0} messages`);
+    return messages;
   } catch (error: any) {
-    console.error('Failed to get Slack unread messages:', error);
+    console.error('[IPC] Failed to get Slack unread messages:', {
+      message: error?.message,
+      stack: error?.stack,
+      error: error,
+    });
     return [];
   }
 });
