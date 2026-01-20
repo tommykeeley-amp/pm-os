@@ -56,25 +56,14 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
       console.log('[Chats] Slack messages received:', slackData?.length || 0);
       setSlackMessages(slackData || []);
 
-      // Fetch important emails (includes starred emails)
-      console.log('[Chats] Fetching important emails...');
-      const emailData = await window.electronAPI.syncGmail();
-      console.log('[Chats] Emails received:', emailData?.length || 0, emailData);
-      // Filter for starred AND unread emails only
-      const starredEmails = emailData?.filter((email: any) => email.isStarred && email.isUnread) || [];
-      console.log('[Chats] Starred unread emails after filter:', starredEmails.length);
-      const mappedEmails = starredEmails.map((email: any) => ({
-        id: email.id,
-        subject: email.subject,
-        from: email.from,
-        snippet: email.snippet,
-        timestamp: email.date,
-        threadId: email.threadId,
-      }));
-      setEmails(mappedEmails);
+      // Fetch starred unread emails
+      console.log('[Chats] Fetching starred emails...');
+      const emailData = await window.electronAPI.getStarredEmails();
+      console.log('[Chats] Starred emails received:', emailData?.length || 0, emailData);
+      setEmails(emailData || []);
 
       // Update count for notification badge
-      const totalCount = (slackData?.length || 0) + mappedEmails.length;
+      const totalCount = (slackData?.length || 0) + (emailData?.length || 0);
       onCountChange?.(totalCount);
     } catch (err: any) {
       console.error('[Chats] Failed to load messages:', err);
