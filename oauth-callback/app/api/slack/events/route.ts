@@ -52,12 +52,13 @@ async function handleTaskCreation(event: any, teamId: string) {
     // Extract task title from the message
     let taskTitle = event.text
       .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
-      .replace(/make a task for/gi, '')
-      .replace(/create a task for/gi, '')
-      .replace(/add a task for/gi, '')
-      .replace(/make a task/gi, '')
-      .replace(/create a task/gi, '')
-      .replace(/add a task/gi, '')
+      .trim();
+
+    // Remove common phrasing patterns
+    taskTitle = taskTitle
+      .replace(/^(can you |could you |please )?make a task (for |called |to )?/gi, '')
+      .replace(/^(can you |could you |please )?create a task (for |called |to )?/gi, '')
+      .replace(/^(can you |could you |please )?add a task (for |called |to )?/gi, '')
       .trim();
 
     // If there's a colon, use everything after it as the task title
