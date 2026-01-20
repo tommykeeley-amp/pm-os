@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addPendingTask, pendingTasks } from '../store';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,48 +51,137 @@ async function handleTaskCreation(event: any, teamId: string) {
   const text = event.text.toLowerCase();
   const channel = event.channel;
   const messageTs = event.ts;
+  const threadTs = event.thread_ts;
 
-  // Check if the message contains task creation keywords
-  if (text.includes('make') && text.includes('task') || text.includes('create a task') || text.includes('add a task')) {
-    // Extract task title from the message
-    let taskTitle = event.text
-      .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
-      .trim();
+  // Always create a task when PM-OS is mentioned (no keyword checking)
+  console.log('[Slack Events] PM-OS mentioned, creating task...');
 
-    // Remove common phrasing patterns
-    taskTitle = taskTitle
-      .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-      .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-      .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-      .trim();
+  let taskTitle = 'Task from Slack';
+  let taskDescription = '';
 
-    // If there's a colon, use everything after it as the task title
-    if (taskTitle.includes(':')) {
-      taskTitle = taskTitle.split(':').slice(1).join(':').trim();
+  // Check if this is in a thread (and not the first message of a thread)
+  const isInThread = threadTs && threadTs !== messageTs;
+
+  try {
+    if (isInThread) {
+      // This is a reply in a thread - fetch full thread context and use AI
+      console.log('[Slack Events] Message is in thread, fetching context...');
+      const threadContext = await fetchThreadContext(channel, threadTs);
+
+      if (threadContext) {
+        // Use OpenAI to synthesize task from thread
+        const aiResult = await synthesizeTaskFromContext(threadContext);
+        taskTitle = aiResult.title;
+        taskDescription = aiResult.description;
+        console.log('[Slack Events] AI-generated task:', { taskTitle, taskDescription });
+      }
+    } else {
+      // Not in a thread - just use the message text
+      taskTitle = event.text
+        .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
+        .trim();
+
+      // Remove common phrasing patterns
+      taskTitle = taskTitle
+        .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+        .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+        .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+        .trim();
+
+      if (!taskTitle || taskTitle.length === 0) {
+        taskTitle = 'Task from Slack';
+      }
+    }
+  } catch (error) {
+    console.error('[Slack Events] Error processing task:', error);
+    // Fallback to simple text extraction
+    taskTitle = event.text.replace(/<@[A-Z0-9]+>/gi, '').trim() || 'Task from Slack';
+  }
+
+  // Create task data
+  const taskId = `${channel}_${messageTs}`;
+  const taskData = {
+    id: taskId,
+    title: taskTitle,
+    description: taskDescription,
+    channel,
+    messageTs,
+    threadTs: threadTs || messageTs,
+    user: event.user,
+    teamId,
+    timestamp: Date.now(),
+    processed: false,
+  };
+
+  // Store in pending tasks
+  addPendingTask(taskData);
+  console.log('[Slack Events] Stored pending task:', taskId);
+}
+
+async function fetchThreadContext(channel: string, threadTs: string): Promise<string | null> {
+  try {
+    // Get bot token from environment (Vercel will need this)
+    const botToken = process.env.SLACK_BOT_TOKEN;
+    if (!botToken) {
+      console.error('[Slack Events] No bot token in environment');
+      return null;
     }
 
-    // If task title is empty, use a default
-    if (!taskTitle || taskTitle.length === 0) {
-      taskTitle = 'Task from Slack';
+    // Fetch thread replies using Slack API
+    const response = await fetch(`https://slack.com/api/conversations.replies?channel=${channel}&ts=${threadTs}`, {
+      headers: {
+        'Authorization': `Bearer ${botToken}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!data.ok || !data.messages) {
+      console.error('[Slack Events] Failed to fetch thread:', data.error);
+      return null;
     }
 
-    // Create task data
-    const taskId = `${channel}_${messageTs}`;
-    const taskData = {
-      id: taskId,
-      title: taskTitle,
-      channel,
-      messageTs,
-      threadTs: event.thread_ts || event.ts,
-      user: event.user,
-      teamId,
-      timestamp: Date.now(),
-      processed: false,
+    // Combine all messages into context
+    const context = data.messages
+      .map((msg: any) => `${msg.user}: ${msg.text}`)
+      .join('\n');
+
+    return context;
+  } catch (error) {
+    console.error('[Slack Events] Error fetching thread:', error);
+    return null;
+  }
+}
+
+async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string }> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that creates task titles and descriptions from Slack thread conversations. Create a concise task title (max 60 chars) and a brief description summarizing the key points and action items from the conversation.',
+        },
+        {
+          role: 'user',
+          content: `Based on this Slack thread conversation, create a task:\n\n${context}`,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    });
+
+    const result = JSON.parse(completion.choices[0].message.content || '{}');
+    return {
+      title: result.title || 'Task from Slack thread',
+      description: result.description || '',
     };
-
-    // Store in pending tasks
-    addPendingTask(taskData);
-    console.log('[Slack Events] Stored pending task:', taskId);
+  } catch (error) {
+    console.error('[Slack Events] OpenAI error:', error);
+    return {
+      title: 'Task from Slack thread',
+      description: 'Error generating task description',
+    };
   }
 }
 

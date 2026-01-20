@@ -561,6 +561,7 @@ app.whenReady().then(async () => {
         sourceId: taskData.sourceId,
         priority: taskData.priority || 'medium',
         context: taskData.context,
+        description: taskData.description || undefined,
         linkedItems: taskData.linkedItems || [],
         createdAt: now,
         updatedAt: now,
@@ -570,6 +571,9 @@ app.whenReady().then(async () => {
       store.set('tasks', tasks);
 
       console.log('[Main] Task created from Slack mention:', newTask.title);
+      if (taskData.description) {
+        console.log('[Main] Task description:', taskData.description);
+      }
 
       // Notify renderer if window exists
       if (mainWindow && mainWindow.webContents) {
