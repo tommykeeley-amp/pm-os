@@ -176,11 +176,17 @@ export default function SmartSuggestions({
     return scoredSuggestions;
   };
 
-  // Filter suggestions when suggestions, projectTags, or existingTasks change
+  // Only set suggestions initially without AI filtering (no automatic API calls)
   useEffect(() => {
-    filterSuggestions();
+    if (suggestions.length === 0) {
+      setFilteredSuggestions([]);
+    } else {
+      // Just show suggestions without AI filtering by default
+      const scored = keywordMatchSuggestions(suggestions, projectTags);
+      setFilteredSuggestions(scored.slice(0, 5));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestions, projectTags, existingTasks]);
+  }, [suggestions, projectTags]);
 
   // Handle expand/collapse and persist state
   const handleToggleExpanded = async () => {
@@ -202,11 +208,11 @@ export default function SmartSuggestions({
 
   return (
     <div className="space-y-2">
-      <div
-        className="flex items-center justify-between cursor-pointer group"
-        onClick={handleToggleExpanded}
-      >
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between">
+        <div
+          className="flex items-center gap-2 cursor-pointer group flex-1"
+          onClick={handleToggleExpanded}
+        >
           {isLoading ? (
             <svg className="w-4 h-4 text-dark-accent-primary animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -222,14 +228,28 @@ export default function SmartSuggestions({
             Suggested Tasks ({filteredSuggestions.length})
           </h2>
         </div>
-        <svg
-          className={`w-4 h-4 text-dark-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              filterSuggestions();
+            }}
+            disabled={isLoading || !aiService.isAvailable()}
+            className="px-2 py-1 text-xs text-dark-accent-primary hover:bg-dark-accent-primary/10 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Refresh with AI"
+          >
+            {isLoading ? 'Processing...' : 'AI Refresh'}
+          </button>
+          <svg
+            onClick={handleToggleExpanded}
+            className={`w-4 h-4 text-dark-text-muted transition-transform cursor-pointer ${isExpanded ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
       </div>
 
       {isExpanded && (
