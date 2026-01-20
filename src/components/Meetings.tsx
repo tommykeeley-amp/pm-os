@@ -169,6 +169,34 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         return new Date(a.start).getTime() - new Date(b.start).getTime();
       });
 
+      // Write events to file for debugging
+      try {
+        const debugData = {
+          totalEvents: calendarEvents.length,
+          todaysEventsCount: todaysEvents.length,
+          todaysEvents: todaysEvents.map((e: CalendarEvent) => ({
+            title: e.title,
+            start: e.start,
+            end: e.end,
+            attendees: e.attendees?.map((a: Attendee) => ({
+              email: a.email,
+              responseStatus: a.responseStatus,
+              self: a.self
+            }))
+          })),
+          settings: {
+            showDeclinedMeetings,
+            primaryTimezone,
+            secondaryTimezone,
+            isPinned
+          }
+        };
+        await window.electronAPI.writeDebugFile('meetings-debug.json', JSON.stringify(debugData, null, 2));
+        console.log('[Meetings] Debug data written to meetings-debug.json');
+      } catch (error) {
+        console.error('[Meetings] Failed to write debug file:', error);
+      }
+
       setEvents(todaysEvents);
       setIsLoading(false);
     } catch (error) {
@@ -407,6 +435,8 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
     let defaultStart = isPinned ? 9 : 8;
     let defaultEnd = isPinned ? 18 : 19;
 
+    console.log('[Meetings] Initial bounds:', defaultStart, '-', defaultEnd, 'isPinned:', isPinned, 'events.length:', events.length);
+
     // If there are events, expand boundaries to include all events
     if (events.length > 0) {
       const eventTimes = events.flatMap(event => {
@@ -418,15 +448,20 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
       const earliestHour = Math.floor(Math.min(...eventTimes));
       const latestHour = Math.ceil(Math.max(...eventTimes));
 
+      console.log('[Meetings] Event time range:', earliestHour, '-', latestHour);
+
       // Expand to include events, with minimum default range
       defaultStart = Math.min(defaultStart, earliestHour);
       defaultEnd = Math.max(defaultEnd, latestHour);
+
+      console.log('[Meetings] Final bounds:', defaultStart, '-', defaultEnd);
     }
 
     return { start: defaultStart, end: defaultEnd };
   };
 
   const timelineBounds = getTimelineBoundaries();
+  console.log('[Meetings] Using timeline bounds:', timelineBounds);
 
   // Calculate event positioning based on time
   const getEventStyle = (event: CalendarEvent) => {
@@ -599,7 +634,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </button>
       </div>
 
-      <div className="flex-1 relative px-4 overflow-hidden">
+      <div className="flex-1 relative px-4 min-h-[600px]">
 
         {/* Time labels - Primary timezone with Secondary on hover */}
         <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col text-xs text-dark-text-muted py-2">
@@ -652,10 +687,11 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
         {/* Events */}
         <div className="relative h-full">
-          {events
-            .filter(event => {
+          {(() => {
+            const filteredEvents = events.filter(event => {
               // Filter out declined events if showDeclinedMeetings is false
               if (!showDeclinedMeetings && isDeclined(event)) {
+                console.log('[Meetings] Filtering out declined event:', event.title);
                 return false;
               }
 
@@ -671,9 +707,14 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
               // Only show events that overlap with the visible time range
               // Event must end after visible start and start before visible end
-              return endTime.getTime() > dayStart.getTime() && startTime.getTime() < dayEnd.getTime();
-            })
-            .map((event) => {
+              const isInRange = endTime.getTime() > dayStart.getTime() && startTime.getTime() < dayEnd.getTime();
+              if (!isInRange) {
+                console.log('[Meetings] Event outside time range:', event.title, 'start:', startTime.getHours(), 'end:', endTime.getHours(), 'range:', timelineBounds.start, '-', timelineBounds.end);
+              }
+              return isInRange;
+            });
+            console.log('[Meetings] Filtered events count:', filteredEvents.length, 'of', events.length);
+            return filteredEvents.map((event) => {
             const startTime = parseISO(event.start);
             const endTime = parseISO(event.end);
             const colorClass = getEventColor(event);
@@ -727,7 +768,8 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
                 </div>
               </div>
             );
-          })}
+          });
+          })()}
         </div>
       </div>
       </div>

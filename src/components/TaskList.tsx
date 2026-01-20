@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { format, isToday, isTomorrow, isPast, parseISO, formatDistanceToNow } from 'date-fns';
 import type { Task, LinkedItem } from '../types/task';
 import LinkedDocsSelector from './LinkedDocsSelector';
@@ -92,6 +92,19 @@ function getTaskTooltip(task: Task): string {
 export default function TaskList({ tasks, onToggle, onDelete, onUpdateTask, onLinkSlackChannel, slackConfigured, onTaskClick, onDragStart, onDragEnd }: TaskListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-open date picker when it becomes visible
+  useEffect(() => {
+    if (datePickerOpenId && dateInputRef.current) {
+      try {
+        dateInputRef.current.showPicker();
+      } catch (error) {
+        // showPicker() may not be supported in all browsers
+        console.log('showPicker not supported');
+      }
+    }
+  }, [datePickerOpenId]);
 
   return (
     <div className="space-y-1">
@@ -283,6 +296,7 @@ export default function TaskList({ tasks, onToggle, onDelete, onUpdateTask, onLi
                             onClick={() => setDatePickerOpenId(null)}
                           />
                           <input
+                            ref={dateInputRef}
                             type="date"
                             value={task.deadline || task.dueDate || ''}
                             onChange={(e) => {
@@ -292,6 +306,7 @@ export default function TaskList({ tasks, onToggle, onDelete, onUpdateTask, onLi
                               setDatePickerOpenId(null);
                             }}
                             onClick={(e) => e.stopPropagation()}
+                            onBlur={() => setDatePickerOpenId(null)}
                             className="relative z-20 px-2 py-1 text-xs bg-dark-surface border border-dark-accent-primary rounded
                                      text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary
                                      cursor-pointer [color-scheme:dark]"

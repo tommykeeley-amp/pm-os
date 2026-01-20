@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   refreshSmartSuggestions: () => ipcRenderer.invoke('refresh-smart-suggestions'),
   dismissSuggestion: (suggestionId: string) => ipcRenderer.invoke('dismiss-suggestion', suggestionId),
   writeDebugLog: (message: string) => ipcRenderer.invoke('write-debug-log', message),
+  writeDebugFile: (filename: string, content: string) => ipcRenderer.invoke('write-debug-file', filename, content),
 
   // Calendar operations
   calendarUpdateRSVP: (eventId: string, status: string) =>
@@ -123,6 +124,7 @@ export interface ElectronAPI {
   refreshSmartSuggestions: () => Promise<any[]>;
   dismissSuggestion: (suggestionId: string) => Promise<{ success: boolean; error?: string }>;
   writeDebugLog: (message: string) => Promise<{ success: boolean; error?: string }>;
+  writeDebugFile: (filename: string, content: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   calendarUpdateRSVP: (eventId: string, status: string) => Promise<{ success: boolean; error?: string }>;
   calendarCreateEvent: (request: any) => Promise<{ success: boolean; event?: any; error?: string }>;
   zoomIsConfigured: () => Promise<boolean>;

@@ -1158,6 +1158,19 @@ ipcMain.handle('write-debug-log', async (_event, message: string) => {
   }
 });
 
+// Write debug file handler
+ipcMain.handle('write-debug-file', async (_event, filename: string, content: string) => {
+  try {
+    const filePath = path.join(app.getPath('userData'), filename);
+    fs.writeFileSync(filePath, content);
+    console.log('[Main] Debug file written:', filePath);
+    return { success: true, path: filePath };
+  } catch (error: any) {
+    console.error('Failed to write debug file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Dismiss suggestion
 ipcMain.handle('dismiss-suggestion', async (_event, suggestionId: string) => {
   try {
