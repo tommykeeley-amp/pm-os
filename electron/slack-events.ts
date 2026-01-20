@@ -1,160 +1,109 @@
-import * as http from 'http';
 import Store from 'electron-store';
 
 const store = new Store();
 
-export class SlackEventsServer {
-  private server: http.Server | null = null;
-  private port: number = 3001;
-  private onTaskCreate?: (task: any) => Promise<void>;
+const VERCEL_API_URL = 'https://pm-os-git-main-amplitude-inc.vercel.app/api/slack';
 
-  constructor(port: number = 3001) {
-    this.port = port;
-  }
+export class SlackEventsServer {
+  private pollingInterval: NodeJS.Timeout | null = null;
+  private onTaskCreate?: (task: any) => Promise<void>;
+  private isPolling: boolean = false;
+
+  constructor() {}
 
   setTaskCreateHandler(handler: (task: any) => Promise<void>) {
     this.onTaskCreate = handler;
   }
 
   async start(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.server = http.createServer(async (req, res) => {
-        if (req.method === 'POST' && req.url === '/slack/events') {
-          let body = '';
+    console.log('[SlackEvents] Starting Slack events polling...');
+    console.log('[SlackEvents] Polling Vercel endpoint:', VERCEL_API_URL);
 
-          req.on('data', chunk => {
-            body += chunk.toString();
-          });
+    // Start polling every 10 seconds
+    this.pollingInterval = setInterval(() => {
+      this.pollPendingTasks();
+    }, 10000);
 
-          req.on('end', async () => {
-            try {
-              const payload = JSON.parse(body);
-
-              // Handle URL verification challenge
-              if (payload.type === 'url_verification') {
-                console.log('[SlackEvents] Handling URL verification');
-                res.writeHead(200, { 'Content-Type': 'text/plain' });
-                res.end(payload.challenge);
-                return;
-              }
-
-              // Handle app mention events
-              if (payload.type === 'event_callback' && payload.event?.type === 'app_mention') {
-                console.log('[SlackEvents] Received app mention:', payload.event);
-
-                // Acknowledge immediately
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ ok: true }));
-
-                // Process the mention asynchronously
-                await this.handleAppMention(payload.event);
-                return;
-              }
-
-              // Default response
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ ok: true }));
-            } catch (error) {
-              console.error('[SlackEvents] Error processing event:', error);
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Internal server error' }));
-            }
-          });
-        } else {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end('Not Found');
-        }
-      });
-
-      this.server.listen(this.port, () => {
-        console.log(`[SlackEvents] Server listening on port ${this.port}`);
-        console.log(`[SlackEvents] Webhook URL: http://localhost:${this.port}/slack/events`);
-        resolve();
-      });
-
-      this.server.on('error', (error) => {
-        console.error('[SlackEvents] Server error:', error);
-        reject(error);
-      });
-    });
+    // Do initial poll immediately
+    await this.pollPendingTasks();
   }
 
   async stop(): Promise<void> {
-    if (this.server) {
-      return new Promise((resolve) => {
-        this.server!.close(() => {
-          console.log('[SlackEvents] Server stopped');
-          resolve();
-        });
-      });
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+      console.log('[SlackEvents] Stopped polling');
     }
   }
 
-  private async handleAppMention(event: any): Promise<void> {
+  private async pollPendingTasks(): Promise<void> {
+    if (this.isPolling) {
+      // Skip if already polling
+      return;
+    }
+
+    this.isPolling = true;
+
     try {
-      const text = event.text.toLowerCase();
-      const channel = event.channel;
-      const messageTs = event.ts;
-      const threadTs = event.thread_ts || event.ts;
+      const response = await fetch(`${VERCEL_API_URL}/pending-tasks`);
+      const data = await response.json();
 
-      // Check if the message contains task creation keywords
-      if (text.includes('make a task') || text.includes('create a task') || text.includes('add a task')) {
-        // Extract task title from the message
-        // Remove the bot mention and command words
-        let taskTitle = event.text
-          .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
-          .replace(/make a task for/gi, '')
-          .replace(/create a task for/gi, '')
-          .replace(/add a task for/gi, '')
-          .replace(/make a task/gi, '')
-          .replace(/create a task/gi, '')
-          .replace(/add a task/gi, '')
-          .trim();
+      if (data.success && data.tasks && data.tasks.length > 0) {
+        console.log(`[SlackEvents] Found ${data.tasks.length} pending task(s)`);
 
-        // If there's a colon, use everything after it as the task title
-        if (taskTitle.includes(':')) {
-          taskTitle = taskTitle.split(':').slice(1).join(':').trim();
+        for (const taskData of data.tasks) {
+          await this.processTask(taskData);
+
+          // Mark task as processed
+          await fetch(`${VERCEL_API_URL}/pending-tasks`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ taskId: taskData.id }),
+          });
         }
-
-        // If task title is empty, use a default
-        if (!taskTitle || taskTitle.length === 0) {
-          taskTitle = 'Task from Slack';
-        }
-
-        // Get workspace info to build permalink
-        const slackTokens = store.get('slack_bot_token') as any;
-        const workspaceUrl = slackTokens?.team_url || 'https://slack.com';
-
-        // Build permalink to the message
-        const permalink = `${workspaceUrl}/archives/${channel}/p${messageTs.replace('.', '')}`;
-
-        // Create the task
-        const task = {
-          title: taskTitle,
-          source: 'slack',
-          sourceId: `${channel}_${messageTs}`,
-          priority: 'medium',
-          context: `From Slack: ${event.user}`,
-          linkedItems: [{
-            id: `slack_${channel}_${messageTs}`,
-            type: 'slack' as const,
-            title: 'Slack Message',
-            url: permalink,
-          }],
-        };
-
-        console.log('[SlackEvents] Creating task:', task);
-
-        // Call the task creation handler
-        if (this.onTaskCreate) {
-          await this.onTaskCreate(task);
-        }
-
-        // Send confirmation reply in Slack
-        await this.sendSlackReply(channel, threadTs, `✅ Task created: "${taskTitle}"`);
       }
     } catch (error) {
-      console.error('[SlackEvents] Error handling app mention:', error);
+      console.error('[SlackEvents] Error polling pending tasks:', error);
+    } finally {
+      this.isPolling = false;
+    }
+  }
+
+  private async processTask(taskData: any): Promise<void> {
+    try {
+      const { title, channel, messageTs, threadTs, user } = taskData;
+
+      // Build permalink to the message
+      const permalink = `slack://channel?team=&id=${channel}`;
+
+      // Create the task
+      const task = {
+        title,
+        source: 'slack',
+        sourceId: `${channel}_${messageTs}`,
+        priority: 'medium',
+        context: `From Slack: ${user}`,
+        linkedItems: [{
+          id: `slack_${channel}_${messageTs}`,
+          type: 'slack' as const,
+          title: 'Slack Message',
+          url: permalink,
+        }],
+      };
+
+      console.log('[SlackEvents] Creating task:', task);
+
+      // Call the task creation handler
+      if (this.onTaskCreate) {
+        await this.onTaskCreate(task);
+      }
+
+      // Send confirmation reply in Slack
+      await this.sendSlackReply(channel, threadTs, `✅ Task created: "${title}"`);
+    } catch (error) {
+      console.error('[SlackEvents] Error processing task:', error);
     }
   }
 
@@ -166,21 +115,21 @@ export class SlackEventsServer {
         return;
       }
 
-      const response = await fetch('https://slack.com/api/chat.postMessage', {
+      const response = await fetch(`${VERCEL_API_URL}/reply`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${botToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           channel,
-          thread_ts: threadTs,
+          threadTs,
           text,
+          botToken,
         }),
       });
 
       const data = await response.json();
-      if (!data.ok) {
+      if (!data.success) {
         console.error('[SlackEvents] Failed to send reply:', data.error);
       }
     } catch (error) {

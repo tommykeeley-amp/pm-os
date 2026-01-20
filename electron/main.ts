@@ -548,7 +548,7 @@ app.whenReady().then(async () => {
   startExtensionSyncServer();
 
   // Start Slack events server
-  const slackEventsServer = new SlackEventsServer(3001);
+  const slackEventsServer = new SlackEventsServer();
   slackEventsServer.setTaskCreateHandler(async (taskData) => {
     try {
       const tasks = store.get('tasks', []) as Task[];
