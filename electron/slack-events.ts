@@ -75,8 +75,8 @@ export class SlackEventsServer {
     try {
       const { title, channel, messageTs, threadTs, user, teamId } = taskData;
 
-      // Add eyes emoji to show we're processing
-      await this.addReaction(channel, messageTs, 'eyes');
+      // Eyes emoji already added by Vercel webhook for immediate feedback
+      // We just need to process the task and update to checkmark
 
       // Build permalink to the message
       // Convert timestamp (e.g., "1234567890.123456") to message ID (e.g., "p1234567890123456")

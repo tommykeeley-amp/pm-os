@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
     // Handle app mention events
     if (body.type === 'event_callback' && body.event?.type === 'app_mention') {
       console.log('[Slack Events] Received app mention:', body.event);
+      // Add eyes emoji immediately for user feedback
+      await addReaction(body.event.channel, body.event.ts, 'eyes');
       await handleTaskCreation(body.event, body.team_id);
       return NextResponse.json({ ok: true });
     }
@@ -34,6 +36,8 @@ export async function POST(request: NextRequest) {
 
       // Ignore bot messages and message updates
       if (!body.event.bot_id && !body.event.subtype) {
+        // Add eyes emoji immediately for user feedback
+        await addReaction(body.event.channel, body.event.ts, 'eyes');
         await handleTaskCreation(body.event, body.team_id);
       }
       return NextResponse.json({ ok: true });
@@ -200,6 +204,36 @@ async function synthesizeTaskFromContext(context: string): Promise<{ title: stri
     title: result.title || 'Task from Slack thread',
     description: result.description || context,
   };
+}
+
+async function addReaction(channel: string, timestamp: string, emoji: string): Promise<void> {
+  try {
+    const botToken = process.env.SLACK_BOT_TOKEN;
+    if (!botToken) {
+      console.error('[Slack Events] No bot token found for reaction');
+      return;
+    }
+
+    const response = await fetch('https://slack.com/api/reactions.add', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel,
+        timestamp,
+        name: emoji,
+      }),
+    });
+
+    const data = await response.json();
+    if (!data.ok) {
+      console.error('[Slack Events] Failed to add reaction:', data.error);
+    }
+  } catch (error) {
+    console.error('[Slack Events] Error adding reaction:', error);
+  }
 }
 
 // Export GET to allow checking the endpoint is alive
