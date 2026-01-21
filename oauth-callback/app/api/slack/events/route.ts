@@ -155,29 +155,45 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
   try {
     // Get bot token from environment (Vercel will need this)
     const botToken = process.env.SLACK_BOT_TOKEN;
+    console.log('[Slack Events] Bot token present:', !!botToken);
     if (!botToken) {
       console.error('[Slack Events] No bot token in environment');
       return null;
     }
 
     // Fetch thread replies using Slack API
-    const response = await fetch(`https://slack.com/api/conversations.replies?channel=${channel}&ts=${threadTs}`, {
+    const url = `https://slack.com/api/conversations.replies?channel=${channel}&ts=${threadTs}`;
+    console.log('[Slack Events] Fetching thread from:', url);
+
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${botToken}`,
       },
     });
 
+    console.log('[Slack Events] Slack API response status:', response.status);
     const data = await response.json();
+    console.log('[Slack Events] Slack API response:', JSON.stringify(data, null, 2));
 
-    if (!data.ok || !data.messages) {
-      console.error('[Slack Events] Failed to fetch thread:', data.error);
+    if (!data.ok) {
+      console.error('[Slack Events] Slack API error:', data.error);
+      console.error('[Slack Events] Full response:', JSON.stringify(data, null, 2));
       return null;
     }
+
+    if (!data.messages || data.messages.length === 0) {
+      console.error('[Slack Events] No messages in thread response');
+      return null;
+    }
+
+    console.log('[Slack Events] Found', data.messages.length, 'messages in thread');
 
     // Combine all messages into context
     const context = data.messages
       .map((msg: any) => `${msg.user}: ${msg.text}`)
       .join('\n');
+
+    console.log('[Slack Events] Thread context:', context);
 
     return {
       context,
