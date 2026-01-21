@@ -57,6 +57,9 @@ async function handleTaskCreation(event: any, teamId: string) {
   const messageTs = event.ts;
   const threadTs = event.thread_ts;
 
+  // Check if user wants to create a Jira ticket
+  const shouldCreateJira = text.includes('create jira') || text.includes('make jira') || text.includes('jira ticket');
+
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
   console.log('[Slack Events] Event details:', {
@@ -64,11 +67,13 @@ async function handleTaskCreation(event: any, teamId: string) {
     messageTs,
     threadTs,
     isInThread: !!threadTs,
-    text: event.text
+    text: event.text,
+    shouldCreateJira
   });
 
   let taskTitle = 'Task from Slack';
   let taskDescription = '';
+  let jiraTicket: { key: string; url: string } | null = null;
 
   // Check if this is in a thread - if thread_ts exists, we're in a thread context
   // Note: For the original message that starts a thread, thread_ts will equal ts
@@ -131,6 +136,22 @@ async function handleTaskCreation(event: any, teamId: string) {
     taskDescription = 'Error creating task from context';
   }
 
+  // Create Jira ticket if requested
+  if (shouldCreateJira) {
+    try {
+      console.log('[Slack Events] Creating Jira ticket...');
+      jiraTicket = await createJiraTicket(taskTitle, taskDescription);
+      console.log('[Slack Events] Jira ticket created:', jiraTicket);
+
+      // Update task to be about validating the Jira ticket
+      taskTitle = `Validate Jira ticket: ${jiraTicket.key}`;
+      taskDescription = `Review and validate the Jira ticket that was created:\n\n${taskDescription}\n\nJira ticket: ${jiraTicket.url}`;
+    } catch (jiraError) {
+      console.error('[Slack Events] Failed to create Jira ticket:', jiraError);
+      taskDescription = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${taskDescription}`;
+    }
+  }
+
   // Create task data
   const taskId = `${channel}_${messageTs}`;
   const taskData = {
@@ -144,6 +165,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     teamId,
     timestamp: Date.now(),
     processed: false,
+    jiraTicket: jiraTicket || undefined,
   };
 
   // Store in pending tasks
@@ -203,6 +225,65 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
     console.error('[Slack Events] Error fetching thread:', error);
     return null;
   }
+}
+
+async function createJiraTicket(title: string, description: string): Promise<{ key: string; url: string }> {
+  const jiraDomain = process.env.JIRA_DOMAIN;
+  const jiraEmail = process.env.JIRA_EMAIL;
+  const jiraApiToken = process.env.JIRA_API_TOKEN;
+  const jiraProject = process.env.JIRA_DEFAULT_PROJECT || 'AMP';
+  const jiraIssueType = process.env.JIRA_DEFAULT_ISSUE_TYPE || 'Task';
+
+  if (!jiraDomain || !jiraEmail || !jiraApiToken) {
+    throw new Error('Jira credentials not configured');
+  }
+
+  const auth = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64');
+
+  const response = await fetch(`https://${jiraDomain}/rest/api/3/issue`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fields: {
+        project: {
+          key: jiraProject,
+        },
+        summary: title,
+        description: {
+          type: 'doc',
+          version: 1,
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: description || 'Created from Slack via PM-OS',
+                },
+              ],
+            },
+          ],
+        },
+        issuetype: {
+          name: jiraIssueType,
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Jira API error: ${JSON.stringify(errorData)}`);
+  }
+
+  const data = await response.json();
+  return {
+    key: data.key,
+    url: `https://${jiraDomain}/browse/${data.key}`,
+  };
 }
 
 async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string }> {

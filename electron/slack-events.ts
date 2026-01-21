@@ -73,7 +73,7 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      const { title, description, channel, messageTs, threadTs, user, teamId } = taskData;
+      const { title, description, channel, messageTs, threadTs, user, teamId, jiraTicket } = taskData;
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
@@ -83,6 +83,24 @@ export class SlackEventsServer {
       const messageId = 'p' + messageTs.replace('.', '');
       const permalink = `slack://channel?team=${teamId}&id=${channel}&message=${messageId}`;
 
+      // Build linked items array
+      const linkedItems: any[] = [{
+        id: `slack_${channel}_${messageTs}`,
+        type: 'slack' as const,
+        title: 'Slack Message',
+        url: permalink,
+      }];
+
+      // Add Jira ticket if it was created
+      if (jiraTicket) {
+        linkedItems.push({
+          id: `jira_${jiraTicket.key}`,
+          type: 'jira' as const,
+          title: `Jira: ${jiraTicket.key}`,
+          url: jiraTicket.url,
+        });
+      }
+
       // Create the task
       const task = {
         title,
@@ -91,12 +109,7 @@ export class SlackEventsServer {
         sourceId: `${channel}_${messageTs}`,
         priority: 'medium',
         context: `From Slack: ${user}`,
-        linkedItems: [{
-          id: `slack_${channel}_${messageTs}`,
-          type: 'slack' as const,
-          title: 'Slack Message',
-          url: permalink,
-        }],
+        linkedItems,
       };
 
       console.log('[SlackEvents] Creating task:', task);
