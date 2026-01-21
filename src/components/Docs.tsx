@@ -53,6 +53,7 @@ export default function Docs({ isActive }: DocsProps) {
     const stored = localStorage.getItem('docs-collapsed-groups');
     return stored ? new Set(JSON.parse(stored)) : new Set();
   });
+  const [quickAccessExpanded, setQuickAccessExpanded] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,8 +110,24 @@ export default function Docs({ isActive }: DocsProps) {
     try {
       const settings = await window.electronAPI.getUserSettings();
       setObsidianConfigured(!!settings.obsidianEnabled && !!settings.obsidianVaultPath);
+      setQuickAccessExpanded(settings?.quickAccessExpanded ?? true);
     } catch (error) {
       console.error('Failed to check Obsidian config:', error);
+    }
+  };
+
+  const handleToggleQuickAccess = async () => {
+    const newExpandedState = !quickAccessExpanded;
+    setQuickAccessExpanded(newExpandedState);
+
+    try {
+      const settings = await window.electronAPI.getUserSettings();
+      await window.electronAPI.saveUserSettings({
+        ...settings,
+        quickAccessExpanded: newExpandedState,
+      });
+    } catch (error) {
+      console.error('Failed to save Quick Access state:', error);
     }
   };
 
@@ -248,15 +265,6 @@ export default function Docs({ isActive }: DocsProps) {
       doc.id === docId ? { ...doc, pinned: !doc.pinned } : doc
     );
     await saveDocs(updatedDocs);
-  };
-
-  const getFaviconUrl = (url: string): string => {
-    try {
-      const urlObj = new URL(url);
-      return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
-    } catch {
-      return '';
-    }
   };
 
   const toggleTag = (tag: TaskTag) => {
@@ -554,42 +562,49 @@ export default function Docs({ isActive }: DocsProps) {
       {/* Pinned docs horizontal scroll */}
       {docs.some(doc => doc.pinned && doc.url) && (
         <div className="flex-shrink-0 px-4 pt-4 border-b border-dark-border pb-4">
-          <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider mb-3">
-            Quick Access
-          </h3>
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-dark-border scrollbar-track-transparent">
-            {docs
-              .filter(doc => doc.pinned && doc.url)
-              .map(doc => (
-                <button
-                  key={doc.id}
-                  onClick={() => handleOpenDoc(doc)}
-                  className="flex-shrink-0 w-20 flex flex-col items-center gap-2 p-3 bg-dark-surface border border-dark-border rounded-lg hover:border-dark-accent-primary transition-colors group"
-                  title={doc.title}
-                >
-                  {/* Favicon */}
-                  <div className="w-8 h-8 rounded-lg overflow-hidden bg-white flex items-center justify-center">
-                    <img
-                      src={getFaviconUrl(doc.url!)}
-                      alt=""
-                      className="w-6 h-6"
-                      onError={(e) => {
-                        // Fallback to icon if favicon fails
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                      }}
-                    />
-                    <svg className="w-6 h-6 text-dark-text-muted hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                  </div>
-                  {/* Doc name */}
-                  <span className="text-xs text-dark-text-primary text-center line-clamp-2 w-full">
-                    {doc.title}
-                  </span>
-                </button>
-              ))}
-          </div>
+          <button
+            onClick={handleToggleQuickAccess}
+            className="w-full flex items-center justify-between mb-3 hover:bg-dark-surface/50 transition-colors rounded-lg -mx-2 px-2 py-1"
+          >
+            <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
+              Quick Access ({docs.filter(doc => doc.pinned && doc.url).length})
+            </h3>
+            <svg
+              className={`w-4 h-4 text-dark-text-muted transition-transform ${quickAccessExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {quickAccessExpanded && (
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-dark-border scrollbar-track-transparent">
+              {docs
+                .filter(doc => doc.pinned && doc.url)
+                .map(doc => {
+                  const docType = detectDocType(doc.url, doc.source);
+                  const { icon } = getDocTypeIcon(docType);
+                  return (
+                    <button
+                      key={doc.id}
+                      onClick={() => handleOpenDoc(doc)}
+                      className="flex-shrink-0 w-20 flex flex-col items-center gap-2 p-3 bg-dark-surface border border-dark-border rounded-lg hover:border-dark-accent-primary transition-colors group"
+                      title={doc.title}
+                    >
+                      {/* Doc type icon */}
+                      <div className="w-8 h-8 flex items-center justify-center text-2xl">
+                        {icon}
+                      </div>
+                      {/* Doc name */}
+                      <span className="text-xs text-dark-text-primary text-center line-clamp-2 w-full">
+                        {doc.title}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
 
