@@ -11,6 +11,7 @@ export interface Doc {
   createdAt: string;
   updatedAt?: string;
   source?: string;
+  pinned?: boolean;
 }
 
 interface ObsidianNote {
@@ -239,6 +240,22 @@ export default function Docs({ isActive }: DocsProps) {
     } else if (doc.url) {
       // Otherwise open URL in browser
       window.electronAPI.openExternal(doc.url);
+    }
+  };
+
+  const handleTogglePin = async (docId: string) => {
+    const updatedDocs = docs.map(doc =>
+      doc.id === docId ? { ...doc, pinned: !doc.pinned } : doc
+    );
+    await saveDocs(updatedDocs);
+  };
+
+  const getFaviconUrl = (url: string): string => {
+    try {
+      const urlObj = new URL(url);
+      return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+    } catch {
+      return '';
     }
   };
 
@@ -534,6 +551,48 @@ export default function Docs({ isActive }: DocsProps) {
         </div>
       </div>
 
+      {/* Pinned docs horizontal scroll */}
+      {docs.some(doc => doc.pinned && doc.url) && (
+        <div className="flex-shrink-0 px-4 pt-4 border-b border-dark-border pb-4">
+          <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider mb-3">
+            Quick Access
+          </h3>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-dark-border scrollbar-track-transparent">
+            {docs
+              .filter(doc => doc.pinned && doc.url)
+              .map(doc => (
+                <button
+                  key={doc.id}
+                  onClick={() => handleOpenDoc(doc)}
+                  className="flex-shrink-0 w-20 flex flex-col items-center gap-2 p-3 bg-dark-surface border border-dark-border rounded-lg hover:border-dark-accent-primary transition-colors group"
+                  title={doc.title}
+                >
+                  {/* Favicon */}
+                  <div className="w-8 h-8 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                    <img
+                      src={getFaviconUrl(doc.url!)}
+                      alt=""
+                      className="w-6 h-6"
+                      onError={(e) => {
+                        // Fallback to icon if favicon fails
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                    <svg className="w-6 h-6 text-dark-text-muted hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </div>
+                  {/* Doc name */}
+                  <span className="text-xs text-dark-text-primary text-center line-clamp-2 w-full">
+                    {doc.title}
+                  </span>
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Documents list */}
       <div className="flex-1 overflow-y-auto p-4">
         {filteredDocs.length === 0 ? (
@@ -716,6 +775,22 @@ export default function Docs({ isActive }: DocsProps) {
                         </svg>
                       </button>
                     )}
+                    {/* Pin button - only for docs with URLs */}
+                    {doc.url && !(doc as any).isObsidian && (
+                      <button
+                        onClick={() => handleTogglePin(doc.id)}
+                        className={`p-2 transition-colors rounded ${
+                          doc.pinned
+                            ? 'text-dark-accent-primary hover:bg-dark-bg'
+                            : 'text-dark-text-muted hover:text-dark-accent-primary hover:bg-dark-bg'
+                        }`}
+                        title={doc.pinned ? "Unpin from Quick Access" : "Pin to Quick Access"}
+                      >
+                        <svg className="w-4 h-4" fill={doc.pinned ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </button>
+                    )}
                     {/* Tags button - always visible */}
                     <button
                       onClick={() => handleStartEditingTags(doc)}
@@ -865,6 +940,22 @@ export default function Docs({ isActive }: DocsProps) {
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* Pin button - only for docs with URLs */}
+                    {doc.url && !(doc as any).isObsidian && (
+                      <button
+                        onClick={() => handleTogglePin(doc.id)}
+                        className={`p-2 transition-colors rounded ${
+                          doc.pinned
+                            ? 'text-dark-accent-primary hover:bg-dark-bg'
+                            : 'text-dark-text-muted hover:text-dark-accent-primary hover:bg-dark-bg'
+                        }`}
+                        title={doc.pinned ? "Unpin from Quick Access" : "Pin to Quick Access"}
+                      >
+                        <svg className="w-4 h-4" fill={doc.pinned ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                         </svg>
                       </button>
                     )}
