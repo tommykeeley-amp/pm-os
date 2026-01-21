@@ -589,7 +589,7 @@ export default function Docs({ isActive }: DocsProps) {
                     <button
                       key={doc.id}
                       onClick={() => handleOpenDoc(doc)}
-                      className="flex-shrink-0 w-24 flex flex-col items-center gap-2 p-3 bg-dark-surface border border-dark-border rounded-lg hover:border-dark-accent-primary transition-colors group cursor-pointer"
+                      className="flex-shrink-0 w-20 flex flex-col items-center gap-1.5 p-2 bg-dark-surface border border-dark-border rounded-lg hover:border-dark-accent-primary transition-colors group cursor-pointer"
                       title={doc.title}
                     >
                       {/* Doc type icon */}
