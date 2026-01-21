@@ -73,7 +73,7 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      const { title, channel, messageTs, threadTs, user, teamId } = taskData;
+      const { title, description, channel, messageTs, threadTs, user, teamId } = taskData;
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
@@ -86,6 +86,7 @@ export class SlackEventsServer {
       // Create the task
       const task = {
         title,
+        description: description || undefined,
         source: 'slack',
         sourceId: `${channel}_${messageTs}`,
         priority: 'medium',
