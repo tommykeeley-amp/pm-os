@@ -120,7 +120,11 @@ export class SlackEventsServer {
       }
 
       // Send confirmation reply in Slack
-      await this.sendSlackReply(channel, threadTs, `✅ Task created: "${title}"`);
+      let confirmMessage = `✅ Task created: "${title}"`;
+      if (jiraTicket) {
+        confirmMessage += `\n\n🎫 Jira ticket created: <${jiraTicket.url}|${jiraTicket.key}>`;
+      }
+      await this.sendSlackReply(channel, threadTs, confirmMessage);
 
       // Replace eyes with green checkmark
       await this.removeReaction(channel, messageTs, 'eyes');
