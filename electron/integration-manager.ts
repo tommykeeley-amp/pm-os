@@ -250,13 +250,14 @@ export class IntegrationManager {
     }
 
     try {
-      const events = await this.calendarService.getUpcomingEvents(7);
+      // Use getTodayEvents to include both past and future events from today
+      const events = await this.calendarService.getTodayEvents();
       return events;
     } catch (error: any) {
       // Try to refresh tokens if unauthorized
       if (error.message?.includes('401') || error.message?.includes('unauthorized')) {
         await this.refreshGoogleTokens();
-        const events = await this.calendarService.getUpcomingEvents(7);
+        const events = await this.calendarService.getTodayEvents();
         return events;
       }
       throw error;
