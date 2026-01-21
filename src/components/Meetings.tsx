@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format, parseISO } from 'date-fns';
 import PendingRSVPCard from './PendingRSVPCard';
 import CreateEventModal from './CreateEventModal';
@@ -39,6 +39,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   const [secondaryTimezone, setSecondaryTimezone] = useState('America/Los_Angeles');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [initialMeetingTitle, setInitialMeetingTitle] = useState<string | undefined>(undefined);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   const handleCreateMeeting = (title: string) => {
     setInitialMeetingTitle(title);
@@ -119,6 +120,21 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
     onNextMeetingChange(timeString);
   }, [events, currentTime, onNextMeetingChange]);
+
+  // Auto-scroll to current time when events load or tab becomes active
+  useEffect(() => {
+    if (!timelineContainerRef.current || events.length === 0) return;
+
+    // Calculate current time position
+    const now = new Date();
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const currentMinutes = (now.getTime() - dayStart.getTime()) / (1000 * 60);
+    const scrollPosition = (currentMinutes / 60) * 60 - 100; // PIXELS_PER_HOUR = 60, offset by 100px to center better
+
+    // Scroll to current time
+    timelineContainerRef.current.scrollTop = Math.max(0, scrollPosition);
+  }, [events, isActive]);
 
   const loadSettings = async () => {
     try {
@@ -593,7 +609,7 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
       </div>
 
       {/* Timeline container - scrollable with fixed height per hour */}
-      <div className="flex-1 px-4 flex flex-row overflow-y-auto">
+      <div ref={timelineContainerRef} className="flex-1 px-4 flex flex-row overflow-y-auto">
 
         {/* Time labels column - fixed height per hour block */}
         <div className="w-16 flex flex-col text-xs text-dark-text-muted flex-shrink-0" style={{ paddingTop: `${timelineBounds.start * PIXELS_PER_HOUR}px`, paddingBottom: '8px' }}>
