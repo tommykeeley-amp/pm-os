@@ -31,6 +31,7 @@ function App() {
   const [tasksCount, setTasksCount] = useState(0);
   const [userName, setUserName] = useState<string>('');
   const [taskInputKey, setTaskInputKey] = useState(0);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
   const getHeaderTitle = () => {
     if (!userName) return 'PM-OS';
@@ -86,9 +87,10 @@ function App() {
       const settings = await window.electronAPI.getSettings();
       setIsPinned(settings.windowPosition?.isPinned || false);
 
-      // Load user settings for name
+      // Load user settings for name and completed section preference
       const userSettings = await window.electronAPI.getUserSettings();
       setUserName(userSettings?.name || '');
+      setCompletedExpanded(userSettings?.completedExpanded ?? false);
 
       // Load tasks
       const loadedTasks = await window.electronAPI.getTasks();
@@ -155,6 +157,21 @@ function App() {
       setIsPinned(newPinState);
     } catch (error) {
       console.error('Failed to toggle pin:', error);
+    }
+  };
+
+  const handleToggleCompletedSection = async () => {
+    const newExpandedState = !completedExpanded;
+    setCompletedExpanded(newExpandedState);
+
+    try {
+      const userSettings = await window.electronAPI.getUserSettings();
+      await window.electronAPI.saveUserSettings({
+        ...userSettings,
+        completedExpanded: newExpandedState,
+      });
+    } catch (error) {
+      console.error('Failed to save completed section state:', error);
     }
   };
 
@@ -778,18 +795,33 @@ function App() {
             {/* Completed tasks */}
             {completedTasks.length > 0 && (
               <div>
-                <h2 className="section-header">
-                  Completed
-                </h2>
-                <TaskList
-                  tasks={completedTasks}
-                  onToggle={handleToggleTask}
-                  onDelete={handleDeleteTask}
-                  onUpdateTask={handleUpdateTask}
-                  onLinkSlackChannel={handleLinkSlackChannel}
-                  slackConfigured={slackConfigured}
-                  onTaskClick={setDetailTask}
-                />
+                <div
+                  className="section-header cursor-pointer hover:bg-dark-surface/50 transition-colors rounded-lg -mx-2 px-2"
+                  onClick={handleToggleCompletedSection}
+                >
+                  <div className="flex items-center justify-between">
+                    <h2 className="flex-1">Completed ({completedTasks.length})</h2>
+                    <svg
+                      className={`w-4 h-4 text-dark-text-muted transition-transform ${completedExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+                {completedExpanded && (
+                  <TaskList
+                    tasks={completedTasks}
+                    onToggle={handleToggleTask}
+                    onDelete={handleDeleteTask}
+                    onUpdateTask={handleUpdateTask}
+                    onLinkSlackChannel={handleLinkSlackChannel}
+                    slackConfigured={slackConfigured}
+                    onTaskClick={setDetailTask}
+                  />
+                )}
               </div>
             )}
 
