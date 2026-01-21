@@ -241,19 +241,40 @@ export class CalendarService {
     try {
       const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
 
-      // Get user email for updating correct attendee
-      const profile = await this.oauth2Client.getTokenInfo(this.oauth2Client.credentials.access_token);
-      const userEmail = profile.email;
+      // First, fetch the event to get all attendees
+      const eventResponse = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: eventId,
+      });
 
+      const event = eventResponse.data;
+      if (!event.attendees || event.attendees.length === 0) {
+        throw new Error('No attendees found for this event');
+      }
+
+      // Find the current user's attendee record (marked with self: true)
+      const userAttendee = event.attendees.find((a: any) => a.self === true);
+      if (!userAttendee || !userAttendee.email) {
+        throw new Error('Missing attendee email');
+      }
+
+      // Update all attendees, changing only the user's status
+      const updatedAttendees = event.attendees.map((attendee: any) => {
+        if (attendee.self) {
+          return {
+            ...attendee,
+            responseStatus: responseStatus,
+          };
+        }
+        return attendee;
+      });
+
+      // Patch the event with updated attendees
       await calendar.events.patch({
         calendarId: 'primary',
         eventId: eventId,
         requestBody: {
-          attendees: [{
-            email: userEmail,
-            responseStatus: responseStatus,
-            self: true
-          }]
+          attendees: updatedAttendees
         },
         sendUpdates: 'all', // Notify other attendees
       });
