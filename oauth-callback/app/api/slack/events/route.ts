@@ -59,49 +59,56 @@ async function handleTaskCreation(event: any, teamId: string) {
 
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
+  console.log('[Slack Events] Event details:', {
+    channel,
+    messageTs,
+    threadTs,
+    isInThread: !!threadTs,
+    text: event.text
+  });
 
   let taskTitle = 'Task from Slack';
   let taskDescription = '';
 
-  // Check if this is in a thread (and not the first message of a thread)
-  const isInThread = threadTs && threadTs !== messageTs;
+  // Check if this is in a thread - if thread_ts exists, we're in a thread context
+  // Note: For the original message that starts a thread, thread_ts will equal ts
+  // But we still want to fetch thread context if there are replies
+  const isInThread = !!threadTs;
 
   try {
-    if (isInThread) {
-      // This is a reply in a thread - fetch full thread context
-      console.log('[Slack Events] Message is in thread, fetching context...');
-      const threadData = await fetchThreadContext(channel, threadTs);
+    // Always try to fetch conversation history to get context
+    // Use thread_ts if available, otherwise use message ts
+    const contextTs = threadTs || messageTs;
+    console.log('[Slack Events] Fetching conversation context with ts:', contextTs);
+    const threadData = await fetchThreadContext(channel, contextTs);
 
-      if (threadData) {
-        // Try to use AI to synthesize task from thread
-        try {
-          const aiResult = await synthesizeTaskFromContext(threadData.context);
-          taskTitle = aiResult.title;
-          taskDescription = aiResult.description;
-          console.log('[Slack Events] AI-generated task:', { taskTitle, taskDescription });
-        } catch (aiError) {
-          // AI failed - fall back to using thread context directly
-          console.warn('[Slack Events] AI synthesis failed, using thread context directly:', aiError);
+    if (threadData && threadData.messages.length > 1) {
+      // We have thread context with multiple messages - use AI to synthesize
+      console.log('[Slack Events] Found thread with', threadData.messages.length, 'messages');
+      try {
+        const aiResult = await synthesizeTaskFromContext(threadData.context);
+        taskTitle = aiResult.title;
+        taskDescription = aiResult.description;
+        console.log('[Slack Events] AI-generated task:', { taskTitle, taskDescription });
+      } catch (aiError) {
+        // AI failed - fall back to using thread context directly
+        console.error('[Slack Events] AI synthesis failed:', aiError);
 
-          // Use first message as title (cleaned up)
-          taskTitle = threadData.messages[0]?.text
-            ?.replace(/<@[A-Z0-9]+>/gi, '')
-            .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-            .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-            .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-            .trim()
-            .slice(0, 100) || 'Task from Slack thread';
+        // Use first message as title (cleaned up)
+        taskTitle = threadData.messages[0]?.text
+          ?.replace(/<@[A-Z0-9]+>/gi, '')
+          .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+          .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+          .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+          .trim()
+          .slice(0, 100) || 'Task from Slack thread';
 
-          // Use full thread as description
-          taskDescription = `Thread context:\n\n${threadData.context}`;
-        }
-      } else {
-        // Couldn't fetch thread - use current message
-        taskTitle = event.text.replace(/<@[A-Z0-9]+>/gi, '').trim() || 'Task from Slack thread';
-        taskDescription = 'Unable to fetch thread context';
+        // Use full thread as description
+        taskDescription = `Thread context:\n\n${threadData.context}`;
       }
     } else {
-      // Not in a thread - just use the message text
+      // Single message or couldn't fetch context - just use the message text
+      console.log('[Slack Events] No thread context found, using message text directly');
       taskTitle = event.text
         .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
         .trim();
