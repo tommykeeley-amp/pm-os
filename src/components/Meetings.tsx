@@ -121,20 +121,25 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
     onNextMeetingChange(timeString);
   }, [events, currentTime, onNextMeetingChange]);
 
-  // Auto-scroll to current time when events load or tab becomes active
+  // Auto-scroll to current time when tab becomes active
   useEffect(() => {
-    if (!timelineContainerRef.current || events.length === 0) return;
+    if (!timelineContainerRef.current || !isActive) return;
 
-    // Calculate current time position
-    const now = new Date();
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const currentMinutes = (now.getTime() - dayStart.getTime()) / (1000 * 60);
-    const scrollPosition = (currentMinutes / 60) * 60 - 100; // PIXELS_PER_HOUR = 60, offset by 100px to center better
+    // Small delay to ensure the DOM is ready
+    setTimeout(() => {
+      if (!timelineContainerRef.current) return;
 
-    // Scroll to current time
-    timelineContainerRef.current.scrollTop = Math.max(0, scrollPosition);
-  }, [events, isActive]);
+      // Calculate current time position
+      const now = new Date();
+      const dayStart = new Date(now);
+      dayStart.setHours(0, 0, 0, 0);
+      const currentMinutes = (now.getTime() - dayStart.getTime()) / (1000 * 60);
+      const scrollPosition = (currentMinutes / 60) * 60 - 100; // PIXELS_PER_HOUR = 60, offset by 100px to center better
+
+      // Scroll to current time
+      timelineContainerRef.current.scrollTop = Math.max(0, scrollPosition);
+    }, 50);
+  }, [isActive]);
 
   const loadSettings = async () => {
     try {
