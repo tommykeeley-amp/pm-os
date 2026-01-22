@@ -187,20 +187,21 @@ export class SlackService {
           }
 
           // Get recent unread messages from this DM
+          // Fetch more messages to ensure we get all unread ones
           const history = await this.client.conversations.history({
             channel: channel.id!,
-            limit: 10,
+            limit: Math.max(unreadCount * 2, 20), // Get at least 2x unread count to account for user's own messages
           });
 
           if (history.ok && history.messages) {
             console.log(`[SlackService._fetchDirectMessages] Got ${history.messages.length} messages from history`);
 
-            // Only include messages not sent by current user
+            // Only include messages not sent by current user, up to unread count
             const unreadMessages = history.messages
-              .filter(msg => msg.user !== currentUserId)
-              .slice(0, unreadCount);
+              .filter(msg => msg.user !== currentUserId && msg.user) // Filter out user's own messages and ensure user exists
+              .slice(0, unreadCount); // Take exactly unreadCount messages
 
-            console.log(`[SlackService._fetchDirectMessages] Filtered to ${unreadMessages.length} unread messages from others`);
+            console.log(`[SlackService._fetchDirectMessages] Filtered to ${unreadMessages.length} unread messages from others (expected: ${unreadCount})`);
 
             for (const msg of unreadMessages) {
               messages.push({
