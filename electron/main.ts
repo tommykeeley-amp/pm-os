@@ -5,6 +5,7 @@ import Store from 'electron-store';
 import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as http from 'http';
 import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
@@ -587,34 +588,43 @@ app.whenReady().then(async () => {
 
   // Set Jira ticket creation handler
   slackEventsServer.setJiraCreateHandler(async (request) => {
-    console.log('[Main] Jira ticket creation requested:', request.summary);
-    console.log('[Main] jiraService exists:', !!jiraService);
+    const logFile = path.join(os.homedir(), 'pm-os-jira-debug.log');
+    const log = (msg: string) => {
+      const timestamp = new Date().toISOString();
+      fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`);
+      console.log(msg);
+    };
+
+    log('[Main] Jira ticket creation requested: ' + request.summary);
+    log('[Main] jiraService exists: ' + !!jiraService);
 
     if (!jiraService) {
       const userSettings = store.get('userSettings', {}) as any;
-      console.error('[Main] Jira service not available. Settings:', {
+      log('[Main] Jira service not available. Settings: ' + JSON.stringify({
         jiraEnabled: userSettings.jiraEnabled,
         hasDomain: !!userSettings.jiraDomain,
         hasEmail: !!userSettings.jiraEmail,
         hasToken: !!userSettings.jiraApiToken,
-      });
+      }));
       throw new Error('Jira not configured or not enabled');
     }
 
     const userSettings = store.get('userSettings', {}) as any;
-    console.log('[Main] Creating Jira issue with:', {
+    log('[Main] Creating Jira issue with: ' + JSON.stringify({
       projectKey: userSettings.jiraDefaultProject || 'AMP',
       issueType: userSettings.jiraDefaultIssueType || 'Task',
-    });
+      assigneeName: request.assigneeName,
+    }));
 
     const issue = await jiraService.createIssue({
       summary: request.summary,
       description: request.description,
       projectKey: userSettings.jiraDefaultProject || 'AMP',
       issueType: userSettings.jiraDefaultIssueType || 'Task',
+      assigneeName: request.assigneeName,
     });
 
-    console.log('[Main] Jira issue created:', issue.key);
+    log('[Main] Jira issue created: ' + issue.key);
 
     return {
       key: issue.key,

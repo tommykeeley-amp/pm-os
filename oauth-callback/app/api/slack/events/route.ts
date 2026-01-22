@@ -61,6 +61,7 @@ async function handleTaskCreation(event: any, teamId: string) {
   let taskTitle = 'Task from Slack';
   let taskDescription = '';
   let shouldCreateJira = false;
+  let assigneeName: string | undefined = undefined;
 
   // Check if user wants to create a Jira ticket (more flexible matching)
   shouldCreateJira = /\b(create|make)\b.*\bjira\b/i.test(text) || /\bjira\b.*\b(ticket|issue)\b/i.test(text);
@@ -98,7 +99,8 @@ async function handleTaskCreation(event: any, teamId: string) {
         const aiResult = await synthesizeTaskFromContext(threadData.context);
         taskTitle = aiResult.title;
         taskDescription = aiResult.description;
-        console.log('[Slack Events] AI-generated task:', { taskTitle, taskDescription });
+        assigneeName = aiResult.assignee;
+        console.log('[Slack Events] AI-generated task:', { taskTitle, taskDescription, assigneeName });
       } catch (aiError) {
         // AI failed - fall back to using thread context directly
         console.error('[Slack Events] AI synthesis failed:', aiError);
@@ -159,6 +161,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     timestamp: Date.now(),
     processed: false,
     shouldCreateJira,
+    assigneeName,
   };
 
   // Store in pending tasks
@@ -220,7 +223,7 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
   }
 }
 
-async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string }> {
+async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string; assignee?: string }> {
   console.log('[Slack Events] Synthesizing task from context:', context);
 
   const completion = await openai.chat.completions.create({
@@ -228,7 +231,7 @@ async function synthesizeTaskFromContext(context: string): Promise<{ title: stri
     messages: [
       {
         role: 'system',
-        content: 'You are a helpful assistant that creates task titles and descriptions from Slack conversations. Summarize the conversation accurately and literally - do not invent problems or action items that were not discussed. Create a concise title (max 60 chars) that describes what was actually talked about, and a brief description (2-4 sentences) that captures the key points from the conversation. Always respond with valid JSON containing "title" and "description" fields.',
+        content: 'You are a helpful assistant that creates task titles and descriptions from Slack conversations. Summarize the conversation accurately and literally - do not invent problems or action items that were not discussed. Create a concise title (max 60 chars) that describes what was actually talked about, and a brief description (2-4 sentences) that captures the key points from the conversation. If the conversation mentions assigning the task to someone (e.g., "assign to Ben", "give this to Sarah"), extract their name in the "assignee" field. Always respond with valid JSON containing "title", "description", and optionally "assignee" fields.',
       },
       {
         role: 'user',
@@ -245,6 +248,7 @@ async function synthesizeTaskFromContext(context: string): Promise<{ title: stri
   return {
     title: result.title || 'Task from Slack thread',
     description: result.description || context,
+    assignee: result.assignee || undefined,
   };
 }
 

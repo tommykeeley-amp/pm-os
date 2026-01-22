@@ -24,6 +24,7 @@ interface CreateIssueRequest {
   projectKey: string;
   issueType: string;
   priority?: string;
+  assigneeName?: string; // Optional assignee name to search for
 }
 
 interface JiraConfig {
@@ -104,9 +105,47 @@ export class JiraService {
   }
 
   /**
+   * Search for users by name (fuzzy matching)
+   * Returns the best match or null if no users found
+   */
+  async searchUserByName(name: string): Promise<{ accountId: string; displayName: string } | null> {
+    try {
+      const response = await this.makeRequest(`/user/search?query=${encodeURIComponent(name)}`);
+
+      if (!response || response.length === 0) {
+        console.log(`[Jira] No users found matching: ${name}`);
+        return null;
+      }
+
+      // Return the first match (Jira API returns results sorted by relevance)
+      const user = response[0];
+      console.log(`[Jira] Found user: ${user.displayName} (${user.accountId}) for query: ${name}`);
+      return {
+        accountId: user.accountId,
+        displayName: user.displayName,
+      };
+    } catch (error) {
+      console.error(`[Jira] Error searching for user ${name}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Create a Jira issue
    */
   async createIssue(request: CreateIssueRequest): Promise<JiraIssue> {
+    // Search for assignee if name was provided
+    let assignee = null;
+    if (request.assigneeName) {
+      const user = await this.searchUserByName(request.assigneeName);
+      if (user) {
+        assignee = { accountId: user.accountId };
+        console.log(`[Jira] Assigning issue to ${user.displayName}`);
+      } else {
+        console.log(`[Jira] Could not find user matching "${request.assigneeName}", leaving unassigned`);
+      }
+    }
+
     const payload = {
       fields: {
         project: {
@@ -134,6 +173,7 @@ export class JiraService {
         priority: request.priority ? {
           name: request.priority,
         } : undefined,
+        assignee: assignee,
       },
     };
 

@@ -1,8 +1,27 @@
 import Store from 'electron-store';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 const store = new Store();
 
 const VERCEL_API_URL = 'https://pm-os-git-main-amplitude-inc.vercel.app/api/slack';
+
+// Set up file logging
+const logFilePath = path.join(os.homedir(), 'pm-os-jira-debug.log');
+function logToFile(message: string) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}`;
+  fs.appendFileSync(logFilePath, logMessage + '\n');
+  console.log(message); // Also log to console
+}
+function logErrorToFile(message: string, error?: any) {
+  const timestamp = new Date().toISOString();
+  const errorMsg = error ? ` ${JSON.stringify(error)}` : '';
+  const logMessage = `[${timestamp}] ERROR: ${message}${errorMsg}`;
+  fs.appendFileSync(logFilePath, logMessage + '\n');
+  logErrorToFile(message, error); // Also log to console
+}
 
 export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
@@ -16,13 +35,13 @@ export class SlackEventsServer {
     this.onTaskCreate = handler;
   }
 
-  setJiraCreateHandler(handler: (request: { summary: string; description?: string }) => Promise<{ key: string; url: string }>) {
+  setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string }) => Promise<{ key: string; url: string }>) {
     this.onJiraCreate = handler;
   }
 
   async start(): Promise<void> {
-    console.log('[SlackEvents] Starting Slack events polling...');
-    console.log('[SlackEvents] Polling Vercel endpoint:', VERCEL_API_URL);
+    logToFile('[SlackEvents] Starting Slack events polling...');
+    logToFile('[SlackEvents] Polling Vercel endpoint: ' + VERCEL_API_URL);
 
     // Start polling every 10 seconds
     this.pollingInterval = setInterval(() => {
@@ -37,7 +56,7 @@ export class SlackEventsServer {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
-      console.log('[SlackEvents] Stopped polling');
+      logToFile('[SlackEvents] Stopped polling');
     }
   }
 
@@ -54,7 +73,7 @@ export class SlackEventsServer {
       const data = await response.json();
 
       if (data.success && data.tasks && data.tasks.length > 0) {
-        console.log(`[SlackEvents] Found ${data.tasks.length} pending task(s)`);
+        logToFile(`[SlackEvents] Found ${data.tasks.length} pending task(s)`);
 
         for (const taskData of data.tasks) {
           await this.processTask(taskData);
@@ -70,7 +89,7 @@ export class SlackEventsServer {
         }
       }
     } catch (error) {
-      console.error('[SlackEvents] Error polling pending tasks:', error);
+      logErrorToFile('[SlackEvents] Error polling pending tasks:', error);
     } finally {
       this.isPolling = false;
     }
@@ -78,10 +97,10 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, assigneeName } = taskData;
       let jiraTicket: { key: string; url: string } | null = null;
 
-      console.log('[SlackEvents] Processing task:', { title, shouldCreateJira, hasJiraHandler: !!this.onJiraCreate });
+      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, assigneeName, hasJiraHandler: !!this.onJiraCreate }));
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
@@ -89,27 +108,28 @@ export class SlackEventsServer {
       // Create Jira ticket if requested and handler is available
       if (shouldCreateJira) {
         if (!this.onJiraCreate) {
-          console.error('[SlackEvents] Jira creation requested but handler not set');
+          logErrorToFile('[SlackEvents] Jira creation requested but handler not set');
           description = `Failed to create Jira ticket: Handler not configured\n\nOriginal context:\n${description}`;
         } else {
           try {
-            console.log('[SlackEvents] Creating Jira ticket with title:', title);
+            logToFile('[SlackEvents] Creating Jira ticket with title: ' + title + (assigneeName ? ' (assignee: ' + assigneeName + ')' : ''));
             jiraTicket = await this.onJiraCreate({
               summary: title,
               description: description,
+              assigneeName: assigneeName,
             });
-            console.log('[SlackEvents] Jira ticket created successfully:', jiraTicket);
+            logToFile('[SlackEvents] Jira ticket created successfully: ' + JSON.stringify(jiraTicket));
 
             // Update task to be about validating the Jira ticket
             title = `Validate Jira ticket: ${jiraTicket.key}`;
             description = `Review and validate the Jira ticket that was created:\n\n${description}\n\nJira ticket: ${jiraTicket.url}`;
           } catch (jiraError) {
-            console.error('[SlackEvents] Failed to create Jira ticket:', jiraError);
+            logErrorToFile('[SlackEvents] Failed to create Jira ticket:', jiraError);
             description = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${description}`;
           }
         }
       } else {
-        console.log('[SlackEvents] Jira creation not requested for this task');
+        logToFile('[SlackEvents] Jira creation not requested for this task');
       }
 
       // Build permalink to the message
@@ -146,7 +166,7 @@ export class SlackEventsServer {
         linkedItems,
       };
 
-      console.log('[SlackEvents] Creating task:', task);
+      logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description }));
 
       // Call the task creation handler
       if (this.onTaskCreate) {
@@ -164,7 +184,7 @@ export class SlackEventsServer {
       await this.removeReaction(channel, messageTs, 'eyes');
       await this.addReaction(channel, messageTs, 'white_check_mark');
     } catch (error) {
-      console.error('[SlackEvents] Error processing task:', error);
+      logErrorToFile('[SlackEvents] Error processing task:', error);
     }
   }
 
@@ -172,7 +192,7 @@ export class SlackEventsServer {
     try {
       const botToken = store.get('slack_bot_token') as string;
       if (!botToken) {
-        console.error('[SlackEvents] No bot token found');
+        logErrorToFile('[SlackEvents] No bot token found');
         return;
       }
 
@@ -191,10 +211,10 @@ export class SlackEventsServer {
 
       const data = await response.json();
       if (!data.success) {
-        console.error('[SlackEvents] Failed to send reply:', data.error);
+        logErrorToFile('[SlackEvents] Failed to send reply:', data.error);
       }
     } catch (error) {
-      console.error('[SlackEvents] Error sending Slack reply:', error);
+      logErrorToFile('[SlackEvents] Error sending Slack reply:', error);
     }
   }
 
@@ -202,7 +222,7 @@ export class SlackEventsServer {
     try {
       const botToken = store.get('slack_bot_token') as string;
       if (!botToken) {
-        console.error('[SlackEvents] No bot token found');
+        logErrorToFile('[SlackEvents] No bot token found');
         return;
       }
 
@@ -221,10 +241,10 @@ export class SlackEventsServer {
 
       const data = await response.json();
       if (!data.ok) {
-        console.error('[SlackEvents] Failed to add reaction:', data.error);
+        logErrorToFile('[SlackEvents] Failed to add reaction:', data.error);
       }
     } catch (error) {
-      console.error('[SlackEvents] Error adding reaction:', error);
+      logErrorToFile('[SlackEvents] Error adding reaction:', error);
     }
   }
 
@@ -232,7 +252,7 @@ export class SlackEventsServer {
     try {
       const botToken = store.get('slack_bot_token') as string;
       if (!botToken) {
-        console.error('[SlackEvents] No bot token found');
+        logErrorToFile('[SlackEvents] No bot token found');
         return;
       }
 
@@ -251,10 +271,10 @@ export class SlackEventsServer {
 
       const data = await response.json();
       if (!data.ok) {
-        console.error('[SlackEvents] Failed to remove reaction:', data.error);
+        logErrorToFile('[SlackEvents] Failed to remove reaction:', data.error);
       }
     } catch (error) {
-      console.error('[SlackEvents] Error removing reaction:', error);
+      logErrorToFile('[SlackEvents] Error removing reaction:', error);
     }
   }
 }
