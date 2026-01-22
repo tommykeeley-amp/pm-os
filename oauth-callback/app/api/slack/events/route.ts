@@ -85,7 +85,10 @@ async function handleTaskCreation(event: any, teamId: string) {
   }
 
   // Check for Slack user mentions in "assign" context
+  // Slack mentions look like: "assign it to <@U12345>"
   console.log('[Slack Events] Checking for assignment mentions...');
+  console.log('[Slack Events] Raw event text:', JSON.stringify(event.text));
+
   const assignMentionMatch = event.text.match(/assign.*?<@([A-Z0-9]+)>/i);
   console.log('[Slack Events] Assign mention match result:', assignMentionMatch);
 
@@ -94,14 +97,18 @@ async function handleTaskCreation(event: any, teamId: string) {
     console.log('[Slack Events] Found Slack user mention for assignment:', slackUserId);
 
     // Fetch user info from Slack
-    const userInfo = await fetchSlackUserInfo(slackUserId);
-    console.log('[Slack Events] User info fetch result:', userInfo);
-    if (userInfo) {
-      assigneeName = userInfo.name;
-      assigneeEmail = userInfo.email;
-      console.log('[Slack Events] Resolved Slack user:', { name: assigneeName, email: assigneeEmail });
-    } else {
-      console.log('[Slack Events] Failed to fetch user info from Slack');
+    try {
+      const userInfo = await fetchSlackUserInfo(slackUserId);
+      console.log('[Slack Events] User info fetch result:', JSON.stringify(userInfo));
+      if (userInfo && userInfo.email) {
+        assigneeName = userInfo.name;
+        assigneeEmail = userInfo.email;
+        console.log('[Slack Events] Resolved Slack user:', { name: assigneeName, email: assigneeEmail });
+      } else {
+        console.log('[Slack Events] Failed to get email from user info');
+      }
+    } catch (error) {
+      console.error('[Slack Events] Error fetching Slack user info:', error);
     }
   } else {
     console.log('[Slack Events] No assignment mention found in text');
@@ -225,13 +232,15 @@ async function handleTaskCreation(event: any, teamId: string) {
 async function fetchSlackUserInfo(userId: string): Promise<{ name: string; email: string } | null> {
   try {
     const botToken = process.env.SLACK_BOT_TOKEN;
+    console.log('[Slack Events] Bot token available:', !!botToken);
     if (!botToken) {
       console.error('[Slack Events] No bot token in environment');
       return null;
     }
 
     const url = `https://slack.com/api/users.info?user=${userId}`;
-    console.log('[Slack Events] Fetching user info from:', url);
+    console.log('[Slack Events] Fetching user info for userId:', userId);
+    console.log('[Slack Events] Request URL:', url);
 
     const response = await fetch(url, {
       headers: {
@@ -239,17 +248,32 @@ async function fetchSlackUserInfo(userId: string): Promise<{ name: string; email
       },
     });
 
+    console.log('[Slack Events] Response status:', response.status);
     const data = await response.json();
     console.log('[Slack Events] Slack user info response:', JSON.stringify(data, null, 2));
 
-    if (!data.ok || !data.user) {
-      console.error('[Slack Events] Failed to fetch user info:', data.error);
+    if (!data.ok) {
+      console.error('[Slack Events] Slack API returned error:', data.error);
+      return null;
+    }
+
+    if (!data.user) {
+      console.error('[Slack Events] No user data in response');
+      return null;
+    }
+
+    const userEmail = data.user.profile?.email;
+    const userName = data.user.real_name || data.user.name;
+    console.log('[Slack Events] Extracted user info:', { userName, userEmail });
+
+    if (!userEmail) {
+      console.error('[Slack Events] User has no email address in Slack profile');
       return null;
     }
 
     return {
-      name: data.user.real_name || data.user.name,
-      email: data.user.profile?.email || '',
+      name: userName,
+      email: userEmail,
     };
   } catch (error) {
     console.error('[Slack Events] Error fetching user info:', error);
