@@ -105,6 +105,11 @@ export class SlackEventsServer {
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
 
+      // Build permalink to the message first (we need it for Jira)
+      // Convert timestamp (e.g., "1234567890.123456") to message ID (e.g., "p1234567890123456")
+      const messageId = 'p' + messageTs.replace('.', '');
+      const permalink = `slack://channel?team=${teamId}&id=${channel}&message=${messageId}`;
+
       // Create Jira ticket if requested and handler is available
       if (shouldCreateJira) {
         if (!this.onJiraCreate) {
@@ -113,9 +118,13 @@ export class SlackEventsServer {
         } else {
           try {
             logToFile('[SlackEvents] Creating Jira ticket with title: ' + title + (assigneeName ? ' (assignee: ' + assigneeName + (assigneeEmail ? ' <' + assigneeEmail + '>' : '') + ')' : ''));
+
+            // Add Slack thread link to Jira description
+            const jiraDescription = description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`;
+
             jiraTicket = await this.onJiraCreate({
               summary: title,
-              description: description,
+              description: jiraDescription,
               assigneeName: assigneeName,
               assigneeEmail: assigneeEmail,
             });
@@ -132,11 +141,6 @@ export class SlackEventsServer {
       } else {
         logToFile('[SlackEvents] Jira creation not requested for this task');
       }
-
-      // Build permalink to the message
-      // Convert timestamp (e.g., "1234567890.123456") to message ID (e.g., "p1234567890123456")
-      const messageId = 'p' + messageTs.replace('.', '');
-      const permalink = `slack://channel?team=${teamId}&id=${channel}&message=${messageId}`;
 
       // Build linked items array
       const linkedItems: any[] = [{

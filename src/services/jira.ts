@@ -1,3 +1,15 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+const logFilePath = path.join(os.homedir(), 'pm-os-jira-debug.log');
+function logToFile(message: string) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}`;
+  fs.appendFileSync(logFilePath, logMessage + '\n');
+  console.log(message);
+}
+
 interface JiraIssue {
   id: string;
   key: string;
@@ -109,12 +121,35 @@ export class JiraService {
    * Search for users by email (exact matching)
    * Returns the user or null if not found
    */
-  async searchUserByEmail(email: string): Promise<{ accountId: string; displayName: string; email: string } | null> {
+  async searchUserByEmail(email: string, projectKey: string): Promise<{ accountId: string; displayName: string; email: string } | null> {
     try {
+      // Try assignable user search first (for finding users who can be assigned)
+      logToFile(`[Jira] Trying assignable user search for email: ${email} in project: ${projectKey}`);
+      const assignableResponse = await this.makeRequest(`/user/assignable/search?query=${encodeURIComponent(email)}&project=${encodeURIComponent(projectKey)}`);
+      logToFile(`[Jira] Assignable search returned ${assignableResponse?.length || 0} users`);
+
+      if (assignableResponse && assignableResponse.length > 0) {
+        const exactMatch = assignableResponse.find((user: any) =>
+          user.emailAddress?.toLowerCase() === email.toLowerCase()
+        );
+
+        if (exactMatch) {
+          logToFile(`[Jira] Found exact email match via assignable search: ${exactMatch.displayName} (${exactMatch.accountId})`);
+          return {
+            accountId: exactMatch.accountId,
+            displayName: exactMatch.displayName,
+            email: exactMatch.emailAddress,
+          };
+        }
+      }
+
+      // Fall back to regular user search
+      logToFile(`[Jira] Trying regular user search for email: ${email}`);
       const response = await this.makeRequest(`/user/search?query=${encodeURIComponent(email)}`);
+      logToFile(`[Jira] Regular search returned ${response?.length || 0} users`);
 
       if (!response || response.length === 0) {
-        console.log(`[Jira] No users found with email: ${email}`);
+        logToFile(`[Jira] No users found with email: ${email}`);
         return null;
       }
 
@@ -124,7 +159,7 @@ export class JiraService {
       );
 
       if (exactMatch) {
-        console.log(`[Jira] Found exact email match: ${exactMatch.displayName} (${exactMatch.accountId})`);
+        logToFile(`[Jira] Found exact email match: ${exactMatch.displayName} (${exactMatch.accountId})`);
         return {
           accountId: exactMatch.accountId,
           displayName: exactMatch.displayName,
@@ -132,10 +167,10 @@ export class JiraService {
         };
       }
 
-      console.log(`[Jira] No exact email match for: ${email}`);
+      logToFile(`[Jira] No exact email match for: ${email}. Found users: ${response.map((u: any) => u.emailAddress).join(', ')}`);
       return null;
     } catch (error) {
-      console.error(`[Jira] Error searching for user by email ${email}:`, error);
+      logToFile(`[Jira] Error searching for user by email ${email}: ${error}`);
       return null;
     }
   }
@@ -144,24 +179,26 @@ export class JiraService {
    * Search for users by name (fuzzy matching)
    * Returns the best match or null if no users found
    */
-  async searchUserByName(name: string): Promise<{ accountId: string; displayName: string } | null> {
+  async searchUserByName(name: string, projectKey: string): Promise<{ accountId: string; displayName: string } | null> {
     try {
-      const response = await this.makeRequest(`/user/search?query=${encodeURIComponent(name)}`);
+      logToFile(`[Jira] Calling Jira API to search for name: ${name} in project: ${projectKey}`);
+      const response = await this.makeRequest(`/user/assignable/search?query=${encodeURIComponent(name)}&project=${encodeURIComponent(projectKey)}`);
+      logToFile(`[Jira] Jira API returned ${response?.length || 0} users for name search`);
 
       if (!response || response.length === 0) {
-        console.log(`[Jira] No users found matching: ${name}`);
+        logToFile(`[Jira] No users found matching: ${name}`);
         return null;
       }
 
       // Return the first match (Jira API returns results sorted by relevance)
       const user = response[0];
-      console.log(`[Jira] Found user: ${user.displayName} (${user.accountId}) for query: ${name}`);
+      logToFile(`[Jira] Found user: ${user.displayName} (${user.accountId}) for query: ${name}`);
       return {
         accountId: user.accountId,
         displayName: user.displayName,
       };
     } catch (error) {
-      console.error(`[Jira] Error searching for user ${name}:`, error);
+      logToFile(`[Jira] Error searching for user ${name}: ${error}`);
       return null;
     }
   }
@@ -173,31 +210,31 @@ export class JiraService {
     // Search for assignee - prefer email over name for precision
     let assignee = null;
     if (request.assigneeEmail) {
-      console.log(`[Jira] Searching for user by email: ${request.assigneeEmail}`);
-      const user = await this.searchUserByEmail(request.assigneeEmail);
+      logToFile(`[Jira] Searching for user by email: ${request.assigneeEmail}`);
+      const user = await this.searchUserByEmail(request.assigneeEmail, request.projectKey);
       if (user) {
         assignee = { accountId: user.accountId };
-        console.log(`[Jira] Assigning issue to ${user.displayName} via email match`);
+        logToFile(`[Jira] Assigning issue to ${user.displayName} via email match`);
       } else {
-        console.log(`[Jira] Could not find user with email "${request.assigneeEmail}"`);
+        logToFile(`[Jira] Could not find user with email "${request.assigneeEmail}"`);
         // Fall back to name search if provided
         if (request.assigneeName) {
-          console.log(`[Jira] Falling back to name search: ${request.assigneeName}`);
-          const nameUser = await this.searchUserByName(request.assigneeName);
+          logToFile(`[Jira] Falling back to name search: ${request.assigneeName}`);
+          const nameUser = await this.searchUserByName(request.assigneeName, request.projectKey);
           if (nameUser) {
             assignee = { accountId: nameUser.accountId };
-            console.log(`[Jira] Assigning issue to ${nameUser.displayName} via name match`);
+            logToFile(`[Jira] Assigning issue to ${nameUser.displayName} via name match`);
           }
         }
       }
     } else if (request.assigneeName) {
-      console.log(`[Jira] Searching for user by name: ${request.assigneeName}`);
-      const user = await this.searchUserByName(request.assigneeName);
+      logToFile(`[Jira] Searching for user by name: ${request.assigneeName}`);
+      const user = await this.searchUserByName(request.assigneeName, request.projectKey);
       if (user) {
         assignee = { accountId: user.accountId };
-        console.log(`[Jira] Assigning issue to ${user.displayName}`);
+        logToFile(`[Jira] Assigning issue to ${user.displayName}`);
       } else {
-        console.log(`[Jira] Could not find user matching "${request.assigneeName}", leaving unassigned`);
+        logToFile(`[Jira] Could not find user matching "${request.assigneeName}", leaving unassigned`);
       }
     }
 
