@@ -334,32 +334,15 @@ export class IntegrationManager {
     }
 
     try {
-      // Get selected channel IDs from user settings
-      const userSettings = store.get('user_settings', {}) as any;
-      const selectedChannelIds = userSettings.slackChannels || [];
-      console.log('[IntegrationManager.getSlackUnreadMessages] User settings:', {
-        hasSettings: !!userSettings,
-        selectedChannelIds: selectedChannelIds,
-        channelCount: selectedChannelIds.length
-      });
-
-      // Fetch both channel messages and direct messages
-      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getUnreadMessages for channels...');
-      const channelMessages = await this.slackService.getUnreadMessages(selectedChannelIds);
-      console.log('[IntegrationManager.getSlackUnreadMessages] Channel messages:', {
-        count: channelMessages?.length || 0
-      });
-
-      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getDirectMessages for DMs...');
+      // Only fetch DMs (not channels) to avoid hanging
+      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getDirectMessages for DMs only...');
       const directMessages = await this.slackService.getDirectMessages();
       console.log('[IntegrationManager.getSlackUnreadMessages] Direct messages:', {
         count: directMessages?.length || 0
       });
 
-      // Merge channel messages and DMs
-      const messages = [...channelMessages, ...directMessages];
-      console.log('[IntegrationManager.getSlackUnreadMessages] Total messages (channels + DMs):', {
-        channelCount: channelMessages.length,
+      const messages = directMessages;
+      console.log('[IntegrationManager.getSlackUnreadMessages] Total messages:', {
         dmCount: directMessages.length,
         totalCount: messages.length
       });
