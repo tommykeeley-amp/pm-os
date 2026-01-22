@@ -37,6 +37,9 @@ interface UserSettings {
   secondaryTimezone?: string;
 }
 
+// Default Confluence system prompt
+const DEFAULT_CONFLUENCE_PROMPT = 'You are creating a simple Confluence page. Your ONLY job is to capture what was actually discussed in the conversation - nothing more. DO NOT add sections like "Overview", "Purpose", "Action Items", or any structure that was not explicitly discussed. DO NOT invent objectives, goals, or requirements. Just write down what was actually said in simple, clear paragraphs. If very little was discussed, write very little. Be literal and concise.';
+
 export default function Settings({ onClose }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>({});
   const [activeTab, setActiveTab] = useState<'personal' | 'integrations' | 'customizations'>('personal');
@@ -102,11 +105,9 @@ export default function Settings({ onClose }: SettingsProps) {
       const stored = await window.electronAPI.getUserSettings();
 
       // Set default Confluence prompt if not already set
-      const defaultConfluencePrompt = 'You are creating a simple Confluence page. Your ONLY job is to capture what was actually discussed in the conversation - nothing more. DO NOT add sections like "Overview", "Purpose", "Action Items", or any structure that was not explicitly discussed. DO NOT invent objectives, goals, or requirements. Just write down what was actually said in simple, clear paragraphs. If very little was discussed, write very little. Be literal and concise.';
-
       const settingsWithDefaults = {
         ...stored,
-        confluenceSystemPrompt: stored?.confluenceSystemPrompt || defaultConfluencePrompt,
+        confluenceSystemPrompt: stored?.confluenceSystemPrompt || DEFAULT_CONFLUENCE_PROMPT,
       };
 
       setSettings(settingsWithDefaults);
@@ -150,6 +151,10 @@ export default function Settings({ onClose }: SettingsProps) {
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
+  };
+
+  const handleResetConfluencePrompt = async () => {
+    await handleChange('confluenceSystemPrompt', DEFAULT_CONFLUENCE_PROMPT);
   };
 
   const handleConnect = async (integrationId: 'google' | 'slack') => {
@@ -623,9 +628,17 @@ export default function Settings({ onClose }: SettingsProps) {
                               </div>
 
                               <div>
-                                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                                  AI System Prompt
-                                </label>
+                                <div className="flex items-center justify-between mb-2">
+                                  <label className="text-sm font-medium text-dark-text-secondary">
+                                    AI System Prompt
+                                  </label>
+                                  <button
+                                    onClick={handleResetConfluencePrompt}
+                                    className="text-xs text-dark-accent-primary hover:text-dark-accent-secondary transition-colors"
+                                  >
+                                    Reset to Default
+                                  </button>
+                                </div>
                                 <textarea
                                   value={settings.confluenceSystemPrompt || ''}
                                   onChange={(e) => handleChange('confluenceSystemPrompt', e.target.value)}
