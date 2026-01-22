@@ -71,19 +71,29 @@ async function handleTaskCreation(event: any, teamId: string) {
   console.log('[Slack Events] Lowercase text:', text);
 
   // Check for Slack user mentions in "assign" context
+  console.log('[Slack Events] Checking for assignment mentions...');
   const assignMentionMatch = event.text.match(/assign.*?<@([A-Z0-9]+)>/i);
+  console.log('[Slack Events] Assign mention match result:', assignMentionMatch);
+
   if (assignMentionMatch) {
     const slackUserId = assignMentionMatch[1];
     console.log('[Slack Events] Found Slack user mention for assignment:', slackUserId);
 
     // Fetch user info from Slack
     const userInfo = await fetchSlackUserInfo(slackUserId);
+    console.log('[Slack Events] User info fetch result:', userInfo);
     if (userInfo) {
       assigneeName = userInfo.name;
       assigneeEmail = userInfo.email;
       console.log('[Slack Events] Resolved Slack user:', { name: assigneeName, email: assigneeEmail });
+    } else {
+      console.log('[Slack Events] Failed to fetch user info from Slack');
     }
+  } else {
+    console.log('[Slack Events] No assignment mention found in text');
   }
+
+  console.log('[Slack Events] Final assignee values:', { assigneeName, assigneeEmail });
 
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
@@ -184,6 +194,13 @@ async function handleTaskCreation(event: any, teamId: string) {
   // Store in pending tasks
   addPendingTask(taskData);
   console.log('[Slack Events] Stored pending task:', taskId);
+  console.log('[Slack Events] Task data:', JSON.stringify({
+    id: taskId,
+    title: taskTitle,
+    shouldCreateJira,
+    assigneeName,
+    assigneeEmail
+  }));
 }
 
 async function fetchSlackUserInfo(userId: string): Promise<{ name: string; email: string } | null> {
