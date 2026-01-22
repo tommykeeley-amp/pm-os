@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addPendingTask, pendingTasks } from '../store';
+import { addPendingTask, pendingTasks, hasThreadJiraTicket, markThreadHasJiraTicket } from '../store';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -76,6 +76,13 @@ async function handleTaskCreation(event: any, teamId: string) {
   console.log('[Slack Events] Jira detection - shouldCreateJira:', shouldCreateJira);
   console.log('[Slack Events] Original text:', event.text);
   console.log('[Slack Events] Lowercase text:', text);
+
+  // Check if this thread already has a Jira ticket
+  const threadKey = `${channel}_${threadTs || messageTs}`;
+  if (shouldCreateJira && hasThreadJiraTicket(threadKey)) {
+    console.log('[Slack Events] Thread already has a Jira ticket, skipping creation:', threadKey);
+    shouldCreateJira = false;
+  }
 
   // Check for Slack user mentions in "assign" context
   console.log('[Slack Events] Checking for assignment mentions...');
@@ -208,6 +215,11 @@ async function handleTaskCreation(event: any, teamId: string) {
     assigneeName,
     assigneeEmail
   }));
+
+  // Mark thread as having a Jira ticket if we're creating one
+  if (shouldCreateJira) {
+    markThreadHasJiraTicket(threadKey);
+  }
 }
 
 async function fetchSlackUserInfo(userId: string): Promise<{ name: string; email: string } | null> {
