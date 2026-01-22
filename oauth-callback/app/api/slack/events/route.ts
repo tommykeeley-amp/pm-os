@@ -338,30 +338,6 @@ async function handleTaskCreation(event: any, teamId: string) {
   if (shouldCreateJira) {
     markThreadHasJiraTicket(threadKey);
   }
-
-  // TEMPORARY DEBUG: Send debug info to Slack
-  if (shouldCreateJira) {
-    try {
-      const botToken = process.env.SLACK_BOT_TOKEN;
-      if (botToken) {
-        const debugMessage = `🔍 Debug info:\n• Assignee detected: ${assigneeName || 'NONE'}\n• Email found: ${assigneeEmail || 'NONE'}\n• Raw text: ${event.text.substring(0, 200)}`;
-        await fetch('https://slack.com/api/chat.postMessage', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${botToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            channel: channel,
-            thread_ts: threadTs || messageTs,
-            text: debugMessage,
-          }),
-        });
-      }
-    } catch (e) {
-      console.error('[Slack Events] Debug message failed:', e);
-    }
-  }
 }
 
 async function fetchSlackUserInfo(userId: string): Promise<{ name: string; email: string } | null> {
