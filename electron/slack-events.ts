@@ -166,15 +166,9 @@ export class SlackEventsServer {
             });
             logToFile('[SlackEvents] Confluence page created successfully: ' + JSON.stringify(confluencePage));
 
-            // Send Slack reply with Confluence link and exit early (don't create task)
-            await this.sendSlackReply(channel, threadTs, `📄 Confluence page created: <${confluencePage.url}|${title}>`);
-
-            // Replace eyes with green checkmark
-            await this.removeReaction(channel, messageTs, 'eyes');
-            await this.addReaction(channel, messageTs, 'white_check_mark');
-
-            logToFile('[SlackEvents] Confluence page created, skipping task creation');
-            return; // Exit early - don't create a task
+            // Update description to include Confluence link
+            description = `Confluence page created\n\n${confluencePage.url}`;
+            logToFile('[SlackEvents] Confluence page created, continuing to create task');
           } catch (confluenceError) {
             logErrorToFile('[SlackEvents] Failed to create Confluence page:', confluenceError);
             description = `Failed to create Confluence page: ${(confluenceError as any).message}\n\nOriginal context:\n${description}`;

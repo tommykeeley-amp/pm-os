@@ -94,10 +94,20 @@ async function handleOpenConfluenceModal(payload: any) {
     },
     blocks: [
       {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Creating Confluence Doc:*\n"${requestData.title}"`,
+        type: 'input',
+        block_id: 'doc_title',
+        label: {
+          type: 'plain_text',
+          text: 'Document Title',
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'title_input',
+          initial_value: requestData.title || 'Untitled',
+          placeholder: {
+            type: 'plain_text',
+            text: 'Enter the title for your Confluence page...',
+          },
         },
       },
       {
@@ -158,10 +168,12 @@ async function handleConfluenceModalSubmission(payload: any) {
     });
   }
 
-  // Extract additional context from modal
+  // Extract title and additional context from modal
   const values = payload.view.state.values;
+  const docTitle = values.doc_title?.title_input?.value || requestData.title || 'Untitled';
   const additionalContext = values.additional_context?.context_input?.value || '';
 
+  console.log('[Slack Interactions] Title:', docTitle);
   console.log('[Slack Interactions] Additional context provided:', !!additionalContext);
 
   // Combine thread context with additional context
@@ -173,7 +185,7 @@ async function handleConfluenceModalSubmission(payload: any) {
   // Electron will handle the OpenAI processing to avoid timeout
   const taskData = {
     id: `${requestData.channel}_${requestData.messageTs}`,
-    title: requestData.title,
+    title: docTitle, // Use the title from the modal input
     description: fullContext, // Pass raw context, let Electron process with OpenAI
     channel: requestData.channel,
     messageTs: requestData.messageTs,

@@ -663,7 +663,7 @@ app.whenReady().then(async () => {
         console.log('[Main] Using OpenAI to format Confluence content');
 
         // Use custom prompt from settings or default
-        const defaultPrompt = 'You are creating a simple Confluence page. Take the provided context and create clean, readable content. DO NOT invent sections, objectives, or structure that wasn\'t discussed. Just capture what was actually said in a clear, organized way. Use simple formatting with paragraphs and bullet points where appropriate. Keep it concise and to-the-point.';
+        const defaultPrompt = 'You are creating a simple Confluence page. Your ONLY job is to capture what was actually discussed in the conversation - nothing more. DO NOT add sections like "Overview", "Purpose", "Action Items", or any structure that was not explicitly discussed. DO NOT invent objectives, goals, or requirements. Just write down what was actually said in simple, clear paragraphs. If very little was discussed, write very little. Be literal and concise.';
         const systemPrompt = userSettings.confluenceSystemPrompt || defaultPrompt;
 
         console.log('[Main] Using', userSettings.confluenceSystemPrompt ? 'custom' : 'default', 'system prompt');
