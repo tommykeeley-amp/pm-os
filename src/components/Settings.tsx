@@ -22,6 +22,7 @@ interface UserSettings {
   // Confluence Settings
   confluenceDefaultSpace?: string;
   confluenceDefaultParentId?: string;
+  confluenceSystemPrompt?: string;
 
   // Obsidian Settings
   obsidianEnabled?: boolean;
@@ -58,8 +59,8 @@ export default function Settings({ onClose }: SettingsProps) {
     },
     {
       id: 'jira' as const,
-      name: 'Jira',
-      description: 'Create tickets from tasks',
+      name: 'Atlassian',
+      description: 'Jira tickets & Confluence pages',
       type: 'config' as const,
       connected: false,
     },
@@ -331,8 +332,9 @@ export default function Settings({ onClose }: SettingsProps) {
                             </svg>
                           )}
                           {integration.id === 'jira' && (
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 0 0-.84-.84H11.53zM2 11.53c0-2.4 1.97-4.35 4.35-4.35h1.78v-1.7c0-2.4 1.94-4.34 4.34-4.34V11.69a.84.84 0 0 1-.84.84H2zm9.53 9.47c0-2.4-1.97-4.35-4.35-4.35H5.4v-1.7c0-2.4-1.94-4.34-4.34-4.34v9.55c0 .46.37.84.84.84h9.63z" fill="#2684FF"/>
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                              <path d="M3 19.5L9 4.5L11 9L7.5 19.5H3Z" fill="#0052CC"/>
+                              <path d="M11.5 19.5L15 4.5L21 19.5H11.5Z" fill="#2684FF"/>
                             </svg>
                           )}
                           {integration.id === 'obsidian' && (
@@ -440,10 +442,10 @@ export default function Settings({ onClose }: SettingsProps) {
                       </div>
                     </div>
 
-                    {/* Jira Configuration - shows when this is Jira and it's enabled and expanded */}
+                    {/* Atlassian Configuration - shows when this is Jira and it's enabled and expanded */}
                     {integration.id === 'jira' && integration.connected && jiraExpanded && (
                       <div className="bg-dark-surface border border-dark-border rounded-lg p-4 mt-3">
-                        <h3 className="text-sm font-medium text-dark-text-primary mb-3">Jira Configuration</h3>
+                        <h3 className="text-sm font-medium text-dark-text-primary mb-3">Atlassian Configuration</h3>
                         <div className="space-y-4">
                           <div>
                             <label className="block text-sm font-medium text-dark-text-secondary mb-2">
@@ -564,6 +566,66 @@ export default function Settings({ onClose }: SettingsProps) {
                               </div>
                             )}
                           </div>
+
+                          {/* Confluence Settings */}
+                          <div className="pt-4 border-t border-dark-border">
+                            <h4 className="text-sm font-medium text-dark-text-primary mb-3">Confluence Settings</h4>
+                            <p className="text-xs text-dark-text-secondary mb-3">
+                              Confluence uses the same credentials as Jira configured above.
+                            </p>
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                                  Default Space Key
+                                </label>
+                                <input
+                                  type="text"
+                                  value={settings.confluenceDefaultSpace || ''}
+                                  onChange={(e) => handleChange('confluenceDefaultSpace', e.target.value)}
+                                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                                  placeholder="PA1"
+                                />
+                                <p className="text-xs text-dark-text-muted mt-1">
+                                  Default Confluence space for creating pages
+                                </p>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                                  Default Parent Page ID (Optional)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={settings.confluenceDefaultParentId || ''}
+                                  onChange={(e) => handleChange('confluenceDefaultParentId', e.target.value)}
+                                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                                  placeholder="3526328363"
+                                />
+                                <p className="text-xs text-dark-text-muted mt-1">
+                                  Optional parent page ID to organize new pages under a specific folder
+                                </p>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                                  AI System Prompt (Optional)
+                                </label>
+                                <textarea
+                                  value={settings.confluenceSystemPrompt || ''}
+                                  onChange={(e) => handleChange('confluenceSystemPrompt', e.target.value)}
+                                  rows={4}
+                                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                           text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary text-sm"
+                                  placeholder="You are creating a simple Confluence page. Take the provided context and create clean, readable content..."
+                                />
+                                <p className="text-xs text-dark-text-muted mt-1">
+                                  Customize how OpenAI formats your Confluence pages. Leave blank to use the default prompt.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -619,49 +681,6 @@ export default function Settings({ onClose }: SettingsProps) {
                 <p className="text-xs text-dark-text-muted">
                   Your credentials are stored securely on your device and never sent to external servers.
                 </p>
-              </div>
-
-              {/* Confluence Configuration Section */}
-              <div className="pt-6 border-t border-dark-border">
-                <h3 className="text-base font-semibold text-dark-text-primary mb-2">Confluence Configuration</h3>
-                <p className="text-sm text-dark-text-secondary mb-4">
-                  Confluence uses the same credentials as Jira. Configure your Jira settings above first.
-                </p>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                      Default Space Key
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.confluenceDefaultSpace || ''}
-                      onChange={(e) => handleChange('confluenceDefaultSpace', e.target.value)}
-                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                      placeholder="PA1"
-                    />
-                    <p className="text-xs text-dark-text-muted mt-1">
-                      Default Confluence space for creating pages
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                      Default Parent Page ID (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.confluenceDefaultParentId || ''}
-                      onChange={(e) => handleChange('confluenceDefaultParentId', e.target.value)}
-                      className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                               text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                      placeholder="123456789"
-                    />
-                    <p className="text-xs text-dark-text-muted mt-1">
-                      Optional parent page ID to organize new pages under a specific folder
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
           </TabPanel>

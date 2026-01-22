@@ -650,6 +650,9 @@ app.whenReady().then(async () => {
       throw new Error('Confluence not configured (requires Jira credentials)');
     }
 
+    // Get user settings first for custom prompt
+    const userSettings = store.get('userSettings', {}) as any;
+
     // Use OpenAI to create clean, simple content from context
     let pageBody = request.body;
     const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -659,12 +662,18 @@ app.whenReady().then(async () => {
         const openai = new OpenAI({ apiKey: openaiApiKey });
         console.log('[Main] Using OpenAI to format Confluence content');
 
+        // Use custom prompt from settings or default
+        const defaultPrompt = 'You are creating a simple Confluence page. Take the provided context and create clean, readable content. DO NOT invent sections, objectives, or structure that wasn\'t discussed. Just capture what was actually said in a clear, organized way. Use simple formatting with paragraphs and bullet points where appropriate. Keep it concise and to-the-point.';
+        const systemPrompt = userSettings.confluenceSystemPrompt || defaultPrompt;
+
+        console.log('[Main] Using', userSettings.confluenceSystemPrompt ? 'custom' : 'default', 'system prompt');
+
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
             {
               role: 'system',
-              content: 'You are creating a simple Confluence page. Take the provided context and create clean, readable content. DO NOT invent sections, objectives, or structure that wasn\'t discussed. Just capture what was actually said in a clear, organized way. Use simple formatting with paragraphs and bullet points where appropriate. Keep it concise and to-the-point.',
+              content: systemPrompt,
             },
             {
               role: 'user',
@@ -684,8 +693,6 @@ app.whenReady().then(async () => {
     } else {
       console.log('[Main] No OpenAI key, using raw context');
     }
-
-    const userSettings = store.get('userSettings', {}) as any;
     const spaceKey = request.spaceKey || userSettings.confluenceDefaultSpace || 'PA1';
     const parentId = request.parentId || userSettings.confluenceDefaultParentId;
 
