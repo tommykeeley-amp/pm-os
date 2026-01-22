@@ -133,19 +133,35 @@ export class SlackService {
       for (const channel of conversations.channels) {
         const channelData = channel as any;
 
+        // Get full conversation info to check for unread messages
+        // conversations.list() doesn't include unread_count_display, so we need conversations.info()
+        let unreadCount = 0;
+        try {
+          const convInfo = await this.client.conversations.info({
+            channel: channel.id!,
+          });
+
+          if (convInfo.ok && convInfo.channel) {
+            unreadCount = (convInfo.channel as any).unread_count_display || 0;
+          }
+        } catch (error) {
+          console.log('[SlackService.getDirectMessages] Error getting conversation info:', error);
+          continue;
+        }
+
         console.log('[SlackService.getDirectMessages] Checking channel:', {
           id: channel.id,
-          unread_count_display: channelData.unread_count_display,
+          unread_count_display: unreadCount,
           user: channelData.user
         });
 
         // Check if there are unread messages
-        if (!channelData.unread_count_display || channelData.unread_count_display === 0) {
+        if (!unreadCount || unreadCount === 0) {
           continue;
         }
 
         totalUnreadConversations++;
-        console.log(`[SlackService.getDirectMessages] Found DM with ${channelData.unread_count_display} unread messages`);
+        console.log(`[SlackService.getDirectMessages] Found DM with ${unreadCount} unread messages`);
 
         // Get the other user's ID from the DM
         const otherUserId = channelData.user;
@@ -170,7 +186,7 @@ export class SlackService {
           // Only include messages not sent by current user
           const unreadMessages = history.messages
             .filter(msg => msg.user !== currentUserId)
-            .slice(0, channelData.unread_count_display);
+            .slice(0, unreadCount);
 
           console.log(`[SlackService.getDirectMessages] Filtered to ${unreadMessages.length} unread messages from others`);
 
