@@ -92,16 +92,26 @@ async function handleTaskCreation(event: any, teamId: string) {
   console.log('[Slack Events] Checking for assignment mentions...');
   console.log('[Slack Events] Raw event text:', JSON.stringify(event.text));
 
-  // First, let's see ALL mentions in the text
+  // First, let's see ALL mentions in the text (excluding @PM-OS)
   const allMentions = event.text.match(/<@[A-Z0-9]+>/g);
   console.log('[Slack Events] All mentions found:', allMentions);
 
-  // Try multiple patterns to catch "assign to X" in various forms
-  let assignMentionMatch = event.text.match(/assign.*?(?:to|it to)\s*<@([A-Z0-9]+)>/i);
-  if (!assignMentionMatch) {
-    // Try simpler pattern
-    assignMentionMatch = event.text.match(/assign.*?<@([A-Z0-9]+)>/i);
+  let assignMentionMatch = null;
+
+  // Strategy 1: Look for "assign" keyword followed by a mention
+  if (event.text.toLowerCase().includes('assign')) {
+    // Find the position of "assign" in the text
+    const assignIndex = event.text.toLowerCase().indexOf('assign');
+    const textAfterAssign = event.text.substring(assignIndex);
+
+    // Look for a mention after "assign"
+    const mentionMatch = textAfterAssign.match(/<@([A-Z0-9]+)>/);
+    if (mentionMatch) {
+      assignMentionMatch = mentionMatch;
+      console.log('[Slack Events] Found mention after "assign" keyword:', mentionMatch[1]);
+    }
   }
+
   console.log('[Slack Events] Assign mention match result:', assignMentionMatch);
 
   if (assignMentionMatch) {
