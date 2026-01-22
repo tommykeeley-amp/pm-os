@@ -100,7 +100,21 @@ export default function Settings({ onClose }: SettingsProps) {
   const loadSettings = async () => {
     try {
       const stored = await window.electronAPI.getUserSettings();
-      setSettings(stored || {});
+
+      // Set default Confluence prompt if not already set
+      const defaultConfluencePrompt = 'You are creating a simple Confluence page. Your ONLY job is to capture what was actually discussed in the conversation - nothing more. DO NOT add sections like "Overview", "Purpose", "Action Items", or any structure that was not explicitly discussed. DO NOT invent objectives, goals, or requirements. Just write down what was actually said in simple, clear paragraphs. If very little was discussed, write very little. Be literal and concise.';
+
+      const settingsWithDefaults = {
+        ...stored,
+        confluenceSystemPrompt: stored?.confluenceSystemPrompt || defaultConfluencePrompt,
+      };
+
+      setSettings(settingsWithDefaults);
+
+      // Save defaults if this is first time
+      if (!stored?.confluenceSystemPrompt) {
+        await window.electronAPI.saveUserSettings(settingsWithDefaults);
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -610,18 +624,18 @@ export default function Settings({ onClose }: SettingsProps) {
 
                               <div>
                                 <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                                  AI System Prompt (Optional)
+                                  AI System Prompt
                                 </label>
                                 <textarea
                                   value={settings.confluenceSystemPrompt || ''}
                                   onChange={(e) => handleChange('confluenceSystemPrompt', e.target.value)}
-                                  rows={4}
+                                  rows={6}
                                   className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
                                            text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary text-sm"
-                                  placeholder="You are creating a simple Confluence page. Take the provided context and create clean, readable content..."
+                                  placeholder="Enter your custom system prompt..."
                                 />
                                 <p className="text-xs text-dark-text-muted mt-1">
-                                  Customize how OpenAI formats your Confluence pages. Leave blank to use the default prompt.
+                                  Customize how OpenAI formats your Confluence pages. This is the default prompt - edit it to change the behavior.
                                 </p>
                               </div>
                             </div>
