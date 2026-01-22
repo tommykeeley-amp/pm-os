@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addPendingTask, pendingTasks, hasThreadJiraTicket, markThreadHasJiraTicket, hasThreadConfluenceDoc, markThreadHasConfluenceDoc } from '../store';
+import { addPendingTask, pendingTasks, hasThreadJiraTicket, markThreadHasJiraTicket, hasThreadConfluenceDoc, markThreadHasConfluenceDoc, addPendingConfluenceRequest } from '../store';
 import OpenAI from 'openai';
+import { randomUUID } from 'crypto';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -238,6 +239,49 @@ async function handleTaskCreation(event: any, teamId: string) {
     console.log('[Slack Events] Flagged for Jira ticket creation in PM-OS');
   }
 
+  // Handle Confluence doc creation with modal for additional context
+  if (shouldCreateConfluence) {
+    console.log('[Slack Events] Confluence doc requested - sending button for modal');
+
+    // Generate unique request ID
+    const requestId = randomUUID();
+
+    // Get thread context for later use
+    let threadContext = '';
+    try {
+      const contextTs = threadTs || messageTs;
+      const threadData = await fetchThreadContext(channel, contextTs);
+      threadContext = threadData?.context || taskDescription;
+    } catch (error) {
+      console.error('[Slack Events] Failed to fetch thread context:', error);
+      threadContext = taskDescription;
+    }
+
+    // Store the pending Confluence request
+    addPendingConfluenceRequest(requestId, {
+      title: taskTitle,
+      threadContext,
+      channel,
+      messageTs,
+      threadTs: threadTs || messageTs,
+      user: event.user,
+      teamId,
+    });
+
+    // Send interactive message with button
+    await sendConfluenceContextButton(channel, threadTs || messageTs, taskTitle, requestId);
+
+    // Mark thread as having a Confluence doc (to prevent duplicates)
+    markThreadHasConfluenceDoc(threadKey);
+
+    // Replace eyes with green checkmark
+    await removeReaction(channel, messageTs, 'eyes');
+    await addReaction(channel, messageTs, 'white_check_mark');
+
+    console.log('[Slack Events] Confluence button sent, waiting for user input');
+    return; // Exit early - don't create a task
+  }
+
   // Create task data
   const taskId = `${channel}_${messageTs}`;
   const taskData = {
@@ -252,7 +296,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     timestamp: Date.now(),
     processed: false,
     shouldCreateJira,
-    shouldCreateConfluence,
+    shouldCreateConfluence: false, // Confluence is handled separately with modal
     assigneeName,
     assigneeEmail,
   };
@@ -264,7 +308,6 @@ async function handleTaskCreation(event: any, teamId: string) {
     id: taskId,
     title: taskTitle,
     shouldCreateJira,
-    shouldCreateConfluence,
     assigneeName,
     assigneeEmail
   }));
@@ -272,11 +315,6 @@ async function handleTaskCreation(event: any, teamId: string) {
   // Mark thread as having a Jira ticket if we're creating one
   if (shouldCreateJira) {
     markThreadHasJiraTicket(threadKey);
-  }
-
-  // Mark thread as having a Confluence doc if we're creating one
-  if (shouldCreateConfluence) {
-    markThreadHasConfluenceDoc(threadKey);
   }
 
   // TEMPORARY DEBUG: Send debug info to Slack
@@ -466,6 +504,102 @@ async function addReaction(channel: string, timestamp: string, emoji: string): P
     }
   } catch (error) {
     console.error('[Slack Events] Error adding reaction:', error);
+  }
+}
+
+async function removeReaction(channel: string, timestamp: string, emoji: string): Promise<void> {
+  try {
+    const botToken = process.env.SLACK_BOT_TOKEN;
+    if (!botToken) {
+      console.error('[Slack Events] No bot token found for reaction');
+      return;
+    }
+
+    const response = await fetch('https://slack.com/api/reactions.remove', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel,
+        timestamp,
+        name: emoji,
+      }),
+    });
+
+    const data = await response.json();
+    if (!data.ok) {
+      console.error('[Slack Events] Failed to remove reaction:', data.error);
+    }
+  } catch (error) {
+    console.error('[Slack Events] Error removing reaction:', error);
+  }
+}
+
+async function sendConfluenceContextButton(channel: string, threadTs: string, title: string, requestId: string): Promise<void> {
+  try {
+    const botToken = process.env.SLACK_BOT_TOKEN;
+    if (!botToken) {
+      console.error('[Slack Events] No bot token found');
+      return;
+    }
+
+    const message = {
+      channel,
+      thread_ts: threadTs,
+      text: `📄 Ready to create Confluence doc: "${title}"`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📄 *Ready to create Confluence doc:*\n"${title}"`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Click the button below to add additional context (optional) or create the doc with just the thread conversation.',
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '📝 Add Context & Create',
+                emoji: true,
+              },
+              style: 'primary',
+              action_id: 'open_confluence_modal',
+              value: requestId,
+            },
+          ],
+        },
+      ],
+    };
+
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+
+    const data = await response.json();
+    if (!data.ok) {
+      console.error('[Slack Events] Failed to send button message:', data.error);
+    } else {
+      console.log('[Slack Events] Button message sent successfully');
+    }
+  } catch (error) {
+    console.error('[Slack Events] Error sending button message:', error);
   }
 }
 
