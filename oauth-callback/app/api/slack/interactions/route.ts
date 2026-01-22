@@ -6,13 +6,27 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Add GET handler for health check
+export async function GET() {
+  return NextResponse.json({
+    status: 'ok',
+    message: 'Slack Interactions endpoint is running',
+    timestamp: new Date().toISOString()
+  });
+}
+
 export async function POST(request: NextRequest) {
+  console.log('[Slack Interactions] Received POST request');
+
   try {
     const body = await request.text();
+    console.log('[Slack Interactions] Body length:', body.length);
+
     const params = new URLSearchParams(body);
     const payloadStr = params.get('payload');
 
     if (!payloadStr) {
+      console.error('[Slack Interactions] No payload in request');
       return NextResponse.json({ error: 'No payload' }, { status: 400 });
     }
 
