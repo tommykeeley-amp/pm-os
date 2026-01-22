@@ -58,7 +58,7 @@ async function handleTaskCreation(event: any, teamId: string) {
   const threadTs = event.thread_ts;
 
   // Check if user wants to create a Jira ticket
-  const shouldCreateJira = text.includes('create jira') || text.includes('make jira') || text.includes('jira ticket');
+  shouldCreateJira = text.includes('create jira') || text.includes('make jira') || text.includes('jira ticket');
 
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
@@ -73,7 +73,7 @@ async function handleTaskCreation(event: any, teamId: string) {
 
   let taskTitle = 'Task from Slack';
   let taskDescription = '';
-  let jiraTicket: { key: string; url: string } | null = null;
+  let shouldCreateJira = false;
 
   // Check if this is in a thread - if thread_ts exists, we're in a thread context
   // Note: For the original message that starts a thread, thread_ts will equal ts
@@ -136,20 +136,9 @@ async function handleTaskCreation(event: any, teamId: string) {
     taskDescription = 'Error creating task from context';
   }
 
-  // Create Jira ticket if requested
+  // Jira ticket will be created by Electron using user's credentials
   if (shouldCreateJira) {
-    try {
-      console.log('[Slack Events] Creating Jira ticket...');
-      jiraTicket = await createJiraTicket(taskTitle, taskDescription);
-      console.log('[Slack Events] Jira ticket created:', jiraTicket);
-
-      // Update task to be about validating the Jira ticket
-      taskTitle = `Validate Jira ticket: ${jiraTicket.key}`;
-      taskDescription = `Review and validate the Jira ticket that was created:\n\n${taskDescription}\n\nJira ticket: ${jiraTicket.url}`;
-    } catch (jiraError) {
-      console.error('[Slack Events] Failed to create Jira ticket:', jiraError);
-      taskDescription = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${taskDescription}`;
-    }
+    console.log('[Slack Events] Flagged for Jira ticket creation in PM-OS');
   }
 
   // Create task data
@@ -165,7 +154,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     teamId,
     timestamp: Date.now(),
     processed: false,
-    jiraTicket: jiraTicket || undefined,
+    shouldCreateJira,
   };
 
   // Store in pending tasks
@@ -292,11 +281,11 @@ async function synthesizeTaskFromContext(context: string): Promise<{ title: stri
     messages: [
       {
         role: 'system',
-        content: 'You are a helpful assistant that creates task titles and descriptions from Slack thread conversations. Create a concise task title (max 60 chars) and a brief description summarizing the key points and action items from the conversation. Always respond with valid JSON containing "title" and "description" fields.',
+        content: 'You are a helpful assistant that creates Jira-ready task titles and descriptions from Slack conversations. Create a concise, clear task title (max 60 chars) and a brief, structured description (2-4 sentences max) that captures the key problem, context, and action items. Keep descriptions professional and actionable, avoiding unnecessary details. Always respond with valid JSON containing "title" and "description" fields.',
       },
       {
         role: 'user',
-        content: `Based on this Slack thread conversation, create a task:\n\n${context}`,
+        content: `Based on this Slack conversation, create a Jira-ready task:\n\n${context}`,
       },
     ],
     response_format: { type: 'json_object' },

@@ -7,12 +7,17 @@ const VERCEL_API_URL = 'https://pm-os-git-main-amplitude-inc.vercel.app/api/slac
 export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
   private onTaskCreate?: (task: any) => Promise<void>;
+  private onJiraCreate?: (request: { summary: string; description?: string }) => Promise<{ key: string; url: string }>;
   private isPolling: boolean = false;
 
   constructor() {}
 
   setTaskCreateHandler(handler: (task: any) => Promise<void>) {
     this.onTaskCreate = handler;
+  }
+
+  setJiraCreateHandler(handler: (request: { summary: string; description?: string }) => Promise<{ key: string; url: string }>) {
+    this.onJiraCreate = handler;
   }
 
   async start(): Promise<void> {
@@ -73,10 +78,30 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      const { title, description, channel, messageTs, threadTs, user, teamId, jiraTicket } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira } = taskData;
+      let jiraTicket: { key: string; url: string } | null = null;
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
+
+      // Create Jira ticket if requested and handler is available
+      if (shouldCreateJira && this.onJiraCreate) {
+        try {
+          console.log('[SlackEvents] Creating Jira ticket...');
+          jiraTicket = await this.onJiraCreate({
+            summary: title,
+            description: description,
+          });
+          console.log('[SlackEvents] Jira ticket created:', jiraTicket);
+
+          // Update task to be about validating the Jira ticket
+          title = `Validate Jira ticket: ${jiraTicket.key}`;
+          description = `Review and validate the Jira ticket that was created:\n\n${description}\n\nJira ticket: ${jiraTicket.url}`;
+        } catch (jiraError) {
+          console.error('[SlackEvents] Failed to create Jira ticket:', jiraError);
+          description = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${description}`;
+        }
+      }
 
       // Build permalink to the message
       // Convert timestamp (e.g., "1234567890.123456") to message ID (e.g., "p1234567890123456")

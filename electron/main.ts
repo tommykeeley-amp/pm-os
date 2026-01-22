@@ -75,10 +75,11 @@ function getJiraCredentials() {
   };
 }
 
-// Initialize Jira service if configured
+// Initialize Jira service if configured and enabled
 let jiraService: JiraService | null = null;
 const jiraCredentials = getJiraCredentials();
-if (jiraCredentials.domain && jiraCredentials.email && jiraCredentials.apiToken) {
+const initialUserSettings = store.get('userSettings', {}) as any;
+if (jiraCredentials.domain && jiraCredentials.email && jiraCredentials.apiToken && initialUserSettings.jiraEnabled) {
   jiraService = new JiraService({
     domain: jiraCredentials.domain,
     email: jiraCredentials.email,
@@ -584,6 +585,26 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Set Jira ticket creation handler
+  slackEventsServer.setJiraCreateHandler(async (request) => {
+    if (!jiraService) {
+      throw new Error('Jira not configured or not enabled');
+    }
+
+    const userSettings = store.get('userSettings', {}) as any;
+    const issue = await jiraService.createIssue({
+      summary: request.summary,
+      description: request.description,
+      projectKey: userSettings.jiraDefaultProject || 'AMP',
+      issueType: userSettings.jiraDefaultIssueType || 'Task',
+    });
+
+    return {
+      key: issue.key,
+      url: jiraService.getIssueUrl(issue.key),
+    };
+  });
+
   slackEventsServer.start().then(() => {
     console.log('[Main] Slack events server started successfully');
   }).catch((error) => {
@@ -711,22 +732,30 @@ ipcMain.handle('save-user-settings', (_event, settings: any) => {
     console.log('[Settings] Slack bot token saved');
   }
 
-  // If Jira/Confluence credentials changed, reinitialize services
-  if (settings.jiraDomain || settings.jiraEmail || settings.jiraApiToken) {
-    // Reinitialize Jira service
-    if (settings.jiraDomain && settings.jiraEmail && settings.jiraApiToken) {
+  // If Jira/Confluence credentials or enabled state changed, reinitialize services
+  if (settings.jiraDomain !== undefined || settings.jiraEmail !== undefined ||
+      settings.jiraApiToken !== undefined || settings.jiraEnabled !== undefined) {
+    const updatedSettings = store.get('userSettings', {}) as any;
+
+    // Reinitialize or clear Jira service based on enabled state
+    if (updatedSettings.jiraEnabled && updatedSettings.jiraDomain &&
+        updatedSettings.jiraEmail && updatedSettings.jiraApiToken) {
       jiraService = new JiraService({
-        domain: settings.jiraDomain,
-        email: settings.jiraEmail,
-        apiToken: settings.jiraApiToken,
+        domain: updatedSettings.jiraDomain,
+        email: updatedSettings.jiraEmail,
+        apiToken: updatedSettings.jiraApiToken,
       });
 
       // Also reinitialize Confluence service (uses same credentials)
       confluenceService = new ConfluenceService({
-        domain: settings.jiraDomain,
-        email: settings.jiraEmail,
-        apiToken: settings.jiraApiToken,
+        domain: updatedSettings.jiraDomain,
+        email: updatedSettings.jiraEmail,
+        apiToken: updatedSettings.jiraApiToken,
       });
+    } else if (settings.jiraEnabled === false) {
+      // Disable services when toggled off
+      jiraService = null;
+      confluenceService = null;
     }
   }
 });
@@ -1295,7 +1324,8 @@ ipcMain.handle('jira-get-my-issues', async () => {
 });
 
 ipcMain.handle('jira-is-configured', () => {
-  return !!jiraService;
+  const userSettings = store.get('userSettings', {}) as any;
+  return !!userSettings.jiraEnabled && !!jiraService;
 });
 
 // Confluence Handlers
