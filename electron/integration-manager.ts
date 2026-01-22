@@ -326,12 +326,6 @@ export class IntegrationManager {
   // Get Slack unread messages
   async getSlackUnreadMessages() {
     console.log('[IntegrationManager.getSlackUnreadMessages] ========== START ==========');
-    console.log('[IntegrationManager.getSlackUnreadMessages] TEMPORARILY DISABLED - returning empty array');
-    console.log('[IntegrationManager.getSlackUnreadMessages] ========== COMPLETE ==========');
-    return [];
-
-    // DISABLED TEMPORARILY TO DEBUG
-    /*
     console.log('[IntegrationManager.getSlackUnreadMessages] Slack service initialized:', !!this.slackService);
 
     if (!this.slackService) {
@@ -380,18 +374,11 @@ export class IntegrationManager {
       });
       return [];
     }
-    */
   }
 
   // Get starred emails
   async getStarredEmails() {
     console.log('[IntegrationManager.getStarredEmails] ========== START ==========');
-    console.log('[IntegrationManager.getStarredEmails] TEMPORARILY DISABLED - returning empty array immediately');
-    console.log('[IntegrationManager.getStarredEmails] ========== COMPLETE ==========');
-    return [];
-
-    // DISABLED TEMPORARILY TO DEBUG
-    /*
     console.log('[IntegrationManager.getStarredEmails] Gmail service initialized:', !!this.gmailService);
 
     if (!this.gmailService) {
@@ -453,7 +440,6 @@ export class IntegrationManager {
       console.error('[IntegrationManager.getStarredEmails] Failed to get starred emails:', error);
       return [];
     }
-    */
   }
 
   // Get Slack channels
