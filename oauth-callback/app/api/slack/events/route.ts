@@ -221,23 +221,27 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
 }
 
 async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string }> {
+  console.log('[Slack Events] Synthesizing task from context:', context);
+
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: 'You are a helpful assistant that creates Jira-ready task titles and descriptions from Slack conversations. Create a concise, clear task title (max 60 chars) and a brief, structured description (2-4 sentences max) that captures the key problem, context, and action items. Keep descriptions professional and actionable, avoiding unnecessary details. Always respond with valid JSON containing "title" and "description" fields.',
+        content: 'You are a helpful assistant that creates task titles and descriptions from Slack conversations. Summarize the conversation accurately and literally - do not invent problems or action items that were not discussed. Create a concise title (max 60 chars) that describes what was actually talked about, and a brief description (2-4 sentences) that captures the key points from the conversation. Always respond with valid JSON containing "title" and "description" fields.',
       },
       {
         role: 'user',
-        content: `Based on this Slack conversation, create a Jira-ready task:\n\n${context}`,
+        content: `Based on this Slack conversation, create a task that accurately summarizes what was discussed:\n\n${context}`,
       },
     ],
     response_format: { type: 'json_object' },
-    temperature: 0.7,
+    temperature: 0.3,
   });
 
   const result = JSON.parse(completion.choices[0].message.content || '{}');
+  console.log('[Slack Events] AI-synthesized result:', result);
+
   return {
     title: result.title || 'Task from Slack thread',
     description: result.description || context,
