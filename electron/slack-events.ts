@@ -26,7 +26,7 @@ function logErrorToFile(message: string, error?: any) {
 export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
   private onTaskCreate?: (task: any) => Promise<void>;
-  private onJiraCreate?: (request: { summary: string; description?: string }) => Promise<{ key: string; url: string }>;
+  private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string }) => Promise<{ key: string; url: string }>;
   private isPolling: boolean = false;
 
   constructor() {}
