@@ -386,6 +386,12 @@ export class IntegrationManager {
   // Get starred emails
   async getStarredEmails() {
     console.log('[IntegrationManager.getStarredEmails] ========== START ==========');
+    console.log('[IntegrationManager.getStarredEmails] TEMPORARILY DISABLED - returning empty array immediately');
+    console.log('[IntegrationManager.getStarredEmails] ========== COMPLETE ==========');
+    return [];
+
+    // DISABLED TEMPORARILY TO DEBUG
+    /*
     console.log('[IntegrationManager.getStarredEmails] Gmail service initialized:', !!this.gmailService);
 
     if (!this.gmailService) {
@@ -447,6 +453,7 @@ export class IntegrationManager {
       console.error('[IntegrationManager.getStarredEmails] Failed to get starred emails:', error);
       return [];
     }
+    */
   }
 
   // Get Slack channels

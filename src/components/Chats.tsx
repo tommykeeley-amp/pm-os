@@ -30,7 +30,7 @@ interface ChatsProps {
 export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps) {
   const [slackMessages, setSlackMessages] = useState<SlackMessage[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start as false to allow initial load
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
