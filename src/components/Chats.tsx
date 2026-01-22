@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 
 interface SlackMessage {
@@ -30,41 +30,58 @@ interface ChatsProps {
 export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps) {
   const [slackMessages, setSlackMessages] = useState<SlackMessage[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
-  const [isLoading, setIsLoading] = useState(false); // Start as false to allow initial load
+  const [isLoading, setIsLoading] = useState(true); // Show loading on first render
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastFocusTimeRef = useRef(0);
 
   useEffect(() => {
-    loadMessages();
+    loadMessages(true); // Initial load with loading state
 
-    // Auto-refresh every 15 seconds (reduced from 30 for faster updates)
+    // Auto-refresh every 60 seconds for background updates
     const interval = setInterval(() => {
-      loadMessages();
-    }, 15000);
+      loadMessages(false); // Background refresh without loading state
+    }, 60000);
 
-    // Refresh when window gains focus (user returns from Slack/Gmail)
+    // Debounced refresh when window gains focus
+    let focusTimeout: NodeJS.Timeout;
     const handleFocus = () => {
-      console.log('[Chats] Window focused, refreshing messages...');
-      loadMessages();
+      const now = Date.now();
+      if (now - lastFocusTimeRef.current < 5000) {
+        console.log('[Chats] Focus event too soon, ignoring');
+        return;
+      }
+
+      lastFocusTimeRef.current = now;
+      clearTimeout(focusTimeout);
+      focusTimeout = setTimeout(() => {
+        console.log('[Chats] Window focused, refreshing messages...');
+        loadMessages(false); // Background refresh
+      }, 500);
     };
     window.addEventListener('focus', handleFocus);
 
     return () => {
       clearInterval(interval);
+      clearTimeout(focusTimeout);
       window.removeEventListener('focus', handleFocus);
     };
   }, []);
 
-  const loadMessages = async () => {
+  const loadMessages = async (showLoading = false) => {
     console.log('[Chats] ========== LOADING MESSAGES START ==========');
-    console.log('[Chats] Current loading state:', isLoading);
+    console.log('[Chats] Show loading state:', showLoading);
 
     // Prevent multiple simultaneous loads
-    if (isLoading) {
-      console.log('[Chats] Already loading, skipping duplicate request');
+    if (isRefreshing) {
+      console.log('[Chats] Already refreshing, skipping duplicate request');
       return;
     }
 
-    setIsLoading(true);
+    setIsRefreshing(true);
+    if (showLoading) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -116,9 +133,11 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
       });
       setError(err.message || 'Failed to load messages');
     } finally {
-      setIsLoading(false);
+      setIsRefreshing(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
       console.log('[Chats] ========== LOADING MESSAGES COMPLETE ==========');
-      console.log('[Chats] Final state - isLoading:', false, 'slackCount:', slackMessages.length, 'emailCount:', emails.length);
     }
   };
 
@@ -130,21 +149,21 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
       window.electronAPI.openExternal(`slack://channel?team=&id=${message.channelId}`);
     }
 
-    // Refresh after 3 seconds to remove the message if it was marked as read
+    // Refresh after 10 seconds to remove the message if it was marked as read
     setTimeout(() => {
       console.log('[Chats] Refreshing messages after opening Slack...');
-      loadMessages();
-    }, 3000);
+      loadMessages(false); // Background refresh
+    }, 10000);
   };
 
   const handleOpenEmail = (threadId: string) => {
     window.electronAPI.openExternal(`https://mail.google.com/mail/u/0/#inbox/${threadId}`);
 
-    // Refresh after 3 seconds to remove the email if it was unstarred or marked as read
+    // Refresh after 10 seconds to remove the email if it was unstarred or marked as read
     setTimeout(() => {
       console.log('[Chats] Refreshing messages after opening email...');
-      loadMessages();
-    }, 3000);
+      loadMessages(false); // Background refresh
+    }, 10000);
   };
 
   if (isLoading) {
