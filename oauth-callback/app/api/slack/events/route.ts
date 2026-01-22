@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleTaskCreation(event: any, teamId: string) {
+  console.log('[Slack Events] === handleTaskCreation called ===');
+  console.log('[Slack Events] Full event object:', JSON.stringify(event, null, 2));
+
   const text = event.text.toLowerCase();
   const channel = event.channel;
   const messageTs = event.ts;
@@ -89,7 +92,16 @@ async function handleTaskCreation(event: any, teamId: string) {
   console.log('[Slack Events] Checking for assignment mentions...');
   console.log('[Slack Events] Raw event text:', JSON.stringify(event.text));
 
-  const assignMentionMatch = event.text.match(/assign.*?<@([A-Z0-9]+)>/i);
+  // First, let's see ALL mentions in the text
+  const allMentions = event.text.match(/<@[A-Z0-9]+>/g);
+  console.log('[Slack Events] All mentions found:', allMentions);
+
+  // Try multiple patterns to catch "assign to X" in various forms
+  let assignMentionMatch = event.text.match(/assign.*?(?:to|it to)\s*<@([A-Z0-9]+)>/i);
+  if (!assignMentionMatch) {
+    // Try simpler pattern
+    assignMentionMatch = event.text.match(/assign.*?<@([A-Z0-9]+)>/i);
+  }
   console.log('[Slack Events] Assign mention match result:', assignMentionMatch);
 
   if (assignMentionMatch) {
