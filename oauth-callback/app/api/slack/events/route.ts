@@ -274,10 +274,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     // Mark thread as having a Confluence doc (to prevent duplicates)
     markThreadHasConfluenceDoc(threadKey);
 
-    // Replace eyes with green checkmark
-    await removeReaction(channel, messageTs, 'eyes');
-    await addReaction(channel, messageTs, 'white_check_mark');
-
+    // Keep eyes reaction until doc is actually created
     console.log('[Slack Events] Confluence button sent, waiting for user input');
     return; // Exit early - don't create a task
   }
