@@ -12,6 +12,7 @@ import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
 import { ConfluenceService } from '../src/services/confluence';
 import { SlackEventsServer } from './slack-events';
+import OpenAI from 'openai';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -631,6 +632,81 @@ app.whenReady().then(async () => {
     return {
       key: issue.key,
       url: jiraService.getIssueUrl(issue.key),
+    };
+  });
+
+  // Set Confluence page creation handler
+  slackEventsServer.setConfluenceCreateHandler(async (request) => {
+    console.log('[Main] Confluence page creation requested:', request.title);
+
+    if (!confluenceService) {
+      const userSettings = store.get('userSettings', {}) as any;
+      console.log('[Main] Confluence service not available. Settings:', {
+        jiraEnabled: userSettings.jiraEnabled,
+        hasDomain: !!userSettings.jiraDomain,
+        hasEmail: !!userSettings.jiraEmail,
+        hasToken: !!userSettings.jiraApiToken,
+      });
+      throw new Error('Confluence not configured (requires Jira credentials)');
+    }
+
+    // Use OpenAI to create clean, simple content from context
+    let pageBody = request.body;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+
+    if (openaiApiKey) {
+      try {
+        const openai = new OpenAI({ apiKey: openaiApiKey });
+        console.log('[Main] Using OpenAI to format Confluence content');
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are creating a simple Confluence page. Take the provided context and create clean, readable content. DO NOT invent sections, objectives, or structure that wasn\'t discussed. Just capture what was actually said in a clear, organized way. Use simple formatting with paragraphs and bullet points where appropriate. Keep it concise and to-the-point.',
+            },
+            {
+              role: 'user',
+              content: `Create content for a Confluence page titled "${request.title}". Here's the context from the conversation:\n\n${request.body}\n\nCreate simple, clean page content that captures this context without adding extra structure or inventing details.`,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+        });
+
+        pageBody = completion.choices[0].message.content || request.body;
+        console.log('[Main] OpenAI formatted content successfully');
+      } catch (error) {
+        console.error('[Main] OpenAI formatting failed, using raw context:', error);
+        // Fall back to raw context if OpenAI fails
+      }
+    } else {
+      console.log('[Main] No OpenAI key, using raw context');
+    }
+
+    const userSettings = store.get('userSettings', {}) as any;
+    const spaceKey = request.spaceKey || userSettings.confluenceDefaultSpace || 'PA1';
+    const parentId = request.parentId || userSettings.confluenceDefaultParentId;
+
+    console.log('[Main] Creating Confluence page with:', {
+      spaceKey,
+      parentId,
+      title: request.title,
+    });
+
+    const page = await confluenceService.createPage({
+      spaceKey,
+      title: request.title,
+      body: pageBody,
+      parentId,
+    });
+
+    console.log('[Main] Confluence page created:', page.id);
+
+    return {
+      id: page.id,
+      url: page.url,
     };
   });
 

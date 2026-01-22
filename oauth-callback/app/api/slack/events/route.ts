@@ -246,6 +246,31 @@ async function handleTaskCreation(event: any, teamId: string) {
     // Generate unique request ID
     const requestId = randomUUID();
 
+    // Extract clean title for Confluence doc
+    let confluenceTitle = taskTitle;
+    // Try to extract title after "called", "named", or quoted text
+    const calledMatch = event.text.match(/\b(?:called|named)\s+["']?([^"'\n]+?)["']?$/i);
+    const quotedMatch = event.text.match(/["']([^"'\n]+?)["']/);
+
+    if (calledMatch && calledMatch[1]) {
+      confluenceTitle = calledMatch[1].trim();
+    } else if (quotedMatch && quotedMatch[1]) {
+      confluenceTitle = quotedMatch[1].trim();
+    } else {
+      // Remove Confluence-specific phrasing
+      confluenceTitle = event.text
+        .replace(/<@[A-Z0-9]+>/gi, '')
+        .replace(/^(can you |could you |please )?create( me)?( you)?( us)?( a)?( an)?\s+(confluence\s+)?(doc|page|document)(\s+for\s+me)?(\s+called)?(\s+named)?/gi, '')
+        .trim();
+    }
+
+    // Fallback if title is empty
+    if (!confluenceTitle || confluenceTitle.length === 0) {
+      confluenceTitle = 'Confluence Doc from Slack';
+    }
+
+    console.log('[Slack Events] Extracted Confluence title:', confluenceTitle);
+
     // Get thread context for later use
     let threadContext = '';
     try {
@@ -259,7 +284,7 @@ async function handleTaskCreation(event: any, teamId: string) {
 
     // Store the pending Confluence request
     addPendingConfluenceRequest(requestId, {
-      title: taskTitle,
+      title: confluenceTitle,
       threadContext,
       channel,
       messageTs,

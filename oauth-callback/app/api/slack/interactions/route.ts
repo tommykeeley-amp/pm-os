@@ -155,36 +155,12 @@ async function handleConfluenceModalSubmission(payload: any) {
     ? `${requestData.threadContext}\n\n---\n\nAdditional Context:\n${additionalContext}`
     : requestData.threadContext;
 
-  // Use OpenAI to create comprehensive doc content
-  let docBody = '';
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a technical writer creating Confluence documentation. Based on the conversation and context provided, create a well-structured document with sections, bullet points, and clear formatting. Use Confluence storage format (HTML) for rich text.',
-        },
-        {
-          role: 'user',
-          content: `Create a comprehensive Confluence document titled "${requestData.title}" based on this context:\n\n${fullContext}`,
-        },
-      ],
-      temperature: 0.5,
-    });
-
-    docBody = completion.choices[0].message.content || fullContext;
-    console.log('[Slack Interactions] AI generated doc content');
-  } catch (error) {
-    console.error('[Slack Interactions] AI generation failed, using raw context:', error);
-    docBody = fullContext;
-  }
-
   // Create the task to be picked up by the Electron app
+  // Electron will handle the OpenAI processing to avoid timeout
   const taskData = {
     id: `${requestData.channel}_${requestData.messageTs}`,
     title: requestData.title,
-    description: docBody,
+    description: fullContext, // Pass raw context, let Electron process with OpenAI
     channel: requestData.channel,
     messageTs: requestData.messageTs,
     threadTs: requestData.threadTs,
@@ -211,6 +187,7 @@ async function handleConfluenceModalSubmission(payload: any) {
 
   console.log('[Slack Interactions] Confluence doc queued for creation');
 
-  // Return success - modal will close
+  // Return success immediately - modal will close
+  // Don't wait for OpenAI processing to avoid timeout
   return NextResponse.json({ response_action: 'clear' });
 }
