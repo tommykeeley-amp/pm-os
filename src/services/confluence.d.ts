@@ -40,5 +40,5 @@ export declare class ConfluenceService {
     searchPages(query: string, spaceKey?: string): Promise<ConfluencePage[]>;
     private getSpaceIdByKey;
     private convertToStorageFormat;
-    getPageUrl(pageId: string): string;
+    getPageUrl(pageId: string, spaceKey?: string, title?: string): string;
 }

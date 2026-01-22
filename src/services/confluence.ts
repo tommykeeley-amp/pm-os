@@ -106,7 +106,7 @@ export class ConfluenceService {
       id: response.id,
       title: response.title,
       spaceKey: request.spaceKey,
-      url: this.getPageUrl(response.id),
+      url: this.getPageUrl(response.id, request.spaceKey, response.title),
     };
   }
 
@@ -116,7 +116,7 @@ export class ConfluenceService {
       id: response.id,
       title: response.title,
       spaceKey: response.spaceKey,
-      url: this.getPageUrl(response.id),
+      url: this.getPageUrl(response.id, response.spaceKey, response.title),
     };
   }
 
@@ -132,7 +132,7 @@ export class ConfluenceService {
       id: page.id,
       title: page.title,
       spaceKey: page.spaceKey,
-      url: this.getPageUrl(page.id),
+      url: this.getPageUrl(page.id, page.spaceKey, page.title),
     }));
   }
 
@@ -156,7 +156,14 @@ export class ConfluenceService {
     return `<p>${html}</p>`;
   }
 
-  getPageUrl(pageId: string): string {
+  getPageUrl(pageId: string, spaceKey?: string, title?: string): string {
+    // Generate proper Confluence URL with space and title
+    if (spaceKey && title) {
+      // URL encode the title for the slug
+      const titleSlug = encodeURIComponent(title.replace(/\s+/g, '+'));
+      return `https://${this.config.domain}/wiki/spaces/${spaceKey}/pages/${pageId}/${titleSlug}`;
+    }
+    // Fallback to simple URL if space/title not provided
     return `https://${this.config.domain}/wiki/pages/${pageId}`;
   }
 }
