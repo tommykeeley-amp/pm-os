@@ -55,6 +55,12 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
   }, []);
 
   const loadMessages = async () => {
+    // Prevent multiple simultaneous loads
+    if (isLoading) {
+      console.log('[Chats] Already loading, skipping duplicate request');
+      return;
+    }
+
     console.log('[Chats] ========== LOADING MESSAGES START ==========');
     setIsLoading(true);
     setError(null);

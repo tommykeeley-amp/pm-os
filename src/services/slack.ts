@@ -133,8 +133,22 @@ export class SlackService {
       // Parallelize conversations.info() calls for better performance
       console.log('[SlackService.getDirectMessages] Fetching conversation info in parallel...');
       const client = this.client; // Store reference for use in Promise.all
+
+      // Helper to add timeout to promises
+      const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+        return Promise.race([
+          promise,
+          new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+          )
+        ]);
+      };
+
       const convInfoPromises = conversations.channels.map(channel =>
-        client.conversations.info({ channel: channel.id! })
+        withTimeout(
+          client.conversations.info({ channel: channel.id! }),
+          5000 // 5 second timeout per request
+        )
           .then(convInfo => ({
             channel,
             unreadCount: convInfo.ok && convInfo.channel
@@ -142,13 +156,13 @@ export class SlackService {
               : 0
           }))
           .catch(error => {
-            console.log('[SlackService.getDirectMessages] Error getting conversation info:', error);
+            console.log('[SlackService.getDirectMessages] Error getting conversation info for channel', channel.id, ':', error.message);
             return { channel, unreadCount: 0 };
           })
       );
 
       const convInfoResults = await Promise.all(convInfoPromises);
-      console.log('[SlackService.getDirectMessages] Got conversation info for all channels');
+      console.log('[SlackService.getDirectMessages] Got conversation info for all channels:', convInfoResults.length);
 
       // Filter for DMs with unread messages
       for (const { channel, unreadCount } of convInfoResults) {
