@@ -57,9 +57,16 @@ async function handleTaskCreation(event: any, teamId: string) {
   const messageTs = event.ts;
   const threadTs = event.thread_ts;
 
+  // Declare variables at the top of the function
+  let taskTitle = 'Task from Slack';
+  let taskDescription = '';
+  let shouldCreateJira = false;
+
   // Check if user wants to create a Jira ticket (more flexible matching)
   shouldCreateJira = /\b(create|make)\b.*\bjira\b/i.test(text) || /\bjira\b.*\b(ticket|issue)\b/i.test(text);
-  console.log('[Slack Events] shouldCreateJira:', shouldCreateJira, 'text:', text);
+  console.log('[Slack Events] Jira detection - shouldCreateJira:', shouldCreateJira);
+  console.log('[Slack Events] Original text:', event.text);
+  console.log('[Slack Events] Lowercase text:', text);
 
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
@@ -71,10 +78,6 @@ async function handleTaskCreation(event: any, teamId: string) {
     text: event.text,
     shouldCreateJira
   });
-
-  let taskTitle = 'Task from Slack';
-  let taskDescription = '';
-  let shouldCreateJira = false;
 
   // Check if this is in a thread - if thread_ts exists, we're in a thread context
   // Note: For the original message that starts a thread, thread_ts will equal ts
