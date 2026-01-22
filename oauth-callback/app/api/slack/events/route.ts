@@ -429,9 +429,27 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
 
     console.log('[Slack Events] Found', data.messages.length, 'messages in thread');
 
-    // Combine all messages into context
+    // Resolve user IDs to names
+    const userCache = new Map<string, string>();
+    for (const msg of data.messages) {
+      if (msg.user && !userCache.has(msg.user) && msg.user !== 'USLACKBOT') {
+        try {
+          const userInfo = await fetchSlackUserInfo(msg.user);
+          if (userInfo) {
+            userCache.set(msg.user, userInfo.name);
+          }
+        } catch (error) {
+          console.error('[Slack Events] Failed to fetch user info for', msg.user, error);
+        }
+      }
+    }
+
+    // Combine all messages into context with resolved names
     const context = data.messages
-      .map((msg: any) => `${msg.user}: ${msg.text}`)
+      .map((msg: any) => {
+        const userName = userCache.get(msg.user) || msg.user || 'Unknown';
+        return `${userName}: ${msg.text}`;
+      })
       .join('\n');
 
     console.log('[Slack Events] Thread context:', context);
