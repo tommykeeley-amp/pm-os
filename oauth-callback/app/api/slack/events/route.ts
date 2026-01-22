@@ -216,65 +216,6 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
   }
 }
 
-async function createJiraTicket(title: string, description: string): Promise<{ key: string; url: string }> {
-  const jiraDomain = process.env.JIRA_DOMAIN;
-  const jiraEmail = process.env.JIRA_EMAIL;
-  const jiraApiToken = process.env.JIRA_API_TOKEN;
-  const jiraProject = process.env.JIRA_DEFAULT_PROJECT || 'AMP';
-  const jiraIssueType = process.env.JIRA_DEFAULT_ISSUE_TYPE || 'Task';
-
-  if (!jiraDomain || !jiraEmail || !jiraApiToken) {
-    throw new Error('Jira credentials not configured');
-  }
-
-  const auth = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64');
-
-  const response = await fetch(`https://${jiraDomain}/rest/api/3/issue`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      fields: {
-        project: {
-          key: jiraProject,
-        },
-        summary: title,
-        description: {
-          type: 'doc',
-          version: 1,
-          content: [
-            {
-              type: 'paragraph',
-              content: [
-                {
-                  type: 'text',
-                  text: description || 'Created from Slack via PM-OS',
-                },
-              ],
-            },
-          ],
-        },
-        issuetype: {
-          name: jiraIssueType,
-        },
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(`Jira API error: ${JSON.stringify(errorData)}`);
-  }
-
-  const data = await response.json();
-  return {
-    key: data.key,
-    url: `https://${jiraDomain}/browse/${data.key}`,
-  };
-}
-
 async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string }> {
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',

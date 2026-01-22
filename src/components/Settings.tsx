@@ -292,12 +292,12 @@ export default function Settings({ onClose }: SettingsProps) {
                   <div key={integration.id}>
                     <div
                       onClick={() => {
-                        if (integration.id === 'jira') setJiraExpanded(!jiraExpanded);
+                        if (integration.id === 'jira' && integration.connected) setJiraExpanded(!jiraExpanded);
                         if (integration.id === 'slack' && integration.connected) setSlackExpanded(!slackExpanded);
-                        if (integration.id === 'obsidian') setObsidianExpanded(!obsidianExpanded);
+                        if (integration.id === 'obsidian' && integration.connected) setObsidianExpanded(!obsidianExpanded);
                       }}
                       className={`bg-dark-bg border border-dark-border rounded-lg p-4 flex items-center justify-between ${
-                        (integration.id === 'jira' || integration.id === 'obsidian' || (integration.id === 'slack' && integration.connected)) ? 'cursor-pointer hover:border-dark-accent-primary/50 transition-colors' : ''
+                        ((integration.id === 'jira' || integration.id === 'obsidian' || integration.id === 'slack') && integration.connected) ? 'cursor-pointer hover:border-dark-accent-primary/50 transition-colors' : ''
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -359,8 +359,16 @@ export default function Settings({ onClose }: SettingsProps) {
                             e.stopPropagation();
                             if (integration.id === 'jira') {
                               await handleChange('jiraEnabled', !integration.connected);
+                              if (integration.connected) {
+                                // Collapsing when turning off
+                                setJiraExpanded(false);
+                              }
                             } else if (integration.id === 'obsidian') {
                               await handleChange('obsidianEnabled', !integration.connected);
+                              if (integration.connected) {
+                                // Collapsing when turning off
+                                setObsidianExpanded(false);
+                              }
                             }
                             checkConnections();
                           }}
@@ -376,17 +384,19 @@ export default function Settings({ onClose }: SettingsProps) {
                             }`}
                           />
                         </button>
-                        <svg
-                          className={`icon-xs text-dark-text-secondary transition-transform ${
-                            integration.id === 'jira' ? (jiraExpanded ? 'rotate-180' : '') :
-                            integration.id === 'obsidian' ? (obsidianExpanded ? 'rotate-180' : '') : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                        {integration.connected && (
+                          <svg
+                            className={`icon-xs text-dark-text-secondary transition-transform ${
+                              integration.id === 'jira' ? (jiraExpanded ? 'rotate-180' : '') :
+                              integration.id === 'obsidian' ? (obsidianExpanded ? 'rotate-180' : '') : ''
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )}
                       </div>
                     ) : (
                       integration.connected ? (
@@ -430,8 +440,8 @@ export default function Settings({ onClose }: SettingsProps) {
                       </div>
                     </div>
 
-                    {/* Jira Configuration - shows when this is Jira and it's expanded */}
-                    {integration.id === 'jira' && jiraExpanded && (
+                    {/* Jira Configuration - shows when this is Jira and it's enabled and expanded */}
+                    {integration.id === 'jira' && integration.connected && jiraExpanded && (
                       <div className="bg-dark-surface border border-dark-border rounded-lg p-4 mt-3">
                         <h3 className="text-sm font-medium text-dark-text-primary mb-3">Jira Configuration</h3>
                         <div className="space-y-4">
@@ -581,8 +591,8 @@ export default function Settings({ onClose }: SettingsProps) {
                       </div>
                     )}
 
-                    {/* Obsidian Vault Path - shows when this is Obsidian and it's expanded */}
-                    {integration.id === 'obsidian' && obsidianExpanded && (
+                    {/* Obsidian Vault Path - shows when this is Obsidian and it's enabled and expanded */}
+                    {integration.id === 'obsidian' && integration.connected && obsidianExpanded && (
                       <div className="bg-dark-surface border border-dark-border rounded-lg p-4 mt-3">
                         <label className="block text-sm font-medium text-dark-text-secondary mb-2">
                           Obsidian Vault Path
