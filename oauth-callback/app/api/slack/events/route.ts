@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addPendingTask, pendingTasks, hasThreadJiraTicket, markThreadHasJiraTicket } from '../store';
+import { addPendingTask, pendingTasks, hasThreadJiraTicket, markThreadHasJiraTicket, hasThreadConfluenceDoc, markThreadHasConfluenceDoc } from '../store';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -71,11 +71,27 @@ async function handleTaskCreation(event: any, teamId: string) {
   let taskTitle = 'Task from Slack';
   let taskDescription = '';
   let shouldCreateJira = false;
+  let shouldCreateConfluence = false;
   let assigneeName: string | undefined = undefined;
   let assigneeEmail: string | undefined = undefined;
 
+  // Check if user wants to create a Confluence page
+  // More flexible patterns to catch various phrasings
+  const confluencePatterns = [
+    /\bconfluence\s+(doc|page|document)\b/i,  // "confluence doc/page/document"
+    /\b(create|make)\b.*\bconfluence\b/i,     // "create ... confluence"
+    /\bconfluence\b.*\b(create|make)\b/i,     // "confluence ... create"
+    /\b(doc|page|document)\b.*\bconfluence\b/i, // "doc ... confluence"
+  ];
+  shouldCreateConfluence = confluencePatterns.some(pattern => pattern.test(text));
+  console.log('[Slack Events] Confluence detection - text:', text);
+  console.log('[Slack Events] Confluence detection - shouldCreateConfluence:', shouldCreateConfluence);
+
   // Check if user wants to create a Jira ticket (more flexible matching)
-  shouldCreateJira = /\b(create|make)\b.*\bjira\b/i.test(text) || /\bjira\b.*\b(ticket|issue)\b/i.test(text);
+  // Only check for Jira if Confluence wasn't requested (Confluence takes precedence)
+  if (!shouldCreateConfluence) {
+    shouldCreateJira = /\b(create|make)\b.*\b(jira|ticket|bug)\b/i.test(text) || /\b(jira|ticket|bug)\b.*\b(ticket|issue)\b/i.test(text);
+  }
   console.log('[Slack Events] Jira detection - shouldCreateJira:', shouldCreateJira);
   console.log('[Slack Events] Original text:', event.text);
   console.log('[Slack Events] Lowercase text:', text);
@@ -85,6 +101,12 @@ async function handleTaskCreation(event: any, teamId: string) {
   if (shouldCreateJira && hasThreadJiraTicket(threadKey)) {
     console.log('[Slack Events] Thread already has a Jira ticket, skipping creation:', threadKey);
     shouldCreateJira = false;
+  }
+
+  // Check if this thread already has a Confluence doc
+  if (shouldCreateConfluence && hasThreadConfluenceDoc(threadKey)) {
+    console.log('[Slack Events] Thread already has a Confluence doc, skipping creation:', threadKey);
+    shouldCreateConfluence = false;
   }
 
   // Check for Slack user mentions in "assign" context
@@ -230,6 +252,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     timestamp: Date.now(),
     processed: false,
     shouldCreateJira,
+    shouldCreateConfluence,
     assigneeName,
     assigneeEmail,
   };
@@ -241,6 +264,7 @@ async function handleTaskCreation(event: any, teamId: string) {
     id: taskId,
     title: taskTitle,
     shouldCreateJira,
+    shouldCreateConfluence,
     assigneeName,
     assigneeEmail
   }));
@@ -248,6 +272,11 @@ async function handleTaskCreation(event: any, teamId: string) {
   // Mark thread as having a Jira ticket if we're creating one
   if (shouldCreateJira) {
     markThreadHasJiraTicket(threadKey);
+  }
+
+  // Mark thread as having a Confluence doc if we're creating one
+  if (shouldCreateConfluence) {
+    markThreadHasConfluenceDoc(threadKey);
   }
 
   // TEMPORARY DEBUG: Send debug info to Slack

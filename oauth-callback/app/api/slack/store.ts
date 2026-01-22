@@ -5,6 +5,7 @@
 export const pendingTasks: Map<string, any> = new Map();
 export const processedTaskIds: Set<string> = new Set();
 export const threadsWithJiraTickets: Set<string> = new Set(); // Track threads that already have Jira tickets
+export const threadsWithConfluenceDocs: Set<string> = new Set(); // Track threads that already have Confluence docs
 
 export function addPendingTask(taskData: any) {
   // Check if task was already processed to prevent duplicates
@@ -57,4 +58,13 @@ export function hasThreadJiraTicket(threadKey: string): boolean {
 export function markThreadHasJiraTicket(threadKey: string) {
   threadsWithJiraTickets.add(threadKey);
   console.log('[Store] Marked thread as having Jira ticket:', threadKey);
+}
+
+export function hasThreadConfluenceDoc(threadKey: string): boolean {
+  return threadsWithConfluenceDocs.has(threadKey);
+}
+
+export function markThreadHasConfluenceDoc(threadKey: string) {
+  threadsWithConfluenceDocs.add(threadKey);
+  console.log('[Store] Marked thread as having Confluence doc:', threadKey);
 }

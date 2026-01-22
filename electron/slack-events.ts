@@ -27,6 +27,7 @@ export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
   private onTaskCreate?: (task: any) => Promise<void>;
   private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string }) => Promise<{ key: string; url: string }>;
+  private onConfluenceCreate?: (request: { title: string; body: string; spaceKey?: string; parentId?: string }) => Promise<{ id: string; url: string }>;
   private isPolling: boolean = false;
 
   constructor() {}
@@ -37,6 +38,10 @@ export class SlackEventsServer {
 
   setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string }) => Promise<{ key: string; url: string }>) {
     this.onJiraCreate = handler;
+  }
+
+  setConfluenceCreateHandler(handler: (request: { title: string; body: string; spaceKey?: string; parentId?: string }) => Promise<{ id: string; url: string }>) {
+    this.onConfluenceCreate = handler;
   }
 
   async start(): Promise<void> {
@@ -97,10 +102,11 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, assigneeName, assigneeEmail } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail } = taskData;
       let jiraTicket: { key: string; url: string } | null = null;
+      let confluencePage: { id: string; url: string } | null = null;
 
-      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate }));
+      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate, hasConfluenceHandler: !!this.onConfluenceCreate }));
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
@@ -142,6 +148,42 @@ export class SlackEventsServer {
         logToFile('[SlackEvents] Jira creation not requested for this task');
       }
 
+      // Create Confluence page if requested and handler is available
+      if (shouldCreateConfluence) {
+        if (!this.onConfluenceCreate) {
+          logErrorToFile('[SlackEvents] Confluence page creation requested but handler not set');
+          description = `Failed to create Confluence page: Handler not configured\n\nOriginal context:\n${description}`;
+        } else {
+          try {
+            logToFile('[SlackEvents] Creating Confluence page with title: ' + title);
+
+            // Add Slack thread link to page body
+            const pageBody = description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`;
+
+            confluencePage = await this.onConfluenceCreate({
+              title: title,
+              body: pageBody,
+            });
+            logToFile('[SlackEvents] Confluence page created successfully: ' + JSON.stringify(confluencePage));
+
+            // Send Slack reply with Confluence link and exit early (don't create task)
+            await this.sendSlackReply(channel, threadTs, `📄 Confluence page created: <${confluencePage.url}|${title}>`);
+
+            // Replace eyes with green checkmark
+            await this.removeReaction(channel, messageTs, 'eyes');
+            await this.addReaction(channel, messageTs, 'white_check_mark');
+
+            logToFile('[SlackEvents] Confluence page created, skipping task creation');
+            return; // Exit early - don't create a task
+          } catch (confluenceError) {
+            logErrorToFile('[SlackEvents] Failed to create Confluence page:', confluenceError);
+            description = `Failed to create Confluence page: ${(confluenceError as any).message}\n\nOriginal context:\n${description}`;
+          }
+        }
+      } else {
+        logToFile('[SlackEvents] Confluence page creation not requested for this task');
+      }
+
       // Build linked items array
       const linkedItems: any[] = [{
         id: `slack_${channel}_${messageTs}`,
@@ -157,6 +199,16 @@ export class SlackEventsServer {
           type: 'jira' as const,
           title: `Jira: ${jiraTicket.key}`,
           url: jiraTicket.url,
+        });
+      }
+
+      // Add Confluence page if it was created
+      if (confluencePage) {
+        linkedItems.push({
+          id: `confluence_${confluencePage.id}`,
+          type: 'confluence' as const,
+          title: 'Confluence Page',
+          url: confluencePage.url,
         });
       }
 
@@ -182,6 +234,9 @@ export class SlackEventsServer {
       let confirmMessage = `✅ Task created: "${title}"`;
       if (jiraTicket) {
         confirmMessage += `\n\n🎫 Jira ticket created: <${jiraTicket.url}|${jiraTicket.key}>`;
+      }
+      if (confluencePage) {
+        confirmMessage += `\n\n📄 Confluence page created: <${confluencePage.url}|View page>`;
       }
       await this.sendSlackReply(channel, threadTs, confirmMessage);
 
