@@ -36,12 +36,22 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
   useEffect(() => {
     loadMessages();
 
-    // Auto-refresh every 30 seconds
+    // Auto-refresh every 15 seconds (reduced from 30 for faster updates)
     const interval = setInterval(() => {
       loadMessages();
-    }, 30000);
+    }, 15000);
 
-    return () => clearInterval(interval);
+    // Refresh when window gains focus (user returns from Slack/Gmail)
+    const handleFocus = () => {
+      console.log('[Chats] Window focused, refreshing messages...');
+      loadMessages();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const loadMessages = async () => {
@@ -96,10 +106,22 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
       // Fallback: open Slack to the DM conversation
       window.electronAPI.openExternal(`slack://channel?team=&id=${message.channelId}`);
     }
+
+    // Refresh after 3 seconds to remove the message if it was marked as read
+    setTimeout(() => {
+      console.log('[Chats] Refreshing messages after opening Slack...');
+      loadMessages();
+    }, 3000);
   };
 
   const handleOpenEmail = (threadId: string) => {
     window.electronAPI.openExternal(`https://mail.google.com/mail/u/0/#inbox/${threadId}`);
+
+    // Refresh after 3 seconds to remove the email if it was unstarred or marked as read
+    setTimeout(() => {
+      console.log('[Chats] Refreshing messages after opening email...');
+      loadMessages();
+    }, 3000);
   };
 
   if (isLoading) {
