@@ -343,11 +343,25 @@ export class IntegrationManager {
         channelCount: selectedChannelIds.length
       });
 
-      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getUnreadMessages...');
-      const messages = await this.slackService.getUnreadMessages(selectedChannelIds);
-      console.log('[IntegrationManager.getSlackUnreadMessages] Raw messages from service:', {
-        count: messages?.length || 0,
-        messages: messages
+      // Fetch both channel messages and direct messages
+      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getUnreadMessages for channels...');
+      const channelMessages = await this.slackService.getUnreadMessages(selectedChannelIds);
+      console.log('[IntegrationManager.getSlackUnreadMessages] Channel messages:', {
+        count: channelMessages?.length || 0
+      });
+
+      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getDirectMessages for DMs...');
+      const directMessages = await this.slackService.getDirectMessages();
+      console.log('[IntegrationManager.getSlackUnreadMessages] Direct messages:', {
+        count: directMessages?.length || 0
+      });
+
+      // Merge channel messages and DMs
+      const messages = [...channelMessages, ...directMessages];
+      console.log('[IntegrationManager.getSlackUnreadMessages] Total messages (channels + DMs):', {
+        channelCount: channelMessages.length,
+        dmCount: directMessages.length,
+        totalCount: messages.length
       });
 
       // Map messages to the format expected by the UI
