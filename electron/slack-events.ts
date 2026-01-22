@@ -26,7 +26,7 @@ function logErrorToFile(message: string, error?: any) {
 export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
   private onTaskCreate?: (task: any) => Promise<void>;
-  private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string }) => Promise<{ key: string; url: string }>;
+  private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string }) => Promise<{ key: string; url: string }>;
   private isPolling: boolean = false;
 
   constructor() {}
@@ -35,7 +35,7 @@ export class SlackEventsServer {
     this.onTaskCreate = handler;
   }
 
-  setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string }) => Promise<{ key: string; url: string }>) {
+  setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string }) => Promise<{ key: string; url: string }>) {
     this.onJiraCreate = handler;
   }
 
@@ -97,10 +97,10 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, assigneeName } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, assigneeName, assigneeEmail } = taskData;
       let jiraTicket: { key: string; url: string } | null = null;
 
-      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, assigneeName, hasJiraHandler: !!this.onJiraCreate }));
+      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate }));
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
@@ -112,11 +112,12 @@ export class SlackEventsServer {
           description = `Failed to create Jira ticket: Handler not configured\n\nOriginal context:\n${description}`;
         } else {
           try {
-            logToFile('[SlackEvents] Creating Jira ticket with title: ' + title + (assigneeName ? ' (assignee: ' + assigneeName + ')' : ''));
+            logToFile('[SlackEvents] Creating Jira ticket with title: ' + title + (assigneeName ? ' (assignee: ' + assigneeName + (assigneeEmail ? ' <' + assigneeEmail + '>' : '') + ')' : ''));
             jiraTicket = await this.onJiraCreate({
               summary: title,
               description: description,
               assigneeName: assigneeName,
+              assigneeEmail: assigneeEmail,
             });
             logToFile('[SlackEvents] Jira ticket created successfully: ' + JSON.stringify(jiraTicket));
 

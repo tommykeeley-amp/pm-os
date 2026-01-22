@@ -614,6 +614,7 @@ app.whenReady().then(async () => {
       projectKey: userSettings.jiraDefaultProject || 'AMP',
       issueType: userSettings.jiraDefaultIssueType || 'Task',
       assigneeName: request.assigneeName,
+      assigneeEmail: request.assigneeEmail,
     }));
 
     const issue = await jiraService.createIssue({
@@ -622,6 +623,7 @@ app.whenReady().then(async () => {
       projectKey: userSettings.jiraDefaultProject || 'AMP',
       issueType: userSettings.jiraDefaultIssueType || 'Task',
       assigneeName: request.assigneeName,
+      assigneeEmail: request.assigneeEmail,
     });
 
     log('[Main] Jira issue created: ' + issue.key);

@@ -62,12 +62,28 @@ async function handleTaskCreation(event: any, teamId: string) {
   let taskDescription = '';
   let shouldCreateJira = false;
   let assigneeName: string | undefined = undefined;
+  let assigneeEmail: string | undefined = undefined;
 
   // Check if user wants to create a Jira ticket (more flexible matching)
   shouldCreateJira = /\b(create|make)\b.*\bjira\b/i.test(text) || /\bjira\b.*\b(ticket|issue)\b/i.test(text);
   console.log('[Slack Events] Jira detection - shouldCreateJira:', shouldCreateJira);
   console.log('[Slack Events] Original text:', event.text);
   console.log('[Slack Events] Lowercase text:', text);
+
+  // Check for Slack user mentions in "assign" context
+  const assignMentionMatch = event.text.match(/assign.*?<@([A-Z0-9]+)>/i);
+  if (assignMentionMatch) {
+    const slackUserId = assignMentionMatch[1];
+    console.log('[Slack Events] Found Slack user mention for assignment:', slackUserId);
+
+    // Fetch user info from Slack
+    const userInfo = await fetchSlackUserInfo(slackUserId);
+    if (userInfo) {
+      assigneeName = userInfo.name;
+      assigneeEmail = userInfo.email;
+      console.log('[Slack Events] Resolved Slack user:', { name: assigneeName, email: assigneeEmail });
+    }
+  }
 
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
@@ -162,11 +178,47 @@ async function handleTaskCreation(event: any, teamId: string) {
     processed: false,
     shouldCreateJira,
     assigneeName,
+    assigneeEmail,
   };
 
   // Store in pending tasks
   addPendingTask(taskData);
   console.log('[Slack Events] Stored pending task:', taskId);
+}
+
+async function fetchSlackUserInfo(userId: string): Promise<{ name: string; email: string } | null> {
+  try {
+    const botToken = process.env.SLACK_BOT_TOKEN;
+    if (!botToken) {
+      console.error('[Slack Events] No bot token in environment');
+      return null;
+    }
+
+    const url = `https://slack.com/api/users.info?user=${userId}`;
+    console.log('[Slack Events] Fetching user info from:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${botToken}`,
+      },
+    });
+
+    const data = await response.json();
+    console.log('[Slack Events] Slack user info response:', JSON.stringify(data, null, 2));
+
+    if (!data.ok || !data.user) {
+      console.error('[Slack Events] Failed to fetch user info:', data.error);
+      return null;
+    }
+
+    return {
+      name: data.user.real_name || data.user.name,
+      email: data.user.profile?.email || '',
+    };
+  } catch (error) {
+    console.error('[Slack Events] Error fetching user info:', error);
+    return null;
+  }
 }
 
 async function fetchThreadContext(channel: string, threadTs: string): Promise<{ context: string; messages: any[] } | null> {

@@ -25,6 +25,7 @@ interface CreateIssueRequest {
   issueType: string;
   priority?: string;
   assigneeName?: string; // Optional assignee name to search for
+  assigneeEmail?: string; // Optional assignee email (more precise than name)
 }
 
 interface JiraConfig {
@@ -105,6 +106,41 @@ export class JiraService {
   }
 
   /**
+   * Search for users by email (exact matching)
+   * Returns the user or null if not found
+   */
+  async searchUserByEmail(email: string): Promise<{ accountId: string; displayName: string; email: string } | null> {
+    try {
+      const response = await this.makeRequest(`/user/search?query=${encodeURIComponent(email)}`);
+
+      if (!response || response.length === 0) {
+        console.log(`[Jira] No users found with email: ${email}`);
+        return null;
+      }
+
+      // Find exact email match (Jira search is fuzzy, so we need to verify)
+      const exactMatch = response.find((user: any) =>
+        user.emailAddress?.toLowerCase() === email.toLowerCase()
+      );
+
+      if (exactMatch) {
+        console.log(`[Jira] Found exact email match: ${exactMatch.displayName} (${exactMatch.accountId})`);
+        return {
+          accountId: exactMatch.accountId,
+          displayName: exactMatch.displayName,
+          email: exactMatch.emailAddress,
+        };
+      }
+
+      console.log(`[Jira] No exact email match for: ${email}`);
+      return null;
+    } catch (error) {
+      console.error(`[Jira] Error searching for user by email ${email}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Search for users by name (fuzzy matching)
    * Returns the best match or null if no users found
    */
@@ -134,9 +170,28 @@ export class JiraService {
    * Create a Jira issue
    */
   async createIssue(request: CreateIssueRequest): Promise<JiraIssue> {
-    // Search for assignee if name was provided
+    // Search for assignee - prefer email over name for precision
     let assignee = null;
-    if (request.assigneeName) {
+    if (request.assigneeEmail) {
+      console.log(`[Jira] Searching for user by email: ${request.assigneeEmail}`);
+      const user = await this.searchUserByEmail(request.assigneeEmail);
+      if (user) {
+        assignee = { accountId: user.accountId };
+        console.log(`[Jira] Assigning issue to ${user.displayName} via email match`);
+      } else {
+        console.log(`[Jira] Could not find user with email "${request.assigneeEmail}"`);
+        // Fall back to name search if provided
+        if (request.assigneeName) {
+          console.log(`[Jira] Falling back to name search: ${request.assigneeName}`);
+          const nameUser = await this.searchUserByName(request.assigneeName);
+          if (nameUser) {
+            assignee = { accountId: nameUser.accountId };
+            console.log(`[Jira] Assigning issue to ${nameUser.displayName} via name match`);
+          }
+        }
+      }
+    } else if (request.assigneeName) {
+      console.log(`[Jira] Searching for user by name: ${request.assigneeName}`);
       const user = await this.searchUserByName(request.assigneeName);
       if (user) {
         assignee = { accountId: user.accountId };
