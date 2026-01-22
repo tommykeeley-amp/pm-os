@@ -57,8 +57,9 @@ async function handleTaskCreation(event: any, teamId: string) {
   const messageTs = event.ts;
   const threadTs = event.thread_ts;
 
-  // Check if user wants to create a Jira ticket
-  shouldCreateJira = text.includes('create jira') || text.includes('make jira') || text.includes('jira ticket');
+  // Check if user wants to create a Jira ticket (more flexible matching)
+  shouldCreateJira = /\b(create|make)\b.*\bjira\b/i.test(text) || /\bjira\b.*\b(ticket|issue)\b/i.test(text);
+  console.log('[Slack Events] shouldCreateJira:', shouldCreateJira, 'text:', text);
 
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');

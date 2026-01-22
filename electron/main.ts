@@ -587,17 +587,34 @@ app.whenReady().then(async () => {
 
   // Set Jira ticket creation handler
   slackEventsServer.setJiraCreateHandler(async (request) => {
+    console.log('[Main] Jira ticket creation requested:', request.summary);
+    console.log('[Main] jiraService exists:', !!jiraService);
+
     if (!jiraService) {
+      const userSettings = store.get('userSettings', {}) as any;
+      console.error('[Main] Jira service not available. Settings:', {
+        jiraEnabled: userSettings.jiraEnabled,
+        hasDomain: !!userSettings.jiraDomain,
+        hasEmail: !!userSettings.jiraEmail,
+        hasToken: !!userSettings.jiraApiToken,
+      });
       throw new Error('Jira not configured or not enabled');
     }
 
     const userSettings = store.get('userSettings', {}) as any;
+    console.log('[Main] Creating Jira issue with:', {
+      projectKey: userSettings.jiraDefaultProject || 'AMP',
+      issueType: userSettings.jiraDefaultIssueType || 'Task',
+    });
+
     const issue = await jiraService.createIssue({
       summary: request.summary,
       description: request.description,
       projectKey: userSettings.jiraDefaultProject || 'AMP',
       issueType: userSettings.jiraDefaultIssueType || 'Task',
     });
+
+    console.log('[Main] Jira issue created:', issue.key);
 
     return {
       key: issue.key,

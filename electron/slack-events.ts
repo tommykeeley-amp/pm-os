@@ -81,26 +81,35 @@ export class SlackEventsServer {
       let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira } = taskData;
       let jiraTicket: { key: string; url: string } | null = null;
 
+      console.log('[SlackEvents] Processing task:', { title, shouldCreateJira, hasJiraHandler: !!this.onJiraCreate });
+
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
 
       // Create Jira ticket if requested and handler is available
-      if (shouldCreateJira && this.onJiraCreate) {
-        try {
-          console.log('[SlackEvents] Creating Jira ticket...');
-          jiraTicket = await this.onJiraCreate({
-            summary: title,
-            description: description,
-          });
-          console.log('[SlackEvents] Jira ticket created:', jiraTicket);
+      if (shouldCreateJira) {
+        if (!this.onJiraCreate) {
+          console.error('[SlackEvents] Jira creation requested but handler not set');
+          description = `Failed to create Jira ticket: Handler not configured\n\nOriginal context:\n${description}`;
+        } else {
+          try {
+            console.log('[SlackEvents] Creating Jira ticket with title:', title);
+            jiraTicket = await this.onJiraCreate({
+              summary: title,
+              description: description,
+            });
+            console.log('[SlackEvents] Jira ticket created successfully:', jiraTicket);
 
-          // Update task to be about validating the Jira ticket
-          title = `Validate Jira ticket: ${jiraTicket.key}`;
-          description = `Review and validate the Jira ticket that was created:\n\n${description}\n\nJira ticket: ${jiraTicket.url}`;
-        } catch (jiraError) {
-          console.error('[SlackEvents] Failed to create Jira ticket:', jiraError);
-          description = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${description}`;
+            // Update task to be about validating the Jira ticket
+            title = `Validate Jira ticket: ${jiraTicket.key}`;
+            description = `Review and validate the Jira ticket that was created:\n\n${description}\n\nJira ticket: ${jiraTicket.url}`;
+          } catch (jiraError) {
+            console.error('[SlackEvents] Failed to create Jira ticket:', jiraError);
+            description = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${description}`;
+          }
         }
+      } else {
+        console.log('[SlackEvents] Jira creation not requested for this task');
       }
 
       // Build permalink to the message
