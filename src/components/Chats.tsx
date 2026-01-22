@@ -55,36 +55,52 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
   }, []);
 
   const loadMessages = async () => {
+    console.log('[Chats] ========== LOADING MESSAGES START ==========');
+    console.log('[Chats] Current loading state:', isLoading);
+
     // Prevent multiple simultaneous loads
     if (isLoading) {
       console.log('[Chats] Already loading, skipping duplicate request');
       return;
     }
 
-    console.log('[Chats] ========== LOADING MESSAGES START ==========');
     setIsLoading(true);
     setError(null);
 
     try {
-      // Fetch Slack messages
-      console.log('[Chats] Fetching Slack messages...');
-      const slackData = await window.electronAPI.getSlackUnreadMessages();
+      console.log('[Chats] About to fetch Slack messages...');
+
+      // Add timeout to prevent infinite hanging
+      const slackPromise = window.electronAPI.getSlackUnreadMessages();
+      const slackTimeout = new Promise<any[]>((resolve) => {
+        setTimeout(() => {
+          console.log('[Chats] Slack fetch timed out after 15 seconds');
+          resolve([]);
+        }, 15000);
+      });
+
+      const slackData = await Promise.race([slackPromise, slackTimeout]);
       console.log('[Chats] Slack messages received:', {
         count: slackData?.length || 0,
-        messages: slackData,
-        isArray: Array.isArray(slackData),
-        type: typeof slackData
+        isArray: Array.isArray(slackData)
       });
       setSlackMessages(slackData || []);
 
-      // Fetch starred unread emails
-      console.log('[Chats] Fetching starred emails...');
-      const emailData = await window.electronAPI.getStarredEmails();
+      console.log('[Chats] About to fetch starred emails...');
+
+      // Add timeout to prevent infinite hanging
+      const emailPromise = window.electronAPI.getStarredEmails();
+      const emailTimeout = new Promise<any[]>((resolve) => {
+        setTimeout(() => {
+          console.log('[Chats] Email fetch timed out after 15 seconds');
+          resolve([]);
+        }, 15000);
+      });
+
+      const emailData = await Promise.race([emailPromise, emailTimeout]);
       console.log('[Chats] Starred emails received:', {
         count: emailData?.length || 0,
-        emails: emailData,
-        isArray: Array.isArray(emailData),
-        type: typeof emailData
+        isArray: Array.isArray(emailData)
       });
       setEmails(emailData || []);
 
@@ -102,6 +118,7 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
     } finally {
       setIsLoading(false);
       console.log('[Chats] ========== LOADING MESSAGES COMPLETE ==========');
+      console.log('[Chats] Final state - isLoading:', false, 'slackCount:', slackMessages.length, 'emailCount:', emails.length);
     }
   };
 

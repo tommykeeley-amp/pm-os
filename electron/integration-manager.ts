@@ -326,6 +326,12 @@ export class IntegrationManager {
   // Get Slack unread messages
   async getSlackUnreadMessages() {
     console.log('[IntegrationManager.getSlackUnreadMessages] ========== START ==========');
+    console.log('[IntegrationManager.getSlackUnreadMessages] TEMPORARILY DISABLED - returning empty array');
+    console.log('[IntegrationManager.getSlackUnreadMessages] ========== COMPLETE ==========');
+    return [];
+
+    // DISABLED TEMPORARILY TO DEBUG
+    /*
     console.log('[IntegrationManager.getSlackUnreadMessages] Slack service initialized:', !!this.slackService);
 
     if (!this.slackService) {
@@ -374,6 +380,7 @@ export class IntegrationManager {
       });
       return [];
     }
+    */
   }
 
   // Get starred emails
