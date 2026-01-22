@@ -24,6 +24,13 @@ export async function POST(request: NextRequest) {
     // Handle app mention events
     if (body.type === 'event_callback' && body.event?.type === 'app_mention') {
       console.log('[Slack Events] Received app mention:', body.event);
+
+      // CRITICAL: Ignore bot messages to prevent infinite loops
+      if (body.event.bot_id || body.event.subtype) {
+        console.log('[Slack Events] Ignoring bot message or subtype event');
+        return NextResponse.json({ ok: true });
+      }
+
       // Add eyes emoji immediately for user feedback
       await addReaction(body.event.channel, body.event.ts, 'eyes');
       await handleTaskCreation(body.event, body.team_id);
