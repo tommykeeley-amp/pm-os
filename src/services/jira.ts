@@ -268,15 +268,11 @@ export class JiraService {
           name: request.priority,
         } : undefined,
         assignee: assignee,
-        // Custom fields - NOTE: These field IDs need to be verified for your Jira instance
-        // You can find the correct field IDs by:
-        // 1. Go to Jira Settings → Issues → Custom Fields
-        // 2. Find "Pillar" and "Pod" fields
-        // 3. Note their field IDs (e.g., customfield_10XXX)
-        // Pillar - typically a select field
-        ...(request.pillar ? { customfield_10100: { value: request.pillar } } : {}),
-        // Pod - typically a select field
-        ...(request.pod ? { customfield_10101: { value: request.pod } } : {}),
+        // Custom fields - Pillar and Pod
+        // Pillar: customfield_11481 - "Growth" has id: 11653
+        ...(request.pillar ? { customfield_11481: { id: '11653' } } : {}),
+        // Pod: customfield_11200 - "Growth - Retention" has id: 13390
+        ...(request.pod ? { customfield_11200: { id: '13390' } } : {}),
       },
     };
 
