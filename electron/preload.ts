@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   jiraGetComponents: (projectKey: string) => ipcRenderer.invoke('jira-get-components', projectKey),
   jiraGetSprints: (projectKey: string) => ipcRenderer.invoke('jira-get-sprints', projectKey),
   jiraSearchUsers: (projectKey: string, query: string) => ipcRenderer.invoke('jira-search-users', projectKey, query),
+  jiraGetCreateMetadata: (projectKey: string, issueType: string) => ipcRenderer.invoke('jira-get-create-metadata', projectKey, issueType),
 
   // Confluence
   confluenceIsConfigured: () => ipcRenderer.invoke('confluence-is-configured'),
@@ -148,6 +149,7 @@ export interface ElectronAPI {
   jiraGetComponents: (projectKey: string) => Promise<Array<{ id: string; name: string }>>;
   jiraGetSprints: (projectKey: string) => Promise<Array<{ id: number; name: string; state: string }>>;
   jiraSearchUsers: (projectKey: string, query: string) => Promise<Array<{ accountId: string; displayName: string; emailAddress: string }>>;
+  jiraGetCreateMetadata: (projectKey: string, issueType: string) => Promise<any>;
   confluenceIsConfigured: () => Promise<boolean>;
   confluenceTestConnection: () => Promise<{ success: boolean; error?: string }>;
   confluenceGetSpaces: () => Promise<any[]>;

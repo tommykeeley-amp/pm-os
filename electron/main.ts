@@ -1443,6 +1443,10 @@ ipcMain.handle('jira-create-issue', async (_event, request: any) => {
       const defaultPrompt = 'You are creating a concise, professional Jira ticket title. Transform the user\'s input into a clear, actionable title. Remove conversational phrases like "create a ticket for", "make a ticket", "I need to", etc. Keep only the essential action and context. Use imperative mood (e.g., "Fix bug" not "Fixing bug"). Keep it under 80 characters. Examples: "create a ticket for updating the login page" → "Update login page", "I need to fix the email validation bug" → "Fix email validation bug".';
       const systemPrompt = userSettings.jiraSystemPrompt || defaultPrompt;
 
+      // Add current date context for date awareness
+      const now = new Date();
+      const dateContext = `Today is ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. When interpreting relative dates like "on the 25th", use the current month and year. If a date has already passed this month, assume it refers to next month.`;
+
       console.log('[Main] Using', userSettings.jiraSystemPrompt ? 'custom' : 'default', 'system prompt for Jira');
 
       const completion = await openai.chat.completions.create({
@@ -1450,7 +1454,7 @@ ipcMain.handle('jira-create-issue', async (_event, request: any) => {
         messages: [
           {
             role: 'system',
-            content: systemPrompt,
+            content: `${systemPrompt}\n\n${dateContext}`,
           },
           {
             role: 'user',
@@ -1507,6 +1511,11 @@ ipcMain.handle('jira-search-users', async (_event, projectKey: string, query: st
 ipcMain.handle('jira-get-my-issues', async () => {
   if (!jiraService) throw new Error('Jira not configured');
   return await jiraService.getMyIssues();
+});
+
+ipcMain.handle('jira-get-create-metadata', async (_event, projectKey: string, issueType: string) => {
+  if (!jiraService) throw new Error('Jira not configured');
+  return await jiraService.getCreateMetadata(projectKey, issueType);
 });
 
 ipcMain.handle('jira-is-configured', () => {

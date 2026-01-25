@@ -268,13 +268,28 @@ export class JiraService {
           name: request.priority,
         } : undefined,
         assignee: assignee,
-        // Custom fields - these field IDs may need to be adjusted for your Jira instance
+        // Custom fields - NOTE: These field IDs need to be verified for your Jira instance
+        // You can find the correct field IDs by:
+        // 1. Go to Jira Settings → Issues → Custom Fields
+        // 2. Find "Pillar" and "Pod" fields
+        // 3. Note their field IDs (e.g., customfield_10XXX)
         // Pillar - typically a select field
         ...(request.pillar ? { customfield_10100: { value: request.pillar } } : {}),
         // Pod - typically a select field
         ...(request.pod ? { customfield_10101: { value: request.pod } } : {}),
       },
     };
+
+    logToFile(`[Jira] Creating issue with payload: ${JSON.stringify({
+      projectKey: request.projectKey,
+      summary: request.summary,
+      issueType: request.issueType,
+      priority: request.priority,
+      pillar: request.pillar,
+      pod: request.pod,
+      hasAssignee: !!assignee,
+      hasDescription: !!request.description
+    })}`);
 
     const response = await this.makeRequest('/issue', {
       method: 'POST',
@@ -406,6 +421,23 @@ export class JiraService {
     } catch (error) {
       logToFile(`[Jira] Error searching assignable users: ${error}`);
       return [];
+    }
+  }
+
+  /**
+   * Get custom fields for issue creation metadata
+   * This helps identify the correct field IDs for Pillar, Pod, etc.
+   */
+  async getCreateMetadata(projectKey: string, issueType: string): Promise<any> {
+    try {
+      const response = await this.makeRequest(
+        `/issue/createmeta?projectKeys=${projectKey}&issuetypeNames=${issueType}&expand=projects.issuetypes.fields`
+      );
+      logToFile(`[Jira] Create metadata: ${JSON.stringify(response, null, 2)}`);
+      return response;
+    } catch (error) {
+      logToFile(`[Jira] Error getting create metadata: ${error}`);
+      return null;
     }
   }
 

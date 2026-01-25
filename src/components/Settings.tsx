@@ -87,6 +87,8 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   const [obsidianExpanded, setObsidianExpanded] = useState(false);
   const [jiraTestResult, setJiraTestResult] = useState<{ success: boolean; error?: string } | null>(null);
   const [testingJira, setTestingJira] = useState(false);
+  const [debuggingFields, setDebuggingFields] = useState(false);
+  const [fieldDebugResult, setFieldDebugResult] = useState<any>(null);
 
   useEffect(() => {
     loadSettings();
@@ -212,6 +214,29 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       setJiraTestResult({ success: false, error: 'Failed to test connection' });
     } finally {
       setTestingJira(false);
+    }
+  };
+
+  const handleDebugCustomFields = async () => {
+    setDebuggingFields(true);
+    setFieldDebugResult(null);
+    try {
+      const projectKey = settings.jiraDefaultProject || '';
+      const issueType = settings.jiraDefaultIssueType || 'Task';
+
+      if (!projectKey) {
+        setFieldDebugResult({ error: 'Please set a default project first' });
+        return;
+      }
+
+      const metadata = await window.electronAPI.jiraGetCreateMetadata(projectKey, issueType);
+      setFieldDebugResult(metadata);
+      console.log('[Settings] Jira create metadata:', metadata);
+    } catch (error) {
+      console.error('Failed to debug custom fields:', error);
+      setFieldDebugResult({ error: 'Failed to fetch metadata: ' + (error as Error).message });
+    } finally {
+      setDebuggingFields(false);
     }
   };
 
@@ -639,13 +664,22 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
                           {/* Test Connection Button */}
                           <div className="pt-2">
-                            <button
-                              onClick={handleTestJiraConnection}
-                              disabled={testingJira}
-                              className="btn-primary btn-sm"
-                            >
-                              {testingJira ? 'Testing...' : 'Test Connection'}
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={handleTestJiraConnection}
+                                disabled={testingJira}
+                                className="btn-primary btn-sm"
+                              >
+                                {testingJira ? 'Testing...' : 'Test Connection'}
+                              </button>
+                              <button
+                                onClick={handleDebugCustomFields}
+                                disabled={debuggingFields}
+                                className="btn-secondary btn-sm"
+                              >
+                                {debuggingFields ? 'Loading...' : 'Debug Custom Fields'}
+                              </button>
+                            </div>
                             {jiraTestResult && (
                               <div className={`mt-2 text-xs ${jiraTestResult.success ? 'text-dark-accent-success' : 'text-dark-accent-danger'}`}>
                                 {jiraTestResult.success ? (
@@ -662,6 +696,30 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                                     </svg>
                                     {jiraTestResult.error || 'Connection failed'}
                                   </span>
+                                )}
+                              </div>
+                            )}
+                            {fieldDebugResult && (
+                              <div className="mt-3 p-3 bg-dark-surface border border-dark-border rounded-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h5 className="text-xs font-medium text-dark-text-primary">Custom Fields Debug Info</h5>
+                                  <button
+                                    onClick={() => setFieldDebugResult(null)}
+                                    className="text-xs text-dark-text-muted hover:text-dark-text-primary"
+                                  >
+                                    Close
+                                  </button>
+                                </div>
+                                {fieldDebugResult.error ? (
+                                  <p className="text-xs text-dark-accent-danger">{fieldDebugResult.error}</p>
+                                ) : (
+                                  <div className="text-xs text-dark-text-secondary space-y-2 max-h-60 overflow-y-auto">
+                                    <p className="font-medium text-dark-text-primary mb-2">Check the console for full metadata (F12)</p>
+                                    <p className="text-dark-text-muted">Look for fields named "Pillar" and "Pod" in the console output to find their correct field IDs (e.g., customfield_XXXXX)</p>
+                                    <pre className="bg-dark-bg p-2 rounded text-xs overflow-x-auto">
+                                      {JSON.stringify(fieldDebugResult, null, 2)}
+                                    </pre>
+                                  </div>
                                 )}
                               </div>
                             )}
