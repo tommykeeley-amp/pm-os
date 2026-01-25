@@ -497,4 +497,54 @@ export class SlackService {
       return null;
     }
   }
+
+  /**
+   * Fetch all replies in a Slack thread
+   * @param channelId - The channel ID where the thread exists
+   * @param threadTs - The thread timestamp (parent message timestamp)
+   * @returns Array of thread messages with user info
+   */
+  async getThreadReplies(channelId: string, threadTs: string): Promise<Array<{text: string; user: string; userName: string; timestamp: string}>> {
+    if (!this.client) throw new Error('Slack client not initialized');
+
+    try {
+      console.log('[SlackService] Fetching thread replies for channel:', channelId, 'thread:', threadTs);
+
+      // Fetch thread conversation
+      const response = await this.client.conversations.replies({
+        channel: channelId,
+        ts: threadTs,
+      });
+
+      if (!response.ok || !response.messages) {
+        console.error('[SlackService] Failed to fetch thread replies:', response);
+        return [];
+      }
+
+      // Parse messages and fetch user info
+      const replies = [];
+      for (const msg of response.messages) {
+        if (!msg.text) continue;
+
+        let userName = 'Unknown User';
+        if (msg.user) {
+          const userInfo = await this.getUserInfo(msg.user);
+          userName = userInfo?.realName || userInfo?.name || msg.user;
+        }
+
+        replies.push({
+          text: msg.text,
+          user: msg.user || '',
+          userName,
+          timestamp: msg.ts || '',
+        });
+      }
+
+      console.log('[SlackService] Fetched', replies.length, 'thread replies');
+      return replies;
+    } catch (error) {
+      console.error('[SlackService] Failed to get thread replies:', error);
+      return [];
+    }
+  }
 }

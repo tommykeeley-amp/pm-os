@@ -1388,6 +1388,19 @@ ipcMain.handle('get-slack-channels', async () => {
   }
 });
 
+// Slack thread replies
+ipcMain.handle('slack-get-thread-replies', async (_event, channelId: string, threadTs: string) => {
+  try {
+    console.log('[IPC] Fetching Slack thread replies for channel:', channelId, 'thread:', threadTs);
+    const replies = await integrationManager.getSlackThreadReplies(channelId, threadTs);
+    console.log('[IPC] Fetched', replies?.length || 0, 'thread replies');
+    return replies;
+  } catch (error: any) {
+    console.error('[IPC] Failed to get Slack thread replies:', error);
+    return [];
+  }
+});
+
 // Jira Integration Handlers
 ipcMain.handle('jira-test-connection', async () => {
   if (!jiraService) {
@@ -1416,18 +1429,79 @@ ipcMain.handle('jira-create-issue', async (_event, request: any) => {
   if (!jiraService) throw new Error('Jira not configured');
 
   const userSettings = store.get('userSettings', {}) as any;
+
+  // Use OpenAI to create smart, concise ticket title from raw input
+  let ticketSummary = request.summary;
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+
+  if (openaiApiKey) {
+    try {
+      const openai = new OpenAI({ apiKey: openaiApiKey });
+      console.log('[Main] Using OpenAI to format Jira ticket title');
+
+      // Use custom prompt from settings or default
+      const defaultPrompt = 'You are creating a concise, professional Jira ticket title. Transform the user\'s input into a clear, actionable title. Remove conversational phrases like "create a ticket for", "make a ticket", "I need to", etc. Keep only the essential action and context. Use imperative mood (e.g., "Fix bug" not "Fixing bug"). Keep it under 80 characters. Examples: "create a ticket for updating the login page" → "Update login page", "I need to fix the email validation bug" → "Fix email validation bug".';
+      const systemPrompt = userSettings.jiraSystemPrompt || defaultPrompt;
+
+      console.log('[Main] Using', userSettings.jiraSystemPrompt ? 'custom' : 'default', 'system prompt for Jira');
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content: request.summary,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 100,
+      });
+
+      ticketSummary = completion.choices[0].message.content?.trim() || request.summary;
+      console.log('[Main] OpenAI formatted title successfully:', { original: request.summary, formatted: ticketSummary });
+    } catch (error) {
+      console.error('[Main] OpenAI formatting failed, using raw summary:', error);
+      // Fall back to raw summary if OpenAI fails
+    }
+  } else {
+    console.log('[Main] No OpenAI key, using raw summary');
+  }
+
   const issue = await jiraService.createIssue({
-    summary: request.summary,
+    summary: ticketSummary,
     description: request.description,
     projectKey: request.projectKey || userSettings.jiraDefaultProject || process.env.JIRA_DEFAULT_PROJECT || '',
     issueType: request.issueType || userSettings.jiraDefaultIssueType || process.env.JIRA_DEFAULT_ISSUE_TYPE || 'Task',
     priority: request.priority,
+    pillar: request.pillar,
+    pod: request.pod,
+    assigneeEmail: request.assigneeEmail,
+    assigneeName: request.assigneeName,
   });
 
   return {
     key: issue.key,
     url: jiraService.getIssueUrl(issue.key),
   };
+});
+
+ipcMain.handle('jira-get-components', async (_event, projectKey: string) => {
+  if (!jiraService) throw new Error('Jira not configured');
+  return await jiraService.getComponents(projectKey);
+});
+
+ipcMain.handle('jira-get-sprints', async (_event, projectKey: string) => {
+  if (!jiraService) throw new Error('Jira not configured');
+  return await jiraService.getSprints(projectKey);
+});
+
+ipcMain.handle('jira-search-users', async (_event, projectKey: string, query: string) => {
+  if (!jiraService) throw new Error('Jira not configured');
+  return await jiraService.searchAssignableUsers(projectKey, query);
 });
 
 ipcMain.handle('jira-get-my-issues', async () => {

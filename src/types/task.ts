@@ -42,6 +42,13 @@ export interface Task {
   tags?: TaskTag[];
   deadline?: string;
   linkedItems?: LinkedItem[];
+  // Slack-specific metadata
+  slackThreadTs?: string;    // Thread timestamp for fetching replies
+  slackPermalink?: string;   // Direct link to Slack message
+  slackChannelId?: string;   // Channel ID for API calls
+  slackChannelName?: string; // Human-readable channel name
+  slackUserId?: string;      // User who sent the message
+  slackUserName?: string;    // Human-readable user name
 }
 
 export interface WindowPosition {

@@ -273,6 +273,15 @@ function App() {
       context: suggestion.context,
       dueDate: suggestion.dueDate,
       createdAt: new Date().toISOString(),
+      // Include Slack metadata if this is a Slack suggestion
+      ...(suggestion.source === 'slack' && {
+        slackThreadTs: suggestion.slackThreadTs,
+        slackPermalink: suggestion.slackPermalink,
+        slackChannelId: suggestion.slackChannelId,
+        slackChannelName: suggestion.slackChannelName,
+        slackUserId: suggestion.slackUserId,
+        slackUserName: suggestion.slackUserName,
+      }),
     };
 
     try {
@@ -861,12 +870,16 @@ function App() {
       {/* Settings full-screen view */}
       {showSettings && (
         <div className="absolute inset-0 z-50 animate-fade-in">
-          <Settings onClose={async () => {
-            setShowSettings(false);
-            // Reload user name in case it was updated
-            const userSettings = await window.electronAPI.getUserSettings();
-            setUserName(userSettings?.name || '');
-          }} />
+          <Settings
+            onClose={async () => {
+              setShowSettings(false);
+              // Reload user name in case it was updated
+              const userSettings = await window.electronAPI.getUserSettings();
+              setUserName(userSettings?.name || '');
+            }}
+            isPinned={isPinned}
+            onTogglePin={handleTogglePin}
+          />
         </div>
       )}
 

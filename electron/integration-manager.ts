@@ -456,6 +456,20 @@ export class IntegrationManager {
     }
   }
 
+  // Get Slack thread replies
+  async getSlackThreadReplies(channelId: string, threadTs: string) {
+    if (!this.slackService) {
+      return [];
+    }
+
+    try {
+      return await this.slackService.getThreadReplies(channelId, threadTs);
+    } catch (error) {
+      console.error('Failed to get Slack thread replies:', error);
+      return [];
+    }
+  }
+
   // Refresh Google tokens
   private async refreshGoogleTokens() {
     if (!this.calendarService) return;

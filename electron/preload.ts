@@ -53,6 +53,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   jiraGetIssueTypes: (projectKey: string) => ipcRenderer.invoke('jira-get-issue-types', projectKey),
   jiraCreateIssue: (request: any) => ipcRenderer.invoke('jira-create-issue', request),
   jiraGetMyIssues: () => ipcRenderer.invoke('jira-get-my-issues'),
+  jiraGetComponents: (projectKey: string) => ipcRenderer.invoke('jira-get-components', projectKey),
+  jiraGetSprints: (projectKey: string) => ipcRenderer.invoke('jira-get-sprints', projectKey),
+  jiraSearchUsers: (projectKey: string, query: string) => ipcRenderer.invoke('jira-search-users', projectKey, query),
 
   // Confluence
   confluenceIsConfigured: () => ipcRenderer.invoke('confluence-is-configured'),
@@ -85,6 +88,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSlackUnreadMessages: () => ipcRenderer.invoke('get-slack-unread-messages'),
   getStarredEmails: () => ipcRenderer.invoke('get-starred-emails'),
   getSlackChannels: () => ipcRenderer.invoke('get-slack-channels'),
+  slackGetThreadReplies: (channelId: string, threadTs: string) =>
+    ipcRenderer.invoke('slack-get-thread-replies', channelId, threadTs),
 
   // Events
   onFocusTaskInput: (callback: () => void) => {
@@ -140,6 +145,9 @@ export interface ElectronAPI {
   jiraGetIssueTypes: (projectKey: string) => Promise<any[]>;
   jiraCreateIssue: (request: any) => Promise<{ key: string; url: string }>;
   jiraGetMyIssues: () => Promise<any[]>;
+  jiraGetComponents: (projectKey: string) => Promise<Array<{ id: string; name: string }>>;
+  jiraGetSprints: (projectKey: string) => Promise<Array<{ id: number; name: string; state: string }>>;
+  jiraSearchUsers: (projectKey: string, query: string) => Promise<Array<{ accountId: string; displayName: string; emailAddress: string }>>;
   confluenceIsConfigured: () => Promise<boolean>;
   confluenceTestConnection: () => Promise<{ success: boolean; error?: string }>;
   confluenceGetSpaces: () => Promise<any[]>;
@@ -158,6 +166,7 @@ export interface ElectronAPI {
   getSlackUnreadMessages: () => Promise<any[]>;
   getStarredEmails: () => Promise<any[]>;
   getSlackChannels: () => Promise<any[]>;
+  slackGetThreadReplies: (channelId: string, threadTs: string) => Promise<Array<{text: string; user: string; userName: string; timestamp: string}>>;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => () => void;

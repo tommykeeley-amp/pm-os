@@ -4,6 +4,8 @@ import TabPanel from './TabPanel';
 
 interface SettingsProps {
   onClose: () => void;
+  isPinned: boolean;
+  onTogglePin: () => void;
 }
 
 interface UserSettings {
@@ -18,6 +20,7 @@ interface UserSettings {
   jiraApiToken?: string;
   jiraDefaultProject?: string;
   jiraDefaultIssueType?: string;
+  jiraSystemPrompt?: string;
 
   // Confluence Settings
   confluenceDefaultSpace?: string;
@@ -40,7 +43,10 @@ interface UserSettings {
 // Default Confluence system prompt
 const DEFAULT_CONFLUENCE_PROMPT = 'You are creating a simple Confluence page. Your ONLY job is to capture what was actually discussed in the conversation - nothing more. DO NOT add sections like "Overview", "Purpose", "Action Items", or any structure that was not explicitly discussed. DO NOT invent objectives, goals, or requirements. Just write down what was actually said in simple, clear paragraphs. If very little was discussed, write very little. Be literal and concise.';
 
-export default function Settings({ onClose }: SettingsProps) {
+// Default Jira system prompt
+const DEFAULT_JIRA_PROMPT = 'You are creating a concise, professional Jira ticket title. Transform the user\'s input into a clear, actionable title. Remove conversational phrases like "create a ticket for", "make a ticket", "I need to", etc. Keep only the essential action and context. Use imperative mood (e.g., "Fix bug" not "Fixing bug"). Keep it under 80 characters. Examples: "create a ticket for updating the login page" → "Update login page", "I need to fix the email validation bug" → "Fix email validation bug".';
+
+export default function Settings({ onClose, isPinned, onTogglePin }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>({});
   const [activeTab, setActiveTab] = useState<'personal' | 'integrations' | 'customizations'>('personal');
 
@@ -157,6 +163,10 @@ export default function Settings({ onClose }: SettingsProps) {
     await handleChange('confluenceSystemPrompt', DEFAULT_CONFLUENCE_PROMPT);
   };
 
+  const handleResetJiraPrompt = async () => {
+    await handleChange('jiraSystemPrompt', DEFAULT_JIRA_PROMPT);
+  };
+
   const handleConnect = async (integrationId: 'google' | 'slack') => {
     setIsConnecting(integrationId);
 
@@ -208,7 +218,7 @@ export default function Settings({ onClose }: SettingsProps) {
   return (
     <div className="w-full h-full bg-dark-bg flex flex-col">
       {/* Header */}
-      <div className="bg-dark-surface border-b border-dark-border px-4 py-3 flex items-center gap-3 flex-shrink-0">
+      <div className="bg-dark-surface border-b border-dark-border px-4 py-3 flex items-center justify-between flex-shrink-0">
         <button
           onClick={onClose}
           className="text-dark-text-secondary hover:text-dark-text-primary transition-colors flex items-center gap-2"
@@ -218,6 +228,48 @@ export default function Settings({ onClose }: SettingsProps) {
           </svg>
           <span className="text-sm font-medium">Back</span>
         </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onTogglePin}
+            className="no-drag p-1.5 hover:bg-dark-bg rounded transition-colors"
+            title={isPinned ? 'Unpin window' : 'Pin to right side'}
+          >
+            <svg
+              className={`w-4 h-4 transition-all ${
+                isPinned ? 'text-dark-accent-primary -rotate-45' : 'text-dark-text-secondary'
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 4v8H6v2h5v10h2V14h5v-2h-2V4H8z"
+              />
+            </svg>
+          </button>
+          <button
+            onClick={() => window.electronAPI.minimizeWindow()}
+            className="no-drag p-1.5 hover:bg-dark-bg rounded transition-colors"
+            title="Minimize"
+          >
+            <svg
+              className="w-4 h-4 text-dark-text-secondary hover:text-dark-text-primary transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M20 12H4"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
         {/* Page Title */}
@@ -554,6 +606,35 @@ export default function Settings({ onClose }: SettingsProps) {
                             <p className="text-xs text-dark-text-muted mt-1">
                               Default issue type for creating tickets (e.g., Task, Epic, Bug)
                             </p>
+                          </div>
+
+                          {/* Jira AI Settings */}
+                          <div className="pt-4 border-t border-dark-border">
+                            <h4 className="text-sm font-medium text-dark-text-primary mb-3">AI Settings</h4>
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <label className="text-sm font-medium text-dark-text-secondary">
+                                  AI System Prompt for Ticket Titles
+                                </label>
+                                <button
+                                  onClick={handleResetJiraPrompt}
+                                  className="text-xs text-dark-accent-primary hover:text-dark-accent-secondary transition-colors"
+                                >
+                                  Reset to Default
+                                </button>
+                              </div>
+                              <textarea
+                                value={settings.jiraSystemPrompt || ''}
+                                onChange={(e) => handleChange('jiraSystemPrompt', e.target.value)}
+                                rows={6}
+                                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                         text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary text-sm"
+                                placeholder="Enter your custom system prompt..."
+                              />
+                              <p className="text-xs text-dark-text-muted mt-1">
+                                Customize how OpenAI formats your Jira ticket titles. The AI will clean up conversational phrases and create concise, professional titles.
+                              </p>
+                            </div>
                           </div>
 
                           {/* Test Connection Button */}

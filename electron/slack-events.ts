@@ -136,9 +136,8 @@ export class SlackEventsServer {
             });
             logToFile('[SlackEvents] Jira ticket created successfully: ' + JSON.stringify(jiraTicket));
 
-            // Update task to be about validating the Jira ticket
-            title = `Validate Jira ticket: ${jiraTicket.key}`;
-            description = `Review and validate the Jira ticket that was created:\n\n${description}\n\nJira ticket: ${jiraTicket.url}`;
+            // Don't modify the task - just create the Jira ticket
+            // User doesn't want "Validate" tasks created
           } catch (jiraError) {
             logErrorToFile('[SlackEvents] Failed to create Jira ticket:', jiraError);
             description = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${description}`;

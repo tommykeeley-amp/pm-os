@@ -9,6 +9,13 @@ interface Suggestion {
   context?: string;
   dueDate?: string;
   score: number;
+  // Slack-specific metadata
+  slackThreadTs?: string;
+  slackPermalink?: string;
+  slackChannelId?: string;
+  slackChannelName?: string;
+  slackUserId?: string;
+  slackUserName?: string;
 }
 
 interface CalendarEvent {
@@ -34,9 +41,13 @@ interface SlackMessage {
   id: string;
   type: 'mention' | 'dm' | 'thread' | 'saved' | 'channel';
   text: string;
+  user: string;
   userName?: string;
+  channel: string;
   channelName?: string;
   timestamp: string;
+  permalink?: string;
+  threadTs?: string;
 }
 
 export class ContextEngine {
@@ -248,6 +259,13 @@ export class ContextEngine {
         priority,
         context: `${context} • "${message.text.substring(0, 50)}${message.text.length > 50 ? '...' : ''}"`,
         score,
+        // Include Slack metadata for later use
+        slackThreadTs: message.threadTs,
+        slackPermalink: message.permalink,
+        slackChannelId: message.channel,
+        slackChannelName: message.channelName,
+        slackUserId: message.user,
+        slackUserName: message.userName,
       });
     }
 

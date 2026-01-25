@@ -38,6 +38,8 @@ interface CreateIssueRequest {
   priority?: string;
   assigneeName?: string; // Optional assignee name to search for
   assigneeEmail?: string; // Optional assignee email (more precise than name)
+  pillar?: string; // Custom field: Pillar
+  pod?: string; // Custom field: Pod
 }
 
 interface JiraConfig {
@@ -266,6 +268,11 @@ export class JiraService {
           name: request.priority,
         } : undefined,
         assignee: assignee,
+        // Custom fields - these field IDs may need to be adjusted for your Jira instance
+        // Pillar - typically a select field
+        ...(request.pillar ? { customfield_10100: { value: request.pillar } } : {}),
+        // Pod - typically a select field
+        ...(request.pod ? { customfield_10101: { value: request.pod } } : {}),
       },
     };
 
@@ -344,6 +351,62 @@ export class JiraService {
         },
       }),
     });
+  }
+
+  /**
+   * Get project components
+   */
+  async getComponents(projectKey: string): Promise<Array<{ id: string; name: string }>> {
+    try {
+      const project = await this.makeRequest(`/project/${projectKey}`);
+      return project.components || [];
+    } catch (error) {
+      logToFile(`[Jira] Error getting components for ${projectKey}: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get active sprints for a board
+   * Note: This requires knowing the board ID. For simplicity, we search for boards in the project.
+   */
+  async getSprints(projectKey: string): Promise<Array<{ id: number; name: string; state: string }>> {
+    try {
+      // First, get boards for this project
+      const boardsResponse = await this.makeRequest(`/board?projectKeyOrId=${projectKey}`);
+
+      if (!boardsResponse.values || boardsResponse.values.length === 0) {
+        return [];
+      }
+
+      // Get sprints from the first board (most projects have one board)
+      const boardId = boardsResponse.values[0].id;
+      const sprintsResponse = await this.makeRequest(`/board/${boardId}/sprint?state=active,future`);
+
+      return sprintsResponse.values || [];
+    } catch (error) {
+      logToFile(`[Jira] Error getting sprints for ${projectKey}: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Search for users assignable to a project (for autocomplete)
+   */
+  async searchAssignableUsers(projectKey: string, query: string): Promise<Array<{ accountId: string; displayName: string; emailAddress: string }>> {
+    try {
+      const response = await this.makeRequest(
+        `/user/assignable/search?project=${projectKey}&query=${encodeURIComponent(query)}&maxResults=10`
+      );
+      return response.map((user: any) => ({
+        accountId: user.accountId,
+        displayName: user.displayName,
+        emailAddress: user.emailAddress,
+      }));
+    } catch (error) {
+      logToFile(`[Jira] Error searching assignable users: ${error}`);
+      return [];
+    }
   }
 
   /**
