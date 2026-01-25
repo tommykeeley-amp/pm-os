@@ -205,32 +205,52 @@ export class SlackEventsServer {
         });
       }
 
-      // Create the task
-      const task = {
-        title,
-        description: description || undefined,
-        source: 'slack',
-        sourceId: `${channel}_${messageTs}`,
-        priority: 'medium',
-        context: `From Slack: ${user}`,
-        linkedItems,
-      };
+      // Only create a PM-OS task if:
+      // 1. User didn't request Jira/Confluence, OR
+      // 2. Jira/Confluence creation failed
+      const shouldCreateTask = (!shouldCreateJira && !shouldCreateConfluence) ||
+                               (shouldCreateJira && !jiraTicket) ||
+                               (shouldCreateConfluence && !confluencePage);
 
-      logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description }));
+      if (shouldCreateTask) {
+        // Create the task
+        const task = {
+          title,
+          description: description || undefined,
+          source: 'slack',
+          sourceId: `${channel}_${messageTs}`,
+          priority: 'medium',
+          context: `From Slack: ${user}`,
+          linkedItems,
+        };
 
-      // Call the task creation handler
-      if (this.onTaskCreate) {
-        await this.onTaskCreate(task);
+        logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description }));
+
+        // Call the task creation handler
+        if (this.onTaskCreate) {
+          await this.onTaskCreate(task);
+        }
+      } else {
+        logToFile('[SlackEvents] Skipping task creation - Jira or Confluence was successfully created');
       }
 
       // Send confirmation reply in Slack
-      let confirmMessage = `✅ Task created: "${title}"`;
+      let confirmMessage = '';
+
+      if (shouldCreateTask) {
+        confirmMessage = `✅ Task created: "${title}"`;
+      }
+
       if (jiraTicket) {
-        confirmMessage += `\n\n🎫 Jira ticket created: <${jiraTicket.url}|${jiraTicket.key}>`;
+        if (confirmMessage) confirmMessage += '\n\n';
+        confirmMessage += `🎫 Jira ticket created: <${jiraTicket.url}|${jiraTicket.key}>`;
       }
+
       if (confluencePage) {
-        confirmMessage += `\n\n📄 Confluence page created: <${confluencePage.url}|View page>`;
+        if (confirmMessage) confirmMessage += '\n\n';
+        confirmMessage += `📄 Confluence page created: <${confluencePage.url}|View page>`;
       }
+
       await this.sendSlackReply(channel, threadTs, confirmMessage);
 
       // Replace eyes with green checkmark
