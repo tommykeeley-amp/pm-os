@@ -752,13 +752,15 @@ ipcMain.handle('toggle-window', () => {
 ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
   if (!mainWindow) return;
 
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  // Get the display where the window is currently located
+  const windowBounds = mainWindow.getBounds();
+  const currentDisplay = screen.getDisplayMatching(windowBounds);
+  const { x: displayX, y: displayY, width: screenWidth, height: screenHeight } = currentDisplay.workArea;
 
   if (isPinned) {
-    // Pin to right side with full height
-    const x = screenWidth - WINDOW_WIDTH;
-    const y = 0;
+    // Pin to right side of current display with full height
+    const x = displayX + screenWidth - WINDOW_WIDTH;
+    const y = displayY;
     mainWindow.setResizable(true);
     mainWindow.setBounds({
       x,
@@ -769,11 +771,11 @@ ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
     mainWindow.setResizable(false);
     mainWindow.setAlwaysOnTop(true); // Enable always-on-top when pinned
   } else {
-    // Unpin - restore original size and center
+    // Unpin - restore original size and center on current display
     mainWindow.setResizable(true);
     mainWindow.setBounds({
-      x: Math.floor((screenWidth - WINDOW_WIDTH) / 2),
-      y: Math.floor((screenHeight - WINDOW_HEIGHT) / 2),
+      x: displayX + Math.floor((screenWidth - WINDOW_WIDTH) / 2),
+      y: displayY + Math.floor((screenHeight - WINDOW_HEIGHT) / 2),
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT
     });
