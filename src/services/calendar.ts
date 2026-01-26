@@ -28,6 +28,7 @@ interface CalendarEvent {
   htmlLink?: string;
   hangoutLink?: string;
   conferenceData?: any;
+  colorId?: string;
 }
 
 interface TokenData {
@@ -166,6 +167,7 @@ export class CalendarService {
         htmlLink: event.htmlLink,
         hangoutLink: event.hangoutLink,
         conferenceData: event.conferenceData,
+        colorId: event.colorId,
       }));
     } catch (error: any) {
       if (error.response?.status === 401) {
@@ -209,6 +211,7 @@ export class CalendarService {
         htmlLink: event.htmlLink,
         hangoutLink: event.hangoutLink,
         conferenceData: event.conferenceData,
+        colorId: event.colorId,
       }));
     } catch (error: any) {
       if (error.response?.status === 401) {
@@ -330,6 +333,7 @@ export class CalendarService {
         htmlLink: event.htmlLink || undefined,
         hangoutLink: event.hangoutLink || undefined,
         conferenceData: event.conferenceData,
+        colorId: event.colorId || undefined,
       };
     } catch (error: any) {
       if (error.code === 401) {

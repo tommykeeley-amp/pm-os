@@ -21,6 +21,7 @@ interface CalendarEvent {
   htmlLink?: string;
   hangoutLink?: string;
   conferenceData?: any;
+  colorId?: string;
 }
 
 interface MeetingsProps {
@@ -237,6 +238,26 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   };
 
   const getEventColor = (event: CalendarEvent) => {
+    // Google Calendar color mapping (colorId to Tailwind classes)
+    const googleCalendarColors: Record<string, string> = {
+      '1': 'bg-purple-400/20 border-purple-400', // Lavender
+      '2': 'bg-green-400/20 border-green-400',   // Sage
+      '3': 'bg-purple-600/20 border-purple-600', // Grape
+      '4': 'bg-pink-400/20 border-pink-400',     // Flamingo
+      '5': 'bg-yellow-300/20 border-yellow-300', // Banana
+      '6': 'bg-orange-400/20 border-orange-400', // Tangerine
+      '7': 'bg-cyan-400/20 border-cyan-400',     // Peacock
+      '8': 'bg-gray-500/20 border-gray-500',     // Graphite
+      '9': 'bg-blue-500/20 border-blue-500',     // Blueberry
+      '10': 'bg-green-600/20 border-green-600',  // Basil
+      '11': 'bg-red-500/20 border-red-500',      // Tomato
+    };
+
+    // If event has a Google Calendar colorId, use it
+    if (event.colorId && googleCalendarColors[event.colorId]) {
+      return googleCalendarColors[event.colorId];
+    }
+
     // Check if user (self) has declined
     const userAttendee = event.attendees?.find(a => a.self);
     if (userAttendee?.responseStatus === 'declined') {
