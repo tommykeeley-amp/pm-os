@@ -26,7 +26,7 @@ function logErrorToFile(message: string, error?: any) {
 export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
   private onTaskCreate?: (task: any) => Promise<void>;
-  private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string }) => Promise<{ key: string; url: string }>;
+  private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string; parent?: string; priority?: string; pillar?: string; pod?: string }) => Promise<{ key: string; url: string }>;
   private onConfluenceCreate?: (request: { title: string; body: string; spaceKey?: string; parentId?: string }) => Promise<{ id: string; url: string }>;
   private isPolling: boolean = false;
 
@@ -36,7 +36,7 @@ export class SlackEventsServer {
     this.onTaskCreate = handler;
   }
 
-  setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string }) => Promise<{ key: string; url: string }>) {
+  setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string; parent?: string; priority?: string; pillar?: string; pod?: string }) => Promise<{ key: string; url: string }>) {
     this.onJiraCreate = handler;
   }
 
@@ -125,6 +125,38 @@ export class SlackEventsServer {
           try {
             logToFile('[SlackEvents] Creating Jira ticket with title: ' + title + (assigneeName ? ' (assignee: ' + assigneeName + (assigneeEmail ? ' <' + assigneeEmail + '>' : '') + ')' : ''));
 
+            // Parse additional fields from the message
+            const fullMessage = `${title} ${description || ''}`.toLowerCase();
+
+            // Extract parent ticket (e.g., "parent AMP-144806" or "parent: AMP-144806")
+            let parent: string | undefined;
+            const parentMatch = fullMessage.match(/parent[:\s]+([a-z]+-\d+)/i);
+            if (parentMatch) {
+              parent = parentMatch[1].toUpperCase();
+              logToFile('[SlackEvents] Extracted parent: ' + parent);
+            }
+
+            // Extract priority (e.g., "medium priority", "high priority", "low priority")
+            let priority: string | undefined;
+            if (fullMessage.includes('highest priority') || fullMessage.includes('critical priority')) {
+              priority = 'Highest';
+            } else if (fullMessage.includes('high priority')) {
+              priority = 'High';
+            } else if (fullMessage.includes('medium priority')) {
+              priority = 'Medium';
+            } else if (fullMessage.includes('low priority')) {
+              priority = 'Low';
+            } else if (fullMessage.includes('lowest priority')) {
+              priority = 'Lowest';
+            }
+            if (priority) {
+              logToFile('[SlackEvents] Extracted priority: ' + priority);
+            }
+
+            // Default to Growth/Retention
+            const pillar = 'Growth';
+            const pod = 'Retention';
+
             // Add Slack thread link to Jira description
             const jiraDescription = description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`;
 
@@ -133,6 +165,10 @@ export class SlackEventsServer {
               description: jiraDescription,
               assigneeName: assigneeName,
               assigneeEmail: assigneeEmail,
+              parent: parent,
+              priority: priority,
+              pillar: pillar,
+              pod: pod,
             });
             logToFile('[SlackEvents] Jira ticket created successfully: ' + JSON.stringify(jiraTicket));
 

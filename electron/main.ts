@@ -1442,7 +1442,22 @@ ipcMain.handle('jira-create-issue', async (_event, request: any) => {
       console.log('[Main] Using OpenAI to format Jira ticket title');
 
       // Use custom prompt from settings or default
-      const defaultPrompt = 'You are creating a concise, professional Jira ticket title. Transform the user\'s input into a clear, actionable title. Remove conversational phrases like "create a ticket for", "make a ticket", "I need to", etc. Keep only the essential action and context. Use imperative mood (e.g., "Fix bug" not "Fixing bug"). Keep it under 80 characters. Examples: "create a ticket for updating the login page" → "Update login page", "I need to fix the email validation bug" → "Fix email validation bug".';
+      const defaultPrompt = `You are extracting the core task from a message to create a Jira ticket title.
+
+CRITICAL RULES:
+1. NEVER include phrases like "create a ticket", "create jira ticket", "make a ticket" in the output
+2. IGNORE all metadata like parent tickets, assignees, priorities - focus only on the actual task
+3. Extract ONLY the core action/problem being described
+4. Use imperative mood (e.g., "Fix bug" not "Fixing bug")
+5. Keep under 80 characters
+6. Be specific but concise
+
+Examples:
+- "@PM-OS create a jira ticket with parent AMP-123 and assign to @user. we can explore better ways to display long project names" → "Improve long project name display"
+- "create a ticket for fixing the login bug" → "Fix login bug"
+- "make a ticket to update documentation for API" → "Update API documentation"
+- "I need to refactor the authentication system" → "Refactor authentication system"`;
+
       const systemPrompt = userSettings.jiraSystemPrompt || defaultPrompt;
 
       // Add current date context for date awareness
@@ -1485,6 +1500,7 @@ ipcMain.handle('jira-create-issue', async (_event, request: any) => {
     priority: request.priority,
     pillar: request.pillar,
     pod: request.pod,
+    parent: request.parent,
     assigneeEmail: request.assigneeEmail,
     assigneeName: request.assigneeName,
   });

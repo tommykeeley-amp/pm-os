@@ -40,6 +40,7 @@ interface CreateIssueRequest {
   assigneeEmail?: string; // Optional assignee email (more precise than name)
   pillar?: string; // Custom field: Pillar
   pod?: string; // Custom field: Pod
+  parent?: string; // Parent issue key (e.g., AMP-12345)
 }
 
 interface JiraConfig {
@@ -268,6 +269,8 @@ export class JiraService {
           name: request.priority,
         } : undefined,
         assignee: assignee,
+        // Parent issue
+        ...(request.parent ? { parent: { key: request.parent } } : {}),
         // Custom fields - Pillar and Pod
         // Pillar: customfield_11481 - "Growth" has id: 11653
         ...(request.pillar ? { customfield_11481: { id: '11653' } } : {}),
@@ -283,6 +286,7 @@ export class JiraService {
       priority: request.priority,
       pillar: request.pillar,
       pod: request.pod,
+      parent: request.parent,
       hasAssignee: !!assignee,
       hasDescription: !!request.description
     })}`);

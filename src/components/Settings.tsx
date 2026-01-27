@@ -44,7 +44,21 @@ interface UserSettings {
 const DEFAULT_CONFLUENCE_PROMPT = 'You are creating a simple Confluence page. Your ONLY job is to capture what was actually discussed in the conversation - nothing more. DO NOT add sections like "Overview", "Purpose", "Action Items", or any structure that was not explicitly discussed. DO NOT invent objectives, goals, or requirements. Just write down what was actually said in simple, clear paragraphs. If very little was discussed, write very little. Be literal and concise.';
 
 // Default Jira system prompt
-const DEFAULT_JIRA_PROMPT = 'You are creating a concise, professional Jira ticket title. Transform the user\'s input into a clear, actionable title. Remove conversational phrases like "create a ticket for", "make a ticket", "I need to", etc. Keep only the essential action and context. Use imperative mood (e.g., "Fix bug" not "Fixing bug"). Keep it under 80 characters. Examples: "create a ticket for updating the login page" → "Update login page", "I need to fix the email validation bug" → "Fix email validation bug".';
+const DEFAULT_JIRA_PROMPT = `You are extracting the core task from a message to create a Jira ticket title.
+
+CRITICAL RULES:
+1. NEVER include phrases like "create a ticket", "create jira ticket", "make a ticket" in the output
+2. IGNORE all metadata like parent tickets, assignees, priorities - focus only on the actual task
+3. Extract ONLY the core action/problem being described
+4. Use imperative mood (e.g., "Fix bug" not "Fixing bug")
+5. Keep under 80 characters
+6. Be specific but concise
+
+Examples:
+- "@PM-OS create a jira ticket with parent AMP-123 and assign to @user. we can explore better ways to display long project names" → "Improve long project name display"
+- "create a ticket for fixing the login bug" → "Fix login bug"
+- "make a ticket to update documentation for API" → "Update API documentation"
+- "I need to refactor the authentication system" → "Refactor authentication system"`;
 
 export default function Settings({ onClose, isPinned, onTogglePin }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>({});
