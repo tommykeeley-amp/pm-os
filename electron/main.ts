@@ -1403,6 +1403,42 @@ ipcMain.handle('slack-get-thread-replies', async (_event, channelId: string, thr
   }
 });
 
+// Slack send reply
+ipcMain.handle('slack-send-reply', async (_event, channelId: string, threadTs: string, text: string) => {
+  try {
+    console.log('[IPC] Sending Slack reply to channel:', channelId, 'thread:', threadTs);
+    const botToken = store.get('slack_bot_token') as string;
+    if (!botToken) {
+      throw new Error('No Slack bot token found');
+    }
+
+    const VERCEL_API_URL = 'https://pm-os-git-main-amplitude-inc.vercel.app/api/slack';
+    const response = await fetch(`${VERCEL_API_URL}/reply`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel: channelId,
+        threadTs: threadTs,
+        text: text,
+        botToken: botToken,
+      }),
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to send Slack reply');
+    }
+
+    console.log('[IPC] Slack reply sent successfully');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[IPC] Failed to send Slack reply:', error);
+    throw error;
+  }
+});
+
 // Jira Integration Handlers
 ipcMain.handle('jira-test-connection', async () => {
   if (!jiraService) {

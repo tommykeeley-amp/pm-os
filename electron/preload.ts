@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSlackChannels: () => ipcRenderer.invoke('get-slack-channels'),
   slackGetThreadReplies: (channelId: string, threadTs: string) =>
     ipcRenderer.invoke('slack-get-thread-replies', channelId, threadTs),
+  slackSendReply: (channelId: string, threadTs: string, text: string) =>
+    ipcRenderer.invoke('slack-send-reply', channelId, threadTs, text),
 
   // Events
   onFocusTaskInput: (callback: () => void) => {
@@ -169,6 +171,7 @@ export interface ElectronAPI {
   getStarredEmails: () => Promise<any[]>;
   getSlackChannels: () => Promise<any[]>;
   slackGetThreadReplies: (channelId: string, threadTs: string) => Promise<Array<{text: string; user: string; userName: string; timestamp: string}>>;
+  slackSendReply: (channelId: string, threadTs: string, text: string) => Promise<{success: boolean}>;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => () => void;

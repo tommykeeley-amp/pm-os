@@ -49,6 +49,16 @@ export interface Task {
   slackChannelName?: string; // Human-readable channel name
   slackUserId?: string;      // User who sent the message
   slackUserName?: string;    // Human-readable user name
+  // Jira confirmation metadata
+  pendingJiraConfirmation?: boolean;  // True if this task requires Jira confirmation
+  jiraMetadata?: {
+    assigneeName?: string;
+    assigneeEmail?: string;
+    parent?: string;
+    priority?: string;
+    pillar?: string;
+    pod?: string;
+  };
 }
 
 export interface WindowPosition {

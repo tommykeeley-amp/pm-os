@@ -19,14 +19,21 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
   const [isFetchingThread, setIsFetchingThread] = useState(false);
   const [threadFetched, setThreadFetched] = useState(false);
 
-  // Fields you actually use
-  const [priority, setPriority] = useState('Medium');
-  const [pillar, setPillar] = useState('Growth');
-  const [pod, setPod] = useState('Retention');
+  // Fields you actually use - initialize from jiraMetadata if available
+  const [priority, setPriority] = useState(task.jiraMetadata?.priority || 'Medium');
+  const [pillar, setPillar] = useState(task.jiraMetadata?.pillar || 'Growth');
+  const [pod, setPod] = useState(task.jiraMetadata?.pod || 'Retention');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [assigneeResults, setAssigneeResults] = useState<Array<{ accountId: string; displayName: string; emailAddress: string }>>([]);
-  const [selectedAssignee, setSelectedAssignee] = useState<{ accountId: string; displayName: string; emailAddress: string } | null>(null);
+  const [selectedAssignee, setSelectedAssignee] = useState<{ accountId: string; displayName: string; emailAddress: string } | null>(
+    task.jiraMetadata?.assigneeEmail ? {
+      accountId: '',
+      displayName: task.jiraMetadata.assigneeName || task.jiraMetadata.assigneeEmail,
+      emailAddress: task.jiraMetadata.assigneeEmail,
+    } : null
+  );
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
+  const [parentTicket, setParentTicket] = useState(task.jiraMetadata?.parent || '');
 
   // Check if this task is from Slack and has thread data
   const hasSlackThread = task.source === 'slack' && task.slackThreadTs && task.slackChannelId;
@@ -148,6 +155,7 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
         priority,
         pillar,
         pod,
+        parent: parentTicket || undefined,
         assigneeEmail: selectedAssignee?.emailAddress,
       });
 
@@ -309,6 +317,23 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
               <option value="Low">Low</option>
               <option value="Lowest">Lowest</option>
             </select>
+          </div>
+
+          {/* Parent Ticket */}
+          <div>
+            <label className="text-sm font-medium text-dark-text-secondary mb-1.5 block">
+              Parent Ticket
+            </label>
+            <input
+              type="text"
+              value={parentTicket}
+              onChange={(e) => setParentTicket(e.target.value)}
+              className="w-full bg-dark-bg text-dark-text-primary border border-dark-border rounded-lg px-3 py-2
+                         focus:border-dark-accent-primary focus:ring-1 focus:ring-dark-accent-primary
+                         transition-all outline-none"
+              placeholder="e.g., AMP-12345 (optional)"
+              disabled={isCreating}
+            />
           </div>
 
           {/* Pillar */}

@@ -72,6 +72,12 @@ function App() {
     const handleTaskCreated = (task: any) => {
       console.log('[App] New task created from Slack:', task.title);
       setTasks(prevTasks => [...prevTasks, task]);
+
+      // If this task requires Jira confirmation, automatically open the Jira modal
+      if (task.pendingJiraConfirmation) {
+        console.log('[App] Task requires Jira confirmation, opening modal');
+        setJiraTicketTask(task);
+      }
     };
 
     window.electronAPI.onTaskCreated?.(handleTaskCreated);
@@ -197,6 +203,38 @@ function App() {
 
         docs.unshift(newDoc);
         await window.electronAPI.saveData('docs', docs);
+
+        // Update the task to add Jira link and remove pending confirmation flag
+        const updates = {
+          pendingJiraConfirmation: false,
+          linkedItems: [
+            ...(task.linkedItems || []),
+            {
+              id: `jira_${issueKey}`,
+              type: 'jira' as const,
+              title: `Jira: ${issueKey}`,
+              url: issueUrl,
+            }
+          ]
+        };
+
+        await window.electronAPI.updateTask(task.id, updates);
+
+        const updatedTask = { ...task, ...updates };
+        setTasks(prevTasks => prevTasks.map(t => t.id === task.id ? updatedTask : t));
+
+        // Send Slack reply if this was from Slack
+        if (task.source === 'slack' && task.slackChannelId && task.slackThreadTs) {
+          try {
+            await window.electronAPI.slackSendReply(
+              task.slackChannelId,
+              task.slackThreadTs,
+              `🎫 Jira ticket created: <${issueUrl}|${issueKey}>`
+            );
+          } catch (err) {
+            console.error('Failed to send Slack reply:', err);
+          }
+        }
 
         alert(`Jira ticket created and saved to Docs!\n\n${issueKey}`);
 

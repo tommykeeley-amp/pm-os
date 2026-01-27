@@ -118,7 +118,6 @@ export class SlackEventsServer {
   private async processTask(taskData: any): Promise<void> {
     try {
       let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail } = taskData;
-      let jiraTicket: { key: string; url: string } | null = null;
       let confluencePage: { id: string; url: string } | null = null;
 
       // CRITICAL: Only allow ONE Jira ticket per Slack thread
@@ -156,69 +155,51 @@ export class SlackEventsServer {
       const messageId = 'p' + messageTs.replace('.', '');
       const permalink = `slack://channel?team=${teamId}&id=${channel}&message=${messageId}`;
 
-      // Create Jira ticket if requested and handler is available
+      // Parse Jira metadata if requested (for confirmation modal)
+      let jiraMetadata: any = undefined;
       if (shouldCreateJira) {
-        if (!this.onJiraCreate) {
-          logErrorToFile('[SlackEvents] Jira creation requested but handler not set');
-          description = `Failed to create Jira ticket: Handler not configured\n\nOriginal context:\n${description}`;
-        } else {
-          try {
-            logToFile('[SlackEvents] Creating Jira ticket with title: ' + title + (assigneeName ? ' (assignee: ' + assigneeName + (assigneeEmail ? ' <' + assigneeEmail + '>' : '') + ')' : ''));
+        logToFile('[SlackEvents] Jira creation requested - will create task with Jira metadata for user confirmation');
 
-            // Parse additional fields from the message
-            const fullMessage = `${title} ${description || ''}`.toLowerCase();
+        // Parse additional fields from the message
+        const fullMessage = `${title} ${description || ''}`.toLowerCase();
 
-            // Extract parent ticket (e.g., "parent AMP-144806" or "parent: AMP-144806")
-            let parent: string | undefined;
-            const parentMatch = fullMessage.match(/parent[:\s]+([a-z]+-\d+)/i);
-            if (parentMatch) {
-              parent = parentMatch[1].toUpperCase();
-              logToFile('[SlackEvents] Extracted parent: ' + parent);
-            }
-
-            // Extract priority (e.g., "medium priority", "high priority", "low priority")
-            let priority: string | undefined;
-            if (fullMessage.includes('highest priority') || fullMessage.includes('critical priority')) {
-              priority = 'Highest';
-            } else if (fullMessage.includes('high priority')) {
-              priority = 'High';
-            } else if (fullMessage.includes('medium priority')) {
-              priority = 'Medium';
-            } else if (fullMessage.includes('low priority')) {
-              priority = 'Low';
-            } else if (fullMessage.includes('lowest priority')) {
-              priority = 'Lowest';
-            }
-            if (priority) {
-              logToFile('[SlackEvents] Extracted priority: ' + priority);
-            }
-
-            // Default to Growth/Retention
-            const pillar = 'Growth';
-            const pod = 'Retention';
-
-            // Add Slack thread link to Jira description
-            const jiraDescription = description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`;
-
-            jiraTicket = await this.onJiraCreate({
-              summary: title,
-              description: jiraDescription,
-              assigneeName: assigneeName,
-              assigneeEmail: assigneeEmail,
-              parent: parent,
-              priority: priority,
-              pillar: pillar,
-              pod: pod,
-            });
-            logToFile('[SlackEvents] Jira ticket created successfully: ' + JSON.stringify(jiraTicket));
-
-            // Don't modify the task - just create the Jira ticket
-            // User doesn't want "Validate" tasks created
-          } catch (jiraError) {
-            logErrorToFile('[SlackEvents] Failed to create Jira ticket:', jiraError);
-            description = `Failed to create Jira ticket: ${(jiraError as any).message}\n\nOriginal context:\n${description}`;
-          }
+        // Extract parent ticket (e.g., "parent AMP-144806" or "parent: AMP-144806")
+        let parent: string | undefined;
+        const parentMatch = fullMessage.match(/parent[:\s]+([a-z]+-\d+)/i);
+        if (parentMatch) {
+          parent = parentMatch[1].toUpperCase();
+          logToFile('[SlackEvents] Extracted parent: ' + parent);
         }
+
+        // Extract priority (e.g., "medium priority", "high priority", "low priority")
+        let priority: string | undefined;
+        if (fullMessage.includes('highest priority') || fullMessage.includes('critical priority')) {
+          priority = 'Highest';
+        } else if (fullMessage.includes('high priority')) {
+          priority = 'High';
+        } else if (fullMessage.includes('medium priority')) {
+          priority = 'Medium';
+        } else if (fullMessage.includes('low priority')) {
+          priority = 'Low';
+        } else if (fullMessage.includes('lowest priority')) {
+          priority = 'Lowest';
+        }
+        if (priority) {
+          logToFile('[SlackEvents] Extracted priority: ' + priority);
+        }
+
+        // Build Jira metadata for the task
+        jiraMetadata = {
+          assigneeName: assigneeName,
+          assigneeEmail: assigneeEmail,
+          parent: parent,
+          priority: priority || 'Medium',
+          pillar: 'Growth',
+          pod: 'Retention',
+        };
+
+        // Add Slack thread link to description
+        description = description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`;
       } else {
         logToFile('[SlackEvents] Jira creation not requested for this task');
       }
@@ -261,16 +242,6 @@ export class SlackEventsServer {
         url: permalink,
       }];
 
-      // Add Jira ticket if it was created
-      if (jiraTicket) {
-        linkedItems.push({
-          id: `jira_${jiraTicket.key}`,
-          type: 'jira' as const,
-          title: `Jira: ${jiraTicket.key}`,
-          url: jiraTicket.url,
-        });
-      }
-
       // Add Confluence page if it was created
       if (confluencePage) {
         linkedItems.push({
@@ -281,16 +252,16 @@ export class SlackEventsServer {
         });
       }
 
-      // Only create a PM-OS task if:
-      // 1. User didn't request Jira/Confluence, OR
-      // 2. Jira/Confluence creation failed
-      const shouldCreateTask = (!shouldCreateJira && !shouldCreateConfluence) ||
-                               (shouldCreateJira && !jiraTicket) ||
+      // Always create a PM-OS task for Jira requests (for user confirmation)
+      // Or create task if neither Jira nor Confluence was requested
+      // Or if Confluence was requested but failed
+      const shouldCreateTask = shouldCreateJira ||
+                               (!shouldCreateJira && !shouldCreateConfluence) ||
                                (shouldCreateConfluence && !confluencePage);
 
       if (shouldCreateTask) {
         // Create the task
-        const task = {
+        const task: any = {
           title,
           description: description || undefined,
           source: 'slack',
@@ -300,26 +271,32 @@ export class SlackEventsServer {
           linkedItems,
         };
 
-        logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description }));
+        // Add Jira metadata if this is a Jira creation request
+        if (shouldCreateJira && jiraMetadata) {
+          task.pendingJiraConfirmation = true;
+          task.jiraMetadata = jiraMetadata;
+          logToFile('[SlackEvents] Task marked for Jira confirmation with metadata: ' + JSON.stringify(jiraMetadata));
+        }
+
+        logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description, hasPendingJira: !!task.pendingJiraConfirmation }));
 
         // Call the task creation handler
         if (this.onTaskCreate) {
           await this.onTaskCreate(task);
         }
       } else {
-        logToFile('[SlackEvents] Skipping task creation - Jira or Confluence was successfully created');
+        logToFile('[SlackEvents] Skipping task creation - Confluence was successfully created');
       }
 
       // Send confirmation reply in Slack
       let confirmMessage = '';
 
       if (shouldCreateTask) {
-        confirmMessage = `✅ Task created: "${title}"`;
-      }
-
-      if (jiraTicket) {
-        if (confirmMessage) confirmMessage += '\n\n';
-        confirmMessage += `🎫 Jira ticket created: <${jiraTicket.url}|${jiraTicket.key}>`;
+        if (shouldCreateJira) {
+          confirmMessage = `👀 Task created in PM-OS: "${title}"\n\nPlease review and confirm Jira ticket details in PM-OS before it's created.`;
+        } else {
+          confirmMessage = `✅ Task created: "${title}"`;
+        }
       }
 
       if (confluencePage) {
