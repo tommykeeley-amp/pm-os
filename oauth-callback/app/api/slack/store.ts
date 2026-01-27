@@ -10,9 +10,15 @@ export const pendingConfluenceRequests: Map<string, any> = new Map(); // Track p
 export const pendingJiraRequests: Map<string, any> = new Map(); // Track pending Jira requests awaiting modal confirmation
 
 export function addPendingTask(taskData: any) {
+  console.log('[Store] ===== ADD PENDING TASK CALLED =====');
+  console.log('[Store] Task ID:', taskData.id);
+  console.log('[Store] Task title:', taskData.title);
+  console.log('[Store] shouldCreateJira:', taskData.shouldCreateJira);
+
   // Check if task was already processed to prevent duplicates
   if (processedTaskIds.has(taskData.id)) {
     console.log('[Store] Task was already processed, skipping:', taskData.id);
+    console.log('[Store] Processed task IDs:', Array.from(processedTaskIds));
     return;
   }
 
@@ -24,6 +30,8 @@ export function addPendingTask(taskData: any) {
 
   pendingTasks.set(taskData.id, taskData);
   console.log('[Store] Added pending task:', taskData.id);
+  console.log('[Store] Total pending tasks:', pendingTasks.size);
+  console.log('[Store] ===== ADD PENDING TASK COMPLETE =====');
 
   // Clean up old tasks (older than 1 hour)
   const oneHourAgo = Date.now() - (60 * 60 * 1000);

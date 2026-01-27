@@ -475,23 +475,24 @@ async function handleOpenJiraModal(payload: any) {
 }
 
 async function handleJiraModalSubmission(payload: any) {
-  const requestId = payload.view.private_metadata;
-  console.log('[Slack Interactions] ===== JIRA MODAL SUBMISSION START =====');
-  console.log('[Slack Interactions] Processing Jira modal submission for request:', requestId);
+  try {
+    const requestId = payload.view.private_metadata;
+    console.log('[Slack Interactions] ===== JIRA MODAL SUBMISSION START =====');
+    console.log('[Slack Interactions] Processing Jira modal submission for request:', requestId);
 
-  // Get the pending request data
-  const requestData = getPendingJiraRequest(requestId);
-  console.log('[Slack Interactions] Request data found:', !!requestData);
+    // Get the pending request data
+    const requestData = getPendingJiraRequest(requestId);
+    console.log('[Slack Interactions] Request data found:', !!requestData);
 
-  if (!requestData) {
-    console.error('[Slack Interactions] Jira request not found:', requestId);
-    return NextResponse.json({
-      response_action: 'errors',
-      errors: {
-        ticket_title: 'Request expired. Please try again.',
-      },
-    });
-  }
+    if (!requestData) {
+      console.error('[Slack Interactions] Jira request not found:', requestId);
+      return NextResponse.json({
+        response_action: 'errors',
+        errors: {
+          ticket_title: 'Request expired. Please try again.',
+        },
+      });
+    }
 
   // Extract values from modal
   const values = payload.view.state.values;
@@ -558,4 +559,14 @@ async function handleJiraModalSubmission(payload: any) {
 
   // Return success immediately - modal will close
   return NextResponse.json({ response_action: 'clear' });
+  } catch (error) {
+    console.error('[Slack Interactions] ERROR in handleJiraModalSubmission:', error);
+    console.error('[Slack Interactions] Error stack:', error instanceof Error ? error.stack : 'No stack');
+    return NextResponse.json({
+      response_action: 'errors',
+      errors: {
+        ticket_title: 'An error occurred. Please try again.',
+      },
+    });
+  }
 }
