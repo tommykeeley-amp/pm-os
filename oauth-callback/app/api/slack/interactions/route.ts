@@ -32,10 +32,12 @@ export async function POST(request: NextRequest) {
 
     const payload = JSON.parse(payloadStr);
     console.log('[Slack Interactions] Received interaction:', payload.type);
+    console.log('[Slack Interactions] Payload callback_id:', payload.view?.callback_id || 'N/A');
 
     // Handle button click - open modal
     if (payload.type === 'block_actions') {
       const action = payload.actions[0];
+      console.log('[Slack Interactions] Button action:', action.action_id);
 
       if (action.action_id === 'open_confluence_modal') {
         return await handleOpenConfluenceModal(payload);
@@ -48,15 +50,21 @@ export async function POST(request: NextRequest) {
 
     // Handle modal submission
     if (payload.type === 'view_submission') {
+      console.log('[Slack Interactions] View submission callback_id:', payload.view.callback_id);
+
       if (payload.view.callback_id === 'confluence_context_modal') {
         return await handleConfluenceModalSubmission(payload);
       }
 
       if (payload.view.callback_id === 'jira_ticket_modal') {
+        console.log('[Slack Interactions] Routing to Jira modal submission handler');
         return await handleJiraModalSubmission(payload);
       }
+
+      console.log('[Slack Interactions] Unknown callback_id:', payload.view.callback_id);
     }
 
+    console.log('[Slack Interactions] No matching handler found');
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[Slack Interactions] Error:', error);
@@ -468,10 +476,13 @@ async function handleOpenJiraModal(payload: any) {
 
 async function handleJiraModalSubmission(payload: any) {
   const requestId = payload.view.private_metadata;
+  console.log('[Slack Interactions] ===== JIRA MODAL SUBMISSION START =====');
   console.log('[Slack Interactions] Processing Jira modal submission for request:', requestId);
 
   // Get the pending request data
   const requestData = getPendingJiraRequest(requestId);
+  console.log('[Slack Interactions] Request data found:', !!requestData);
+
   if (!requestData) {
     console.error('[Slack Interactions] Jira request not found:', requestId);
     return NextResponse.json({
@@ -527,18 +538,23 @@ async function handleJiraModalSubmission(payload: any) {
   };
 
   console.log('[Slack Interactions] Adding confirmed task to queue:', taskData.id);
+  console.log('[Slack Interactions] Task data:', JSON.stringify(taskData, null, 2));
 
   // Store as pending task for Electron to process
   addPendingTask(taskData);
+  console.log('[Slack Interactions] Task added to pending queue');
 
   // Mark thread as having a Jira ticket
   const threadKey = `${requestData.channel}_${requestData.threadTs || requestData.messageTs}`;
   markThreadHasJiraTicket(threadKey);
+  console.log('[Slack Interactions] Thread marked as having Jira ticket:', threadKey);
 
   // Clean up pending request
   removePendingJiraRequest(requestId);
+  console.log('[Slack Interactions] Removed pending request:', requestId);
 
   console.log('[Slack Interactions] Jira ticket queued for creation');
+  console.log('[Slack Interactions] ===== JIRA MODAL SUBMISSION END =====');
 
   // Return success immediately - modal will close
   return NextResponse.json({ response_action: 'clear' });
