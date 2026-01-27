@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     } = data;
 
     console.log('[Jira Confirmation] Received request:', requestId);
+    console.log('[Jira Confirmation] Assignee info:', { assigneeName, assigneeEmail });
 
     // Store the request data
     addPendingJiraRequest(requestId, {

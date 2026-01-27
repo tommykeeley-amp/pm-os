@@ -191,7 +191,10 @@ async function handleTaskCreation(event: any, teamId: string) {
         const aiResult = await synthesizeTaskFromContext(threadData.context);
         taskTitle = aiResult.title;
         taskDescription = aiResult.description;
-        assigneeName = aiResult.assignee;
+        // Only use AI assignee if we haven't already resolved it from a Slack mention
+        if (!assigneeName) {
+          assigneeName = aiResult.assignee;
+        }
         console.log('[Slack Events] AI-generated task:', { taskTitle, taskDescription, assigneeName });
       } catch (aiError) {
         // AI failed - fall back to using thread context directly
