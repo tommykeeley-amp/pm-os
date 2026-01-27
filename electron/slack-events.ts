@@ -108,6 +108,18 @@ export class SlackEventsServer {
 
       logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate, hasConfluenceHandler: !!this.onConfluenceCreate }));
 
+      // CRITICAL: Prevent recursive loops - ignore PM-OS's own reply messages
+      const fullMessage = `${title} ${description || ''}`.toLowerCase();
+      if (fullMessage.includes('jira ticket created') ||
+          fullMessage.includes('confluence page created') ||
+          fullMessage.includes('task created:') ||
+          title.startsWith('🎫') ||
+          title.startsWith('📄') ||
+          title.startsWith('✅')) {
+        logToFile('[SlackEvents] Skipping PM-OS bot reply message to prevent recursion');
+        return;
+      }
+
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
 
@@ -290,8 +302,11 @@ export class SlackEventsServer {
       await this.sendSlackReply(channel, threadTs, confirmMessage);
 
       // Replace eyes with green checkmark
+      logToFile('[SlackEvents] Attempting to remove eyes emoji from message');
       await this.removeReaction(channel, messageTs, 'eyes');
+      logToFile('[SlackEvents] Eyes emoji removed, adding checkmark');
       await this.addReaction(channel, messageTs, 'white_check_mark');
+      logToFile('[SlackEvents] Checkmark added successfully');
     } catch (error) {
       logErrorToFile('[SlackEvents] Error processing task:', error);
     }
@@ -349,6 +364,7 @@ export class SlackEventsServer {
       });
 
       const data = await response.json();
+      logToFile(`[SlackEvents] Add reaction response: ${JSON.stringify(data)}`);
       if (!data.ok) {
         logErrorToFile('[SlackEvents] Failed to add reaction:', data.error);
       }
@@ -379,6 +395,7 @@ export class SlackEventsServer {
       });
 
       const data = await response.json();
+      logToFile(`[SlackEvents] Remove reaction response: ${JSON.stringify(data)}`);
       if (!data.ok) {
         logErrorToFile('[SlackEvents] Failed to remove reaction:', data.error);
       }
