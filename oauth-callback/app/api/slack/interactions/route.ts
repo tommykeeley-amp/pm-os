@@ -335,7 +335,6 @@ async function handleOpenJiraModal(payload: any) {
             value: requestData.priority || 'Medium',
           },
           options: [
-            { text: { type: 'plain_text', text: 'Highest' }, value: 'Highest' },
             { text: { type: 'plain_text', text: 'High' }, value: 'High' },
             { text: { type: 'plain_text', text: 'Medium' }, value: 'Medium' },
             { text: { type: 'plain_text', text: 'Low' }, value: 'Low' },
@@ -505,8 +504,9 @@ async function handleJiraModalSubmission(payload: any) {
   console.log('[Slack Interactions] Creating Jira ticket:', { title, parent, priority, assigneeName, pillar, pod });
 
   // Create the task to be picked up by the Electron app for Jira creation
+  // Use a unique ID with _jira_confirmed suffix to avoid conflicts with initial request
   const taskData = {
-    id: `${requestData.channel}_${requestData.messageTs}`,
+    id: `${requestData.channel}_${requestData.messageTs}_jira_confirmed`,
     title,
     description,
     channel: requestData.channel,
@@ -525,6 +525,8 @@ async function handleJiraModalSubmission(payload: any) {
     pillar,
     pod,
   };
+
+  console.log('[Slack Interactions] Adding confirmed task to queue:', taskData.id);
 
   // Store as pending task for Electron to process
   addPendingTask(taskData);
