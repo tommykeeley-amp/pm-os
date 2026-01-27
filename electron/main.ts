@@ -616,6 +616,10 @@ app.whenReady().then(async () => {
       issueType: userSettings.jiraDefaultIssueType || 'Task',
       assigneeName: request.assigneeName,
       assigneeEmail: request.assigneeEmail,
+      parent: request.parent,
+      priority: request.priority,
+      pillar: request.pillar,
+      pod: request.pod,
     }));
 
     const issue = await jiraService.createIssue({
@@ -625,6 +629,10 @@ app.whenReady().then(async () => {
       issueType: userSettings.jiraDefaultIssueType || 'Task',
       assigneeName: request.assigneeName,
       assigneeEmail: request.assigneeEmail,
+      parent: request.parent,
+      priority: request.priority,
+      pillar: request.pillar,
+      pod: request.pod,
     });
 
     log('[Main] Jira issue created: ' + issue.key);

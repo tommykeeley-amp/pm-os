@@ -7,6 +7,7 @@ export const processedTaskIds: Set<string> = new Set();
 export const threadsWithJiraTickets: Set<string> = new Set(); // Track threads that already have Jira tickets
 export const threadsWithConfluenceDocs: Set<string> = new Set(); // Track threads that already have Confluence docs
 export const pendingConfluenceRequests: Map<string, any> = new Map(); // Track pending Confluence requests awaiting modal input
+export const pendingJiraRequests: Map<string, any> = new Map(); // Track pending Jira requests awaiting modal confirmation
 
 export function addPendingTask(taskData: any) {
   // Check if task was already processed to prevent duplicates
@@ -94,4 +95,30 @@ export function getPendingConfluenceRequest(requestId: string) {
 export function removePendingConfluenceRequest(requestId: string) {
   pendingConfluenceRequests.delete(requestId);
   console.log('[Store] Removed pending Confluence request:', requestId);
+}
+
+export function addPendingJiraRequest(requestId: string, data: any) {
+  pendingJiraRequests.set(requestId, {
+    ...data,
+    timestamp: Date.now(),
+  });
+  console.log('[Store] Added pending Jira request:', requestId);
+
+  // Clean up old requests (older than 1 hour)
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  for (const [id, request] of pendingJiraRequests.entries()) {
+    if (request.timestamp < oneHourAgo) {
+      pendingJiraRequests.delete(id);
+      console.log('[Store] Cleaned up old Jira request:', id);
+    }
+  }
+}
+
+export function getPendingJiraRequest(requestId: string) {
+  return pendingJiraRequests.get(requestId);
+}
+
+export function removePendingJiraRequest(requestId: string) {
+  pendingJiraRequests.delete(requestId);
+  console.log('[Store] Removed pending Jira request:', requestId);
 }

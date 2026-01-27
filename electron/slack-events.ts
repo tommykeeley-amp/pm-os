@@ -7,6 +7,11 @@ const store = new Store();
 
 const VERCEL_API_URL = 'https://pm-os-git-main-amplitude-inc.vercel.app/api/slack';
 
+// Generate unique request ID
+function generateRequestId(): string {
+  return `jira_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 // Set up file logging
 const logFilePath = path.join(os.homedir(), 'pm-os-jira-debug.log');
 function logToFile(message: string) {
@@ -26,7 +31,16 @@ function logErrorToFile(message: string, error?: any) {
 export class SlackEventsServer {
   private pollingInterval: NodeJS.Timeout | null = null;
   private onTaskCreate?: (task: any) => Promise<void>;
-  private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string; parent?: string; priority?: string; pillar?: string; pod?: string }) => Promise<{ key: string; url: string }>;
+  private onJiraCreate?: (request: {
+    summary: string;
+    description?: string;
+    assigneeName?: string;
+    assigneeEmail?: string;
+    parent?: string;
+    priority?: string;
+    pillar?: string;
+    pod?: string;
+  }) => Promise<{ key: string; url: string }>;
   private onConfluenceCreate?: (request: { title: string; body: string; spaceKey?: string; parentId?: string }) => Promise<{ id: string; url: string }>;
   private isPolling: boolean = false;
   private processedThreads: Set<string> = new Set();
@@ -44,7 +58,16 @@ export class SlackEventsServer {
     this.onTaskCreate = handler;
   }
 
-  setJiraCreateHandler(handler: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string; parent?: string; priority?: string; pillar?: string; pod?: string }) => Promise<{ key: string; url: string }>) {
+  setJiraCreateHandler(handler: (request: {
+    summary: string;
+    description?: string;
+    assigneeName?: string;
+    assigneeEmail?: string;
+    parent?: string;
+    priority?: string;
+    pillar?: string;
+    pod?: string;
+  }) => Promise<{ key: string; url: string }>) {
     this.onJiraCreate = handler;
   }
 
@@ -117,8 +140,9 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, parent, priority, pillar, pod } = taskData;
       let confluencePage: { id: string; url: string } | null = null;
+      let jiraTicket: { key: string; url: string } | null = null;
 
       // CRITICAL: Only allow ONE Jira ticket per Slack thread
       // Use threadTs (or messageTs if no thread) as the unique identifier
@@ -155,51 +179,96 @@ export class SlackEventsServer {
       const messageId = 'p' + messageTs.replace('.', '');
       const permalink = `slack://channel?team=${teamId}&id=${channel}&message=${messageId}`;
 
-      // Parse Jira metadata if requested (for confirmation modal)
-      let jiraMetadata: any = undefined;
+      // Handle Jira creation
       if (shouldCreateJira) {
-        logToFile('[SlackEvents] Jira creation requested - will create task with Jira metadata for user confirmation');
+        // Check if this is a confirmed request (has parent/priority/pillar/pod set)
+        // vs an initial request that needs confirmation
+        const isConfirmedRequest = !!(parent !== undefined || priority || pillar || pod);
 
-        // Parse additional fields from the message
-        const fullMessage = `${title} ${description || ''}`.toLowerCase();
+        if (isConfirmedRequest) {
+          // This is a confirmed request from the modal - create the ticket now
+          logToFile('[SlackEvents] Creating confirmed Jira ticket');
 
-        // Extract parent ticket (e.g., "parent AMP-144806" or "parent: AMP-144806")
-        let parent: string | undefined;
-        const parentMatch = fullMessage.match(/parent[:\s]+([a-z]+-\d+)/i);
-        if (parentMatch) {
-          parent = parentMatch[1].toUpperCase();
-          logToFile('[SlackEvents] Extracted parent: ' + parent);
+          if (!this.onJiraCreate) {
+            logErrorToFile('[SlackEvents] Jira creation handler not set');
+          } else {
+            try {
+              jiraTicket = await this.onJiraCreate({
+                summary: title,
+                description,
+                assigneeName,
+                assigneeEmail,
+                parent,
+                priority,
+                pillar,
+                pod,
+              });
+              logToFile('[SlackEvents] Jira ticket created successfully: ' + JSON.stringify(jiraTicket));
+            } catch (jiraError) {
+              logErrorToFile('[SlackEvents] Failed to create Jira ticket:', jiraError);
+            }
+          }
+        } else {
+          // This is an initial request - send confirmation button
+          logToFile('[SlackEvents] Sending Jira confirmation button');
+
+          // Parse additional fields from the message
+          const fullMessage = `${title} ${description || ''}`.toLowerCase();
+
+          // Extract parent ticket (e.g., "parent AMP-144806" or "parent: AMP-144806")
+          let extractedParent: string | undefined;
+          const parentMatch = fullMessage.match(/parent[:\s]+([a-z]+-\d+)/i);
+          if (parentMatch) {
+            extractedParent = parentMatch[1].toUpperCase();
+            logToFile('[SlackEvents] Extracted parent: ' + extractedParent);
+          }
+
+          // Extract priority (e.g., "medium priority", "high priority", "low priority")
+          let extractedPriority: string | undefined;
+          if (fullMessage.includes('highest priority') || fullMessage.includes('critical priority')) {
+            extractedPriority = 'Highest';
+          } else if (fullMessage.includes('high priority')) {
+            extractedPriority = 'High';
+          } else if (fullMessage.includes('medium priority')) {
+            extractedPriority = 'Medium';
+          } else if (fullMessage.includes('low priority')) {
+            extractedPriority = 'Low';
+          } else if (fullMessage.includes('lowest priority')) {
+            extractedPriority = 'Lowest';
+          }
+          if (extractedPriority) {
+            logToFile('[SlackEvents] Extracted priority: ' + extractedPriority);
+          }
+
+          // Store request data for modal
+          const requestId = generateRequestId();
+          const jiraRequestData = {
+            requestId,
+            title,
+            description: description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`,
+            assigneeName,
+            assigneeEmail,
+            parent: extractedParent,
+            priority: extractedPriority || 'Medium',
+            pillar: 'Growth',
+            pod: 'Retention',
+            channel,
+            messageTs,
+            threadTs,
+            user,
+            teamId,
+          };
+
+          // Send to Vercel to store and send button
+          await fetch(`${VERCEL_API_URL}/jira-confirmation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(jiraRequestData),
+          });
+
+          logToFile('[SlackEvents] Jira confirmation button sent');
+          return; // Don't create any task
         }
-
-        // Extract priority (e.g., "medium priority", "high priority", "low priority")
-        let priority: string | undefined;
-        if (fullMessage.includes('highest priority') || fullMessage.includes('critical priority')) {
-          priority = 'Highest';
-        } else if (fullMessage.includes('high priority')) {
-          priority = 'High';
-        } else if (fullMessage.includes('medium priority')) {
-          priority = 'Medium';
-        } else if (fullMessage.includes('low priority')) {
-          priority = 'Low';
-        } else if (fullMessage.includes('lowest priority')) {
-          priority = 'Lowest';
-        }
-        if (priority) {
-          logToFile('[SlackEvents] Extracted priority: ' + priority);
-        }
-
-        // Build Jira metadata for the task
-        jiraMetadata = {
-          assigneeName: assigneeName,
-          assigneeEmail: assigneeEmail,
-          parent: parent,
-          priority: priority || 'Medium',
-          pillar: 'Growth',
-          pod: 'Retention',
-        };
-
-        // Add Slack thread link to description
-        description = description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`;
       } else {
         logToFile('[SlackEvents] Jira creation not requested for this task');
       }
@@ -252,11 +321,10 @@ export class SlackEventsServer {
         });
       }
 
-      // Always create a PM-OS task for Jira requests (for user confirmation)
-      // Or create task if neither Jira nor Confluence was requested
-      // Or if Confluence was requested but failed
-      const shouldCreateTask = shouldCreateJira ||
-                               (!shouldCreateJira && !shouldCreateConfluence) ||
+      // Create a PM-OS task only if:
+      // - User didn't request Jira or Confluence, OR
+      // - Confluence was requested but failed
+      const shouldCreateTask = (!shouldCreateJira && !shouldCreateConfluence) ||
                                (shouldCreateConfluence && !confluencePage);
 
       if (shouldCreateTask) {
@@ -271,32 +339,26 @@ export class SlackEventsServer {
           linkedItems,
         };
 
-        // Add Jira metadata if this is a Jira creation request
-        if (shouldCreateJira && jiraMetadata) {
-          task.pendingJiraConfirmation = true;
-          task.jiraMetadata = jiraMetadata;
-          logToFile('[SlackEvents] Task marked for Jira confirmation with metadata: ' + JSON.stringify(jiraMetadata));
-        }
-
-        logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description, hasPendingJira: !!task.pendingJiraConfirmation }));
+        logToFile('[SlackEvents] Creating task: ' + JSON.stringify({ title: task.title, hasDescription: !!task.description }));
 
         // Call the task creation handler
         if (this.onTaskCreate) {
           await this.onTaskCreate(task);
         }
       } else {
-        logToFile('[SlackEvents] Skipping task creation - Confluence was successfully created');
+        logToFile('[SlackEvents] Skipping task creation - Jira or Confluence handling separately');
       }
 
       // Send confirmation reply in Slack
       let confirmMessage = '';
 
+      if (jiraTicket) {
+        confirmMessage = `🎫 Jira ticket created: <${jiraTicket.url}|${jiraTicket.key}>`;
+      }
+
       if (shouldCreateTask) {
-        if (shouldCreateJira) {
-          confirmMessage = `👀 Task created in PM-OS: "${title}"\n\nPlease review and confirm Jira ticket details in PM-OS before it's created.`;
-        } else {
-          confirmMessage = `✅ Task created: "${title}"`;
-        }
+        if (confirmMessage) confirmMessage += '\n\n';
+        confirmMessage += `✅ Task created: "${title}"`;
       }
 
       if (confluencePage) {
@@ -304,7 +366,9 @@ export class SlackEventsServer {
         confirmMessage += `📄 Confluence page created: <${confluencePage.url}|View page>`;
       }
 
-      await this.sendSlackReply(channel, threadTs, confirmMessage);
+      if (confirmMessage) {
+        await this.sendSlackReply(channel, threadTs, confirmMessage);
+      }
 
       // Replace eyes with green checkmark
       logToFile('[SlackEvents] Attempting to remove eyes emoji from message');
