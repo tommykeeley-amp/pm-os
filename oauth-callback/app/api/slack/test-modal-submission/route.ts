@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addPendingJiraRequest, getPendingJiraRequest, removePendingJiraRequest, addPendingTask, markThreadHasJiraTicket } from '../../store';
+import { addPendingJiraRequest, getPendingJiraRequest, removePendingJiraRequest, addPendingTask, markThreadHasJiraTicket } from '../store';
 
 export async function POST(request: NextRequest) {
   try {
