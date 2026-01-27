@@ -26,9 +26,16 @@ export async function POST(request: NextRequest) {
     if (body.type === 'event_callback' && body.event?.type === 'app_mention') {
       console.log('[Slack Events] Received app mention:', body.event);
 
-      // CRITICAL: Ignore bot messages to prevent infinite loops
+      // CRITICAL: Only allow humans to trigger PM-OS, never bots
       if (body.event.bot_id || body.event.subtype) {
-        console.log('[Slack Events] Ignoring bot message or subtype event');
+        console.log('[Slack Events] Ignoring bot message or subtype event (bot_id:', body.event.bot_id, 'subtype:', body.event.subtype, ')');
+        return NextResponse.json({ ok: true });
+      }
+
+      // Additional safety: Check if the user is the PM-OS bot itself
+      const pmOsBotUserId = body.authorizations?.[0]?.user_id;
+      if (body.event.user === pmOsBotUserId) {
+        console.log('[Slack Events] Ignoring message from PM-OS bot itself (user:', body.event.user, ')');
         return NextResponse.json({ ok: true });
       }
 
@@ -42,12 +49,22 @@ export async function POST(request: NextRequest) {
     if (body.type === 'event_callback' && body.event?.type === 'message' && body.event?.channel_type === 'im') {
       console.log('[Slack Events] Received DM:', body.event);
 
-      // Ignore bot messages and message updates
-      if (!body.event.bot_id && !body.event.subtype) {
-        // Add eyes emoji immediately for user feedback
-        await addReaction(body.event.channel, body.event.ts, 'eyes');
-        await handleTaskCreation(body.event, body.team_id);
+      // CRITICAL: Only allow humans to trigger PM-OS, never bots
+      if (body.event.bot_id || body.event.subtype) {
+        console.log('[Slack Events] Ignoring bot DM or subtype event');
+        return NextResponse.json({ ok: true });
       }
+
+      // Additional safety: Check if the user is the PM-OS bot itself
+      const pmOsBotUserId = body.authorizations?.[0]?.user_id;
+      if (body.event.user === pmOsBotUserId) {
+        console.log('[Slack Events] Ignoring DM from PM-OS bot itself');
+        return NextResponse.json({ ok: true });
+      }
+
+      // Add eyes emoji immediately for user feedback
+      await addReaction(body.event.channel, body.event.ts, 'eyes');
+      await handleTaskCreation(body.event, body.team_id);
       return NextResponse.json({ ok: true });
     }
 
