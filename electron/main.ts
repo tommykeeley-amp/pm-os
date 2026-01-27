@@ -516,6 +516,38 @@ function startExtensionSyncServer() {
       return;
     }
 
+    // Handle POST /jira-field-options - Get Pillar and Pod options from Jira
+    if (req.method === 'POST' && req.url === '/jira-field-options') {
+      let body = '';
+
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+
+      req.on('end', async () => {
+        try {
+          const { projectKey } = JSON.parse(body);
+
+          if (!jiraService) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: 'Jira not configured' }));
+            return;
+          }
+
+          const options = await jiraService.getPillarAndPodOptions(projectKey || 'AMP');
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, ...options }));
+        } catch (error) {
+          console.error('[Extension Sync] Error getting Jira field options:', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Server error' }));
+        }
+      });
+
+      return;
+    }
+
     // 404 for other routes
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: false, error: 'Not found' }));
@@ -1578,6 +1610,11 @@ ipcMain.handle('jira-get-my-issues', async () => {
 ipcMain.handle('jira-get-create-metadata', async (_event, projectKey: string, issueType: string) => {
   if (!jiraService) throw new Error('Jira not configured');
   return await jiraService.getCreateMetadata(projectKey, issueType);
+});
+
+ipcMain.handle('jira-get-pillar-pod-options', async (_event, projectKey: string) => {
+  if (!jiraService) throw new Error('Jira not configured');
+  return await jiraService.getPillarAndPodOptions(projectKey);
 });
 
 ipcMain.handle('jira-is-configured', () => {

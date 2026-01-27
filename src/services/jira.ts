@@ -241,6 +241,34 @@ export class JiraService {
       }
     }
 
+    // Look up Pillar and Pod IDs from the field options
+    let pillarField: { id: string } | undefined;
+    let podField: { id: string } | undefined;
+
+    if (request.pillar || request.pod) {
+      const fieldOptions = await this.getPillarAndPodOptions(request.projectKey);
+
+      if (request.pillar) {
+        const pillarOption = fieldOptions.pillars.find(opt => opt.value === request.pillar);
+        if (pillarOption) {
+          pillarField = { id: pillarOption.id };
+          logToFile(`[Jira] Found Pillar ID ${pillarOption.id} for value "${request.pillar}"`);
+        } else {
+          logToFile(`[Jira] Warning: Could not find Pillar option for "${request.pillar}"`);
+        }
+      }
+
+      if (request.pod) {
+        const podOption = fieldOptions.pods.find(opt => opt.value === request.pod);
+        if (podOption) {
+          podField = { id: podOption.id };
+          logToFile(`[Jira] Found Pod ID ${podOption.id} for value "${request.pod}"`);
+        } else {
+          logToFile(`[Jira] Warning: Could not find Pod option for "${request.pod}"`);
+        }
+      }
+    }
+
     const payload = {
       fields: {
         project: {
@@ -271,11 +299,9 @@ export class JiraService {
         assignee: assignee,
         // Parent issue
         ...(request.parent ? { parent: { key: request.parent } } : {}),
-        // Custom fields - Pillar and Pod
-        // Pillar: customfield_11481 - "Growth" has id: 11653
-        ...(request.pillar ? { customfield_11481: { id: '11653' } } : {}),
-        // Pod: customfield_11200 - "Growth - Retention" has id: 13390
-        ...(request.pod ? { customfield_11200: { id: '13390' } } : {}),
+        // Custom fields - Pillar and Pod (look up IDs dynamically)
+        ...(pillarField ? { customfield_11481: pillarField } : {}),
+        ...(podField ? { customfield_11200: podField } : {}),
       },
     };
 
@@ -438,6 +464,53 @@ export class JiraService {
     } catch (error) {
       logToFile(`[Jira] Error getting create metadata: ${error}`);
       return null;
+    }
+  }
+
+  /**
+   * Get available options for Pillar and Pod custom fields
+   */
+  async getPillarAndPodOptions(projectKey: string): Promise<{
+    pillars: Array<{ id: string; value: string }>;
+    pods: Array<{ id: string; value: string }>;
+  }> {
+    try {
+      const metadata = await this.getCreateMetadata(projectKey, 'Task');
+
+      if (!metadata || !metadata.projects || metadata.projects.length === 0) {
+        logToFile('[Jira] No metadata found for project');
+        return { pillars: [], pods: [] };
+      }
+
+      const project = metadata.projects[0];
+      const issueType = project.issuetypes?.find((it: any) => it.name === 'Task');
+
+      if (!issueType || !issueType.fields) {
+        logToFile('[Jira] No fields found for Task issue type');
+        return { pillars: [], pods: [] };
+      }
+
+      const fields = issueType.fields;
+
+      // Get Pillar options (customfield_11481)
+      const pillarField = fields['customfield_11481'];
+      const pillars = pillarField?.allowedValues?.map((option: any) => ({
+        id: option.id,
+        value: option.value,
+      })) || [];
+
+      // Get Pod options (customfield_11200)
+      const podField = fields['customfield_11200'];
+      const pods = podField?.allowedValues?.map((option: any) => ({
+        id: option.id,
+        value: option.value,
+      })) || [];
+
+      logToFile(`[Jira] Found ${pillars.length} pillar options and ${pods.length} pod options`);
+      return { pillars, pods };
+    } catch (error) {
+      logToFile(`[Jira] Error getting pillar/pod options: ${error}`);
+      return { pillars: [], pods: [] };
     }
   }
 
