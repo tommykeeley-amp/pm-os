@@ -256,7 +256,7 @@ async function handleOpenJiraModal(payload: any) {
     },
     submit: {
       type: 'plain_text',
-      text: 'Create Ticket',
+      text: 'Create Jira',
     },
     close: {
       type: 'plain_text',
@@ -344,11 +344,76 @@ async function handleOpenJiraModal(payload: any) {
         },
       },
       {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Assignee:* ${requestData.assigneeName || requestData.assigneeEmail || 'Unassigned'}\n*Pillar:* ${requestData.pillar}\n*Pod:* ${requestData.pod}`,
+        type: 'input',
+        block_id: 'assignee_name',
+        label: {
+          type: 'plain_text',
+          text: 'Assignee Name',
         },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'assignee_name_input',
+          initial_value: requestData.assigneeName || '',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., Tommy Keeley',
+          },
+        },
+        optional: true,
+      },
+      {
+        type: 'input',
+        block_id: 'assignee_email',
+        label: {
+          type: 'plain_text',
+          text: 'Assignee Email',
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'assignee_email_input',
+          initial_value: requestData.assigneeEmail || '',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., tommy.keeley@amplitude.com',
+          },
+        },
+        optional: true,
+      },
+      {
+        type: 'input',
+        block_id: 'pillar',
+        label: {
+          type: 'plain_text',
+          text: 'Pillar',
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'pillar_input',
+          initial_value: requestData.pillar || 'Growth',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., Growth, Product, Platform',
+          },
+        },
+        optional: true,
+      },
+      {
+        type: 'input',
+        block_id: 'pod',
+        label: {
+          type: 'plain_text',
+          text: 'Pod',
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'pod_input',
+          initial_value: requestData.pod || 'Retention',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., Retention, Acquisition, Core',
+          },
+        },
+        optional: true,
       },
     ],
   };
@@ -396,8 +461,12 @@ async function handleJiraModalSubmission(payload: any) {
   const description = values.ticket_description?.description_input?.value || requestData.description;
   const parent = values.parent_ticket?.parent_input?.value || requestData.parent;
   const priority = values.priority?.priority_select?.selected_option?.value || requestData.priority;
+  const assigneeName = values.assignee_name?.assignee_name_input?.value || requestData.assigneeName;
+  const assigneeEmail = values.assignee_email?.assignee_email_input?.value || requestData.assigneeEmail;
+  const pillar = values.pillar?.pillar_input?.value || requestData.pillar || 'Growth';
+  const pod = values.pod?.pod_input?.value || requestData.pod || 'Retention';
 
-  console.log('[Slack Interactions] Creating Jira ticket:', { title, parent, priority });
+  console.log('[Slack Interactions] Creating Jira ticket:', { title, parent, priority, assigneeName, pillar, pod });
 
   // Create the task to be picked up by the Electron app for Jira creation
   const taskData = {
@@ -413,12 +482,12 @@ async function handleJiraModalSubmission(payload: any) {
     processed: false,
     shouldCreateJira: true,
     shouldCreateConfluence: false,
-    assigneeName: requestData.assigneeName,
-    assigneeEmail: requestData.assigneeEmail,
+    assigneeName,
+    assigneeEmail,
     parent,
     priority,
-    pillar: requestData.pillar,
-    pod: requestData.pod,
+    pillar,
+    pod,
   };
 
   // Store as pending task for Electron to process
