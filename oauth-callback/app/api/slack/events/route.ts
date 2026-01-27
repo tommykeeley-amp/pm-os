@@ -200,12 +200,10 @@ async function handleTaskCreation(event: any, teamId: string) {
         // AI failed - fall back to using thread context directly
         console.error('[Slack Events] AI synthesis failed:', aiError);
 
-        // Use first message as title (cleaned up)
+        // Use first message as title (cleaned up - remove command phrases)
         taskTitle = threadData.messages[0]?.text
           ?.replace(/<@[A-Z0-9]+>/gi, '')
-          .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-          .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-          .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+          .replace(/^(can you |could you |please )?(make|create|add)( me| you| us)?( a)?( jira)?( ticket| task)( for| called| to| about)?/gi, '')
           .trim()
           .slice(0, 100) || 'Task from Slack thread';
 
@@ -219,11 +217,9 @@ async function handleTaskCreation(event: any, teamId: string) {
         .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
         .trim();
 
-      // Remove common phrasing patterns
+      // Remove command phrases (including "jira ticket")
       taskTitle = taskTitle
-        .replace(/^(can you |could you |please )?make( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-        .replace(/^(can you |could you |please )?create( me)?( you)?( us)? a task (for |called |to )?/gi, '')
-        .replace(/^(can you |could you |please )?add( me)?( you)?( us)? a task (for |called |to )?/gi, '')
+        .replace(/^(can you |could you |please )?(make|create|add)( me| you| us)?( a)?( jira)?( ticket| task)( for| called| to| about)?/gi, '')
         .trim();
 
       if (!taskTitle || taskTitle.length === 0) {
@@ -232,8 +228,12 @@ async function handleTaskCreation(event: any, teamId: string) {
     }
   } catch (error) {
     console.error('[Slack Events] Error processing task:', error);
-    // Fallback to simple text extraction
-    taskTitle = event.text.replace(/<@[A-Z0-9]+>/gi, '').trim() || 'Task from Slack';
+    // Fallback to simple text extraction with command phrase removal
+    taskTitle = event.text
+      .replace(/<@[A-Z0-9]+>/gi, '')
+      .replace(/^(can you |could you |please )?(make|create|add)( me| you| us)?( a)?( jira)?( ticket| task)( for| called| to| about)?/gi, '')
+      .trim()
+      .slice(0, 100) || 'Task from Slack';
     taskDescription = 'Error creating task from context';
   }
 
@@ -475,7 +475,7 @@ async function synthesizeTaskFromContext(context: string): Promise<{ title: stri
     messages: [
       {
         role: 'system',
-        content: 'You are a helpful assistant that creates task titles and descriptions from Slack conversations. Summarize the conversation accurately and literally - do not invent problems or action items that were not discussed. Create a concise title (max 60 chars) that describes what was actually talked about, and a brief description (2-4 sentences) that captures the key points from the conversation. If the conversation mentions assigning the task to someone (e.g., "assign to Ben", "give this to Sarah"), extract their name in the "assignee" field. Always respond with valid JSON containing "title", "description", and optionally "assignee" fields.',
+        content: 'You are extracting the core work/issue from a Slack conversation to create a Jira ticket title and description.\n\nCRITICAL RULES FOR TITLE:\n1. NEVER include command phrases like "create ticket", "create jira ticket", "make a ticket", "create task"\n2. Extract ONLY the actual work/problem being described\n3. Use imperative mood (e.g., "Document MCP tools" not "Documenting MCP tools")\n4. Keep under 60 characters\n5. Be specific but concise\n\nExamples:\n- "create jira ticket for MCP tools list" → "Document MCP tools list"\n- "make a ticket to fix the login bug" → "Fix login bug"\n- "we need to update the API documentation" → "Update API documentation"\n\nFor description: Capture the context and details from the conversation without repeating the command.\n\nIf someone is assigned (e.g., "assign to Ben"), extract their name in the "assignee" field.\n\nAlways respond with valid JSON containing "title", "description", and optionally "assignee" fields.',
       },
       {
         role: 'user',
