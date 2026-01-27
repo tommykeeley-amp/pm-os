@@ -45,20 +45,37 @@ export function addPendingTask(taskData: any) {
 
 export function getPendingTasks() {
   // Filter out any tasks that were already processed
-  return Array.from(pendingTasks.values()).filter(task =>
+  const allTasks = Array.from(pendingTasks.values());
+  console.log('[Store] Getting pending tasks - total in map:', allTasks.length);
+  console.log('[Store] Task IDs in map:', allTasks.map(t => t.id));
+  console.log('[Store] Processed task IDs:', Array.from(processedTaskIds));
+
+  const unprocessed = allTasks.filter(task =>
     !task.processed && !processedTaskIds.has(task.id)
   );
+  console.log('[Store] Unprocessed tasks:', unprocessed.length);
+  console.log('[Store] Unprocessed task IDs:', unprocessed.map(t => t.id));
+
+  return unprocessed;
 }
 
 export function markTaskProcessed(taskId: string) {
+  console.log('[Store] ===== MARK TASK PROCESSED =====');
+  console.log('[Store] Marking task as processed:', taskId);
   const task = pendingTasks.get(taskId);
+  console.log('[Store] Task found in map:', !!task);
+
   if (task) {
     task.processed = true;
     pendingTasks.set(taskId, task);
     // Add to processed set to prevent reprocessing
     processedTaskIds.add(taskId);
-    console.log('[Store] Marked task as processed:', taskId);
+    console.log('[Store] Task marked as processed');
+    console.log('[Store] Total processed IDs now:', processedTaskIds.size);
+  } else {
+    console.log('[Store] Task not found in map, cannot mark as processed');
   }
+  console.log('[Store] ===== MARK TASK PROCESSED END =====');
 }
 
 export function hasThreadJiraTicket(threadKey: string): boolean {
