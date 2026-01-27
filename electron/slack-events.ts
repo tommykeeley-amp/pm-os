@@ -148,11 +148,6 @@ export class SlackEventsServer {
       // Use threadTs (or messageTs if no thread) as the unique identifier
       const threadId = `${channel}_${threadTs || messageTs}`;
 
-      if (this.processedThreads.has(threadId)) {
-        logToFile(`[SlackEvents] SKIPPING - Thread already processed: ${threadId}`);
-        return;
-      }
-
       logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, threadId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate, hasConfluenceHandler: !!this.onConfluenceCreate }));
 
       // CRITICAL: Prevent recursive loops - ignore PM-OS's own reply messages
@@ -167,9 +162,24 @@ export class SlackEventsServer {
         return;
       }
 
-      // Mark this thread as processed IMMEDIATELY to prevent race conditions
-      this.processedThreads.add(threadId);
-      this.saveProcessedThreads();
+      // Check if this is a confirmed Jira request (has all required fields)
+      const isConfirmedJiraRequest = shouldCreateJira && !!(parent !== undefined || priority || pillar || pod);
+
+      // Only check/mark processed threads for confirmed requests or non-Jira tasks
+      // Initial Jira confirmation requests should NOT mark the thread as processed
+      if (!shouldCreateJira || isConfirmedJiraRequest) {
+        if (this.processedThreads.has(threadId)) {
+          logToFile(`[SlackEvents] SKIPPING - Thread already processed: ${threadId}`);
+          return;
+        }
+
+        // Mark this thread as processed IMMEDIATELY to prevent race conditions
+        this.processedThreads.add(threadId);
+        this.saveProcessedThreads();
+        logToFile(`[SlackEvents] Marked thread as processed: ${threadId}`);
+      } else {
+        logToFile(`[SlackEvents] NOT marking thread as processed yet (initial Jira request)`);
+      }
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
