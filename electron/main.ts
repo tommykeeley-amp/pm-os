@@ -548,6 +548,107 @@ function startExtensionSyncServer() {
       return;
     }
 
+    // Handle POST /jira-create-direct - Create Jira ticket directly from modal submission
+    if (req.method === 'POST' && req.url === '/jira-create-direct') {
+      let body = '';
+
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+
+      req.on('end', async () => {
+        try {
+          const taskData = JSON.parse(body);
+          console.log('[Jira Create Direct] Received Jira creation request:', taskData.title);
+
+          const userSettings = store.get('userSettings', {}) as any;
+
+          if (!jiraService) {
+            console.error('[Jira Create Direct] Jira service not configured');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: 'Jira not configured' }));
+            return;
+          }
+
+          // Create the Jira ticket
+          const issue = await jiraService.createIssue({
+            summary: taskData.title,
+            description: taskData.description,
+            projectKey: userSettings.jiraDefaultProject || 'AMP',
+            issueType: userSettings.jiraDefaultIssueType || 'Task',
+            assigneeName: taskData.assigneeName,
+            assigneeEmail: taskData.assigneeEmail,
+            parent: taskData.parent,
+            priority: taskData.priority,
+            pillar: taskData.pillar,
+            pod: taskData.pod,
+          });
+
+          const jiraUrl = jiraService.getIssueUrl(issue.key);
+          console.log('[Jira Create Direct] Jira ticket created:', issue.key);
+
+          // Send confirmation reply in Slack
+          const botToken = store.get('slack_bot_token') as string;
+          if (botToken) {
+            const confirmMessage = `🎫 Jira ticket created: <${jiraUrl}|${issue.key}>`;
+
+            await fetch('https://slack.com/api/chat.postMessage', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${botToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                channel: taskData.channel,
+                thread_ts: taskData.threadTs,
+                text: confirmMessage,
+              }),
+            });
+
+            // Update emoji reaction from eyes to checkmark
+            await fetch('https://slack.com/api/reactions.remove', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${botToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                channel: taskData.channel,
+                timestamp: taskData.messageTs,
+                name: 'eyes',
+              }),
+            });
+
+            await fetch('https://slack.com/api/reactions.add', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${botToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                channel: taskData.channel,
+                timestamp: taskData.messageTs,
+                name: 'white_check_mark',
+              }),
+            });
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            jiraKey: issue.key,
+            jiraUrl,
+          }));
+        } catch (error) {
+          console.error('[Jira Create Direct] Error creating Jira ticket:', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Failed to create Jira ticket' }));
+        }
+      });
+
+      return;
+    }
+
     // 404 for other routes
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: false, error: 'Not found' }));

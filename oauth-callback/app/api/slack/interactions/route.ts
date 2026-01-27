@@ -538,17 +538,26 @@ async function handleJiraModalSubmission(payload: any) {
     pod,
   };
 
-  console.log('[Slack Interactions] Adding confirmed task to queue:', taskData.id);
+  console.log('[Slack Interactions] Sending confirmed task directly to Electron:', taskData.id);
   console.log('[Slack Interactions] Task data:', JSON.stringify(taskData, null, 2));
 
-  // Store as pending task for Electron to process
-  addPendingTask(taskData);
-  console.log('[Slack Interactions] Task added to pending queue');
+  // Call Electron directly instead of using in-memory queue (which doesn't work across serverless instances)
+  try {
+    const electronResponse = await fetch('http://localhost:54321/jira-create-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(taskData),
+    });
 
-  // Mark thread as having a Jira ticket
-  const threadKey = `${requestData.channel}_${requestData.threadTs || requestData.messageTs}`;
-  markThreadHasJiraTicket(threadKey);
-  console.log('[Slack Interactions] Thread marked as having Jira ticket:', threadKey);
+    if (!electronResponse.ok) {
+      console.error('[Slack Interactions] Electron returned error:', electronResponse.status);
+    } else {
+      console.log('[Slack Interactions] Successfully sent to Electron');
+    }
+  } catch (electronError) {
+    console.error('[Slack Interactions] Failed to reach Electron:', electronError);
+    // Continue anyway - user won't see error, just no Jira created
+  }
 
   // Clean up pending request
   removePendingJiraRequest(requestId);
