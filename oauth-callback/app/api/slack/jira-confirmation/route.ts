@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `👀 Ready to create Jira ticket: *${title}*\n\n` +
+          text: `Ready to create Jira ticket: *${title}*\n\n` +
                 `*Parent:* ${parent || 'None'}\n` +
                 `*Priority:* ${priority}\n` +
                 `*Assignee:* ${assigneeName || assigneeEmail || 'Unassigned'}\n` +
@@ -77,7 +77,8 @@ export async function POST(request: NextRequest) {
       },
     ];
 
-    const response = await fetch('https://slack.com/api/chat.postMessage', {
+    // Use chat.postEphemeral to make message visible only to the user who summoned PM-OS
+    const response = await fetch('https://slack.com/api/chat.postEphemeral', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${botToken}`,
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         channel,
+        user, // Only this user will see the message
         thread_ts: threadTs,
         blocks,
         text: `Ready to create Jira ticket: ${title}`,
