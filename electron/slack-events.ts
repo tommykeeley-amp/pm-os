@@ -29,8 +29,16 @@ export class SlackEventsServer {
   private onJiraCreate?: (request: { summary: string; description?: string; assigneeName?: string; assigneeEmail?: string; parent?: string; priority?: string; pillar?: string; pod?: string }) => Promise<{ key: string; url: string }>;
   private onConfluenceCreate?: (request: { title: string; body: string; spaceKey?: string; parentId?: string }) => Promise<{ id: string; url: string }>;
   private isPolling: boolean = false;
+  private processedThreads: Set<string> = new Set();
 
-  constructor() {}
+  constructor() {
+    // Load previously processed threads from persistent storage
+    const stored = store.get('processed_slack_threads') as string[] | undefined;
+    if (stored && Array.isArray(stored)) {
+      this.processedThreads = new Set(stored);
+      logToFile(`[SlackEvents] Loaded ${this.processedThreads.size} previously processed thread(s) from storage`);
+    }
+  }
 
   setTaskCreateHandler(handler: (task: any) => Promise<void>) {
     this.onTaskCreate = handler;
@@ -63,6 +71,13 @@ export class SlackEventsServer {
       this.pollingInterval = null;
       logToFile('[SlackEvents] Stopped polling');
     }
+  }
+
+  private saveProcessedThreads(): void {
+    // Save to persistent storage
+    const threadsArray = Array.from(this.processedThreads);
+    store.set('processed_slack_threads', threadsArray);
+    logToFile(`[SlackEvents] Saved ${threadsArray.length} processed thread(s) to storage`);
   }
 
   private async pollPendingTasks(): Promise<void> {
@@ -106,7 +121,16 @@ export class SlackEventsServer {
       let jiraTicket: { key: string; url: string } | null = null;
       let confluencePage: { id: string; url: string } | null = null;
 
-      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate, hasConfluenceHandler: !!this.onConfluenceCreate }));
+      // CRITICAL: Only allow ONE Jira ticket per Slack thread
+      // Use threadTs (or messageTs if no thread) as the unique identifier
+      const threadId = `${channel}_${threadTs || messageTs}`;
+
+      if (this.processedThreads.has(threadId)) {
+        logToFile(`[SlackEvents] SKIPPING - Thread already processed: ${threadId}`);
+        return;
+      }
+
+      logToFile('[SlackEvents] Processing task: ' + JSON.stringify({ title, threadId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, hasJiraHandler: !!this.onJiraCreate, hasConfluenceHandler: !!this.onConfluenceCreate }));
 
       // CRITICAL: Prevent recursive loops - ignore PM-OS's own reply messages
       const fullMessage = `${title} ${description || ''}`.toLowerCase();
@@ -119,6 +143,10 @@ export class SlackEventsServer {
         logToFile('[SlackEvents] Skipping PM-OS bot reply message to prevent recursion');
         return;
       }
+
+      // Mark this thread as processed IMMEDIATELY to prevent race conditions
+      this.processedThreads.add(threadId);
+      this.saveProcessedThreads();
 
       // Eyes emoji already added by Vercel webhook for immediate feedback
       // We just need to process the task and update to checkmark
