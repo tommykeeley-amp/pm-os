@@ -27,6 +27,35 @@ interface ChatsProps {
   onCountChange?: (count: number) => void;
 }
 
+// Format Slack message text by removing markup and applying formatting
+function formatSlackText(text: string): string {
+  if (!text) return '';
+
+  let formatted = text;
+
+  // Replace user mentions: <@U08K98KE0SJ|TommyK> -> @TommyK
+  formatted = formatted.replace(/<@[^|]+\|([^>]+)>/g, '@$1');
+  // Handle mentions without display name: <@U08K98KE0SJ> -> @user
+  formatted = formatted.replace(/<@([^>]+)>/g, '@$1');
+
+  // Replace channel mentions with empty names: <#C123|> -> #channel
+  formatted = formatted.replace(/<#[^|]+\|>/g, '#channel');
+  // Replace channel mentions with names: <#C123|general> -> #general
+  formatted = formatted.replace(/<#[^|]+\|([^>]+)>/g, '#$1');
+  // Handle channel mentions without pipe: <#C123> -> #channel
+  formatted = formatted.replace(/<#([^>]+)>/g, '#channel');
+
+  // Replace links: <http://example.com|Example> -> Example
+  formatted = formatted.replace(/<(https?:\/\/[^|]+)\|([^>]+)>/g, '$2');
+  // Handle links without text: <http://example.com> -> http://example.com
+  formatted = formatted.replace(/<(https?:\/\/[^>]+)>/g, '$1');
+
+  // Remove special formatting characters but keep the text
+  // Note: We can't render actual bold/italic in plain text, but we clean up the markers
+
+  return formatted;
+}
+
 export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps) {
   const [slackMessages, setSlackMessages] = useState<SlackMessage[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
@@ -351,7 +380,7 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
                         </span>
                       </div>
                       <div className="text-sm text-dark-text-secondary line-clamp-2">
-                        {message.text}
+                        {formatSlackText(message.text)}
                       </div>
                       {message.type === 'channel' && (
                         <div className="text-xs text-dark-text-muted mt-1">

@@ -1,4 +1,15 @@
 import { WebClient } from '@slack/web-api';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+const logFilePath = path.join(os.homedir(), 'pm-os-slack-debug.log');
+function logToFile(message: string) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}`;
+  fs.appendFileSync(logFilePath, logMessage + '\n');
+  console.log(message);
+}
 
 interface SlackMessage {
   id: string;
@@ -76,7 +87,7 @@ export class SlackService {
       const authTest = await this.client.auth.test();
       const userId = authTest.user_id;
 
-      // Search for mentions
+      // Search for mentions (returns most recent mentions, Slack doesn't filter by unread)
       const response = await this.client.search.messages({
         query: `<@${userId}>`,
         sort: 'timestamp',
@@ -88,6 +99,8 @@ export class SlackService {
         return [];
       }
 
+      // Return recent mentions (Slack search doesn't provide reliable unread filtering)
+      // User can mark as read in Slack if they don't want to see them
       return this.parseMessages(response.messages.matches, 'mention');
     } catch (error) {
       console.error('Failed to get Slack mentions:', error);
@@ -96,17 +109,17 @@ export class SlackService {
   }
 
   async getDirectMessages(limit: number = 20): Promise<SlackMessage[]> {
-    console.log('[SlackService.getDirectMessages] ========== START ==========');
-    console.log('[SlackService.getDirectMessages] Limit:', limit);
+    logToFile('[SlackService.getDirectMessages] ========== START ==========');
+    logToFile(`[SlackService.getDirectMessages] Limit: ${limit}`);
 
     if (!this.client) throw new Error('Slack client not initialized');
 
     // Add overall timeout to prevent hanging
     const timeoutPromise = new Promise<SlackMessage[]>((resolve) => {
       setTimeout(() => {
-        console.log('[SlackService.getDirectMessages] Overall timeout reached, returning empty array');
+        logToFile('[SlackService.getDirectMessages] Overall timeout reached, returning empty array');
         resolve([]);
-      }, 10000); // 10 second overall timeout
+      }, 90000); // 90 second timeout for 100 conversations
     });
 
     const fetchPromise = this._fetchDirectMessages(limit);
@@ -119,27 +132,70 @@ export class SlackService {
 
     try {
       // Get current user ID
-      console.log('[SlackService._fetchDirectMessages] Getting current user ID...');
+      logToFile('[SlackService._fetchDirectMessages] Getting current user ID...');
       const authTest = await this.client.auth.test();
       const currentUserId = authTest.user_id;
-      console.log('[SlackService._fetchDirectMessages] Current user ID:', currentUserId);
+      logToFile(`[SlackService._fetchDirectMessages] Current user ID: ${currentUserId}`);
+
+      // DEBUG: Search for Marvin Liu user
+      try {
+        logToFile('[SlackService._fetchDirectMessages] DEBUG: Searching for Marvin Liu...');
+        const usersResult = await this.client.users.list({ limit: 1000 });
+        if (usersResult.ok && usersResult.members) {
+          const marvinUser = usersResult.members.find(u =>
+            (u.real_name && u.real_name.toLowerCase().includes('marvin liu')) ||
+            (u.profile?.display_name && u.profile.display_name.toLowerCase().includes('marvin liu')) ||
+            (u.name && u.name.toLowerCase().includes('marvin'))
+          );
+          if (marvinUser) {
+            logToFile(`[SlackService._fetchDirectMessages] DEBUG: Found Marvin Liu - ID: ${marvinUser.id}, Real Name: ${marvinUser.real_name}, Display: ${marvinUser.profile?.display_name}`);
+
+            // Try to open/find DM with this user
+            const dmResult = await this.client.conversations.open({
+              users: marvinUser.id!
+            });
+            if (dmResult.ok && dmResult.channel) {
+              logToFile(`[SlackService._fetchDirectMessages] DEBUG: Marvin DM Channel ID: ${dmResult.channel.id}`);
+
+              // Check if this channel has unread messages
+              const dmInfo = await this.client.conversations.info({
+                channel: dmResult.channel.id!
+              });
+              if (dmInfo.ok) {
+                logToFile(`[SlackService._fetchDirectMessages] DEBUG: Marvin DM Info: ${JSON.stringify({
+                  unread_count: (dmInfo.channel as any).unread_count_display,
+                  last_read: (dmInfo.channel as any).last_read,
+                  latest_ts: (dmInfo.channel as any).latest?.ts,
+                  is_open: (dmInfo.channel as any).is_open,
+                  is_im: (dmInfo.channel as any).is_im
+                })}`);
+              }
+            }
+          } else {
+            logToFile('[SlackService._fetchDirectMessages] DEBUG: Marvin Liu user not found');
+          }
+        }
+      } catch (err) {
+        logToFile(`[SlackService._fetchDirectMessages] DEBUG: Error searching for Marvin: ${err}`);
+      }
 
       // Get DM conversations with unread messages
-      // Check first 50 conversations (increased from 10 to catch more unread)
-      console.log('[SlackService._fetchDirectMessages] Fetching IM conversations...');
+      // Check first 100 conversations to catch more unread DMs
+      // Don't exclude archived - some active DMs might be marked archived
+      logToFile('[SlackService._fetchDirectMessages] Fetching IM conversations...');
       const conversations = await this.client.conversations.list({
         types: 'im',
-        limit: 50,
-        exclude_archived: true,
+        limit: 100,
+        exclude_archived: false,
       });
 
-      console.log('[SlackService._fetchDirectMessages] Conversations result:', {
+      logToFile(`[SlackService._fetchDirectMessages] Conversations result: ${JSON.stringify({
         ok: conversations.ok,
         channelCount: conversations.channels?.length || 0
-      });
+      })}`);
 
       if (!conversations.ok || !conversations.channels) {
-        console.log('[SlackService._fetchDirectMessages] No conversations found, returning empty array');
+        logToFile('[SlackService._fetchDirectMessages] No conversations found, returning empty array');
         return [];
       }
 
@@ -147,7 +203,7 @@ export class SlackService {
       let totalUnreadConversations = 0;
 
       // Check conversations sequentially to avoid hanging
-      console.log('[SlackService._fetchDirectMessages] Checking conversations for unread messages...');
+      logToFile('[SlackService._fetchDirectMessages] Checking conversations for unread messages...');
       for (const channel of conversations.channels) {
         const channelData = channel as any;
 
@@ -165,43 +221,50 @@ export class SlackService {
           const lastRead = (convInfo.channel as any).last_read;
           const latestMessageTs = (convInfo.channel as any).latest?.ts;
 
-          console.log('[SlackService._fetchDirectMessages] Checking channel:', {
+          // Get user name for logging
+          let debugUserName = 'Unknown';
+          if (channelData.user) {
+            try {
+              const userInfo = await this.getUserInfo(channelData.user);
+              debugUserName = userInfo?.realName || userInfo?.name || channelData.user;
+            } catch (err) {
+              debugUserName = channelData.user;
+            }
+          }
+
+          logToFile(`[SlackService._fetchDirectMessages] Checking channel: ${JSON.stringify({
             id: channel.id,
             unread_count_display: unreadCount,
             user: channelData.user,
+            userName: debugUserName,
             lastRead,
             latestMessageTs
-          });
+          })}`);
 
-          // Multi-signal unread detection (Slack's unread_count_display is unreliable)
+          // Unread detection: Check explicit count first, skip expensive checks if clearly read
           let hasUnreadMessages = false;
           let detectionMethod = '';
 
-          // Signal 1: Explicit unread count
+          // Signal 1: Explicit unread count (most reliable if present)
           if (unreadCount && unreadCount > 0) {
             hasUnreadMessages = true;
             detectionMethod = 'explicit count';
           }
-          // Signal 2: Timestamp comparison (most reliable)
-          else if (lastRead && latestMessageTs) {
-            const hasNewerMessages = parseFloat(latestMessageTs) > parseFloat(lastRead);
-            if (hasNewerMessages) {
+          // Signal 2: Timestamp comparison (compare last_read with latest message)
+          // Skip if lastRead equals latestMessageTs (clearly read)
+          else if (lastRead && latestMessageTs && lastRead !== '0000000000.000000') {
+            if (parseFloat(latestMessageTs) > parseFloat(lastRead)) {
               hasUnreadMessages = true;
               detectionMethod = 'timestamp comparison';
             }
           }
-          // Signal 3: Open conversation with recent activity
-          else if (channelData.is_open && latestMessageTs) {
-            hasUnreadMessages = true;
-            detectionMethod = 'open conversation';
-          }
 
           if (!hasUnreadMessages) {
-            console.log(`[SlackService._fetchDirectMessages] No unread messages detected, skipping`);
+            logToFile(`[SlackService._fetchDirectMessages] No unread messages, skipping`);
             continue;
           }
 
-          console.log(`[SlackService._fetchDirectMessages] Unread detected via: ${detectionMethod}`);
+          logToFile(`[SlackService._fetchDirectMessages] Including DM via: ${detectionMethod}`);
 
           totalUnreadConversations++;
           console.log(`[SlackService._fetchDirectMessages] Found DM with ${unreadCount} unread messages`);
@@ -214,37 +277,75 @@ export class SlackService {
           if (otherUserId) {
             const userInfo = await this.getUserInfo(otherUserId);
             userName = userInfo?.realName || userInfo?.name || otherUserId;
-            console.log('[SlackService._fetchDirectMessages] User name:', userName);
+            logToFile(`[SlackService._fetchDirectMessages] User name: ${userName}`);
           }
 
-          // Get recent unread messages from this DM
-          // Fetch more messages to ensure we get all unread ones
+          // Get recent messages from this DM
+          // Fetch enough messages to ensure we get at least one from the other person
           const history = await this.client.conversations.history({
             channel: channel.id!,
-            limit: Math.max(unreadCount * 2, 20), // Get at least 2x unread count to account for user's own messages
+            limit: 50, // Fetch up to 50 messages to find messages from the other person
           });
 
           if (history.ok && history.messages) {
-            console.log(`[SlackService._fetchDirectMessages] Got ${history.messages.length} messages from history`);
+            logToFile(`[SlackService._fetchDirectMessages] Got ${history.messages.length} messages from history`);
 
-            // Filter messages from other users
-            let otherUserMessages = history.messages.filter(msg => {
-              if (msg.user === currentUserId || !msg.user) return false;
+            let allMessages = [...history.messages];
 
-              // Filter by timestamp if last_read available (most accurate)
-              if (lastRead && msg.ts) {
-                return parseFloat(msg.ts) > parseFloat(lastRead);
+            // Check if latest message is in a thread (threaded reply not in main history)
+            // If latestMessageTs is newer than all history messages, it's likely a threaded reply
+            const newestHistoryTs = history.messages[0]?.ts;
+            if (latestMessageTs && newestHistoryTs && parseFloat(latestMessageTs) > parseFloat(newestHistoryTs)) {
+              logToFile(`[SlackService._fetchDirectMessages] Latest message (${latestMessageTs}) is newer than history (${newestHistoryTs}), checking for threads...`);
+
+              // Find parent messages with threads and fetch their replies
+              for (const msg of history.messages.slice(0, 5)) { // Check first 5 messages for threads
+                if (msg.thread_ts && msg.thread_ts === msg.ts) { // This is a thread parent
+                  try {
+                    const threadReplies = await this.client.conversations.replies({
+                      channel: channel.id!,
+                      ts: msg.thread_ts,
+                      limit: 20
+                    });
+                    if (threadReplies.ok && threadReplies.messages) {
+                      logToFile(`[SlackService._fetchDirectMessages] Found ${threadReplies.messages.length} messages in thread ${msg.thread_ts}`);
+                      // Add all thread replies except the parent (which is already in history)
+                      const replies = threadReplies.messages.slice(1);
+                      allMessages.push(...replies);
+                    }
+                  } catch (err) {
+                    logToFile(`[SlackService._fetchDirectMessages] Error fetching thread ${msg.thread_ts}: ${err}`);
+                  }
+                }
               }
+            }
 
-              return true;
+            // Sort all messages by timestamp (newest first)
+            allMessages.sort((a, b) => parseFloat(b.ts || '0') - parseFloat(a.ts || '0'));
+            logToFile(`[SlackService._fetchDirectMessages] Total messages after thread fetch: ${allMessages.length}`);
+
+            // Get all messages from other users (not from current user)
+            const allOtherUserMessages = allMessages.filter(msg =>
+              msg.user && msg.user !== currentUserId
+            );
+
+            // Filter to truly unread messages by timestamp
+            let unreadMessages = allOtherUserMessages.filter(msg => {
+              if (!lastRead || lastRead === '0000000000.000000' || !msg.ts) return true;
+              return parseFloat(msg.ts) > parseFloat(lastRead);
             });
 
-            // If we have an explicit unread count, limit to that
-            const unreadMessages = unreadCount > 0
-              ? otherUserMessages.slice(0, unreadCount)
-              : otherUserMessages.slice(0, 20); // Default to 20 most recent
+            // If no unread messages, but conversation is active, show the most recent message anyway
+            // This ensures users can see their recent DM conversations even if marked as "read"
+            if (unreadMessages.length === 0 && allOtherUserMessages.length > 0) {
+              unreadMessages = allOtherUserMessages.slice(0, 1);
+              logToFile('[SlackService._fetchDirectMessages] No unread messages, showing most recent message from conversation');
+            }
 
-            console.log(`[SlackService._fetchDirectMessages] Filtered to ${unreadMessages.length} unread messages from others (method: ${detectionMethod})`);
+            // Limit to reasonable count
+            unreadMessages = unreadMessages.slice(0, Math.max(unreadCount, 1));
+
+            logToFile(`[SlackService._fetchDirectMessages] Filtered to ${unreadMessages.length} messages from others (method: ${detectionMethod})`);
 
             for (const msg of unreadMessages) {
               messages.push({
@@ -264,28 +365,28 @@ export class SlackService {
 
           // Stop if we've reached the limit
           if (messages.length >= limit) {
-            console.log('[SlackService._fetchDirectMessages] Reached message limit, stopping');
+            logToFile('[SlackService._fetchDirectMessages] Reached message limit, stopping');
             break;
           }
         } catch (error) {
-          console.log('[SlackService._fetchDirectMessages] Error checking channel', channel.id, ':', error);
+          logToFile(`[SlackService._fetchDirectMessages] Error checking channel ${channel.id}: ${error}`);
           continue;
         }
       }
 
-      console.log('[SlackService._fetchDirectMessages] Summary:', {
+      logToFile(`[SlackService._fetchDirectMessages] Summary: ${JSON.stringify({
         totalConversations: conversations.channels.length,
         unreadConversations: totalUnreadConversations,
         totalMessages: messages.length
-      });
-      console.log('[SlackService._fetchDirectMessages] ========== COMPLETE ==========');
+      })}`);
+      logToFile('[SlackService._fetchDirectMessages] ========== COMPLETE ==========');
       return messages.slice(0, limit);
     } catch (error) {
-      console.error('[SlackService._fetchDirectMessages] ERROR:', {
+      logToFile(`[SlackService._fetchDirectMessages] ERROR: ${JSON.stringify({
         error: error,
         message: (error as any)?.message,
         stack: (error as any)?.stack
-      });
+      })}`);
       return [];
     }
   }
@@ -322,24 +423,32 @@ export class SlackService {
       const messages: SlackMessage[] = [];
 
       for (const channel of conversations.channels.slice(0, 10)) {
-        const history = await this.client.conversations.history({
-          channel: channel.id!,
-          limit: 10,
-        });
+        if (messages.length >= limit) break;
 
-        if (history.ok && history.messages) {
-          const threadMessages = history.messages.filter(
-            msg => msg.thread_ts && msg.reply_count && msg.reply_count > 0
-          );
+        try {
+          const history = await this.client.conversations.history({
+            channel: channel.id!,
+            limit: 10,
+          });
 
-          const parsedMessages = this.parseMessages(
-            threadMessages.map(msg => ({
-              ...msg,
-              channel: { id: channel.id, name: channel.name },
-            })),
-            'thread'
-          );
-          messages.push(...parsedMessages);
+          if (history.ok && history.messages) {
+            // Filter for threads with replies (simplified - not checking read status for speed)
+            const threadMessages = history.messages.filter(
+              msg => msg.thread_ts && msg.reply_count && msg.reply_count > 0
+            );
+
+            const parsedMessages = this.parseMessages(
+              threadMessages.map(msg => ({
+                ...msg,
+                channel: { id: channel.id, name: channel.name },
+              })),
+              'thread'
+            );
+            messages.push(...parsedMessages);
+          }
+        } catch (err) {
+          // Skip this channel if we can't check it
+          continue;
         }
       }
 
@@ -490,13 +599,19 @@ export class SlackService {
       const response = await this.client.conversations.list({
         types: 'public_channel,private_channel',
         limit: 200,
+        exclude_archived: true,
       });
 
       if (!response.ok || !response.channels) {
         return [];
       }
 
-      return response.channels.map(channel => ({
+      // Filter to only channels the user is a member of
+      const memberChannels = response.channels.filter(channel =>
+        (channel as any).is_member === true
+      );
+
+      return memberChannels.map(channel => ({
         id: channel.id!,
         name: channel.name || 'Unknown',
       }));
@@ -507,18 +622,28 @@ export class SlackService {
   }
 
   private parseMessages(messages: any[], type: SlackMessage['type']): SlackMessage[] {
-    return messages.map(msg => ({
-      id: `${msg.channel?.id || msg.channel}_${msg.ts}`,
-      type,
-      text: msg.text || '',
-      user: msg.user || '',
-      userName: msg.username,
-      channel: msg.channel?.id || msg.channel || '',
-      channelName: msg.channel?.name,
-      timestamp: msg.ts,
-      permalink: msg.permalink,
-      threadTs: msg.thread_ts,
-    }));
+    return messages.map(msg => {
+      const channelId = msg.channel?.id || msg.channel || '';
+      let channelName = msg.channel?.name;
+
+      // If channelName is a user ID (starts with U or D) or missing, use username instead
+      if (!channelName || channelName.startsWith('U') || channelName.startsWith('D')) {
+        channelName = msg.username || channelName;
+      }
+
+      return {
+        id: `${channelId}_${msg.ts}`,
+        type,
+        text: msg.text || '',
+        user: msg.user || '',
+        userName: msg.username,
+        channel: channelId,
+        channelName: channelName,
+        timestamp: msg.ts,
+        permalink: msg.permalink,
+        threadTs: msg.thread_ts,
+      };
+    });
   }
 
   async getUserInfo(userId: string): Promise<{ name: string; realName: string } | null> {

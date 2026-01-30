@@ -9,9 +9,17 @@ import { ContextEngine } from '../src/services/context-engine';
 const store = new Store();
 
 // Direct file logging helper
+import * as os from 'os';
+import * as path from 'path';
+
+const slackLogFilePath = path.join(os.homedir(), 'pm-os-slack-debug.log');
+
 function logToFile(message: string) {
   try {
-    fs.appendFileSync('/tmp/pm-os-oauth-debug.log', `${message}\n`);
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}`;
+    fs.appendFileSync(slackLogFilePath, logMessage + '\n');
+    console.log(message);
   } catch (e) {
     // Ignore logging errors
     console.error('logToFile failed:', e);
@@ -325,11 +333,11 @@ export class IntegrationManager {
 
   // Get Slack unread messages
   async getSlackUnreadMessages() {
-    console.log('[IntegrationManager.getSlackUnreadMessages] ========== START ==========');
-    console.log('[IntegrationManager.getSlackUnreadMessages] Slack service initialized:', !!this.slackService);
+    logToFile('[IntegrationManager.getSlackUnreadMessages] ========== START ==========');
+    logToFile(`[IntegrationManager.getSlackUnreadMessages] Slack service initialized: ${!!this.slackService}`);
 
     if (!this.slackService) {
-      console.log('[IntegrationManager.getSlackUnreadMessages] Slack service not initialized, returning empty array');
+      logToFile('[IntegrationManager.getSlackUnreadMessages] Slack service not initialized, returning empty array');
       return [];
     }
 
@@ -337,9 +345,10 @@ export class IntegrationManager {
       // Get user settings to find selected channels
       const userSettings = store.get('userSettings', {}) as any;
       const selectedChannels = userSettings.slackChannels || [];
+      logToFile(`[IntegrationManager.getSlackUnreadMessages] Selected channels: ${JSON.stringify(selectedChannels)}`);
 
       // Fetch all message types in parallel
-      console.log('[IntegrationManager.getSlackUnreadMessages] Fetching all message types...');
+      logToFile('[IntegrationManager.getSlackUnreadMessages] Fetching all message types...');
       const [directMessages, mentions, threads, starredMessages, channelMessages] = await Promise.all([
         this.slackService.getDirectMessages(),
         this.slackService.getMentions(),
@@ -348,33 +357,38 @@ export class IntegrationManager {
         selectedChannels.length > 0 ? this.slackService.getUnreadMessages(selectedChannels) : Promise.resolve([])
       ]);
 
-      console.log('[IntegrationManager.getSlackUnreadMessages] Fetched:', {
+      logToFile(`[IntegrationManager.getSlackUnreadMessages] Fetched: ${JSON.stringify({
         dmCount: directMessages?.length || 0,
         mentionsCount: mentions?.length || 0,
         threadsCount: threads?.length || 0,
         starredCount: starredMessages?.length || 0,
         channelCount: channelMessages?.length || 0
-      });
+      })}`);
 
       // Filter mentions, threads, and starred messages to only selected channels
       // DMs are always included regardless of channel selection
+      // If NO channels selected, show ONLY DMs (no channel messages)
+      // If channels ARE selected, show DMs + messages from those channels
       const selectedChannelSet = new Set(selectedChannels);
+      const hasSelectedChannels = selectedChannels.length > 0;
 
       const filteredMentions = mentions.filter(msg =>
-        msg.type === 'dm' || selectedChannelSet.has(msg.channel)
-      );
-      const filteredThreads = threads.filter(msg =>
-        msg.type === 'dm' || selectedChannelSet.has(msg.channel)
-      );
-      const filteredStarred = starredMessages.filter(msg =>
-        msg.type === 'dm' || selectedChannelSet.has(msg.channel)
+        msg.type === 'dm' || (hasSelectedChannels && selectedChannelSet.has(msg.channel))
       );
 
-      console.log('[IntegrationManager.getSlackUnreadMessages] After filtering to selected channels:', {
+      const filteredThreads = threads.filter(msg =>
+        msg.type === 'dm' || (hasSelectedChannels && selectedChannelSet.has(msg.channel))
+      );
+
+      const filteredStarred = starredMessages.filter(msg =>
+        msg.type === 'dm' || (hasSelectedChannels && selectedChannelSet.has(msg.channel))
+      );
+
+      logToFile(`[IntegrationManager.getSlackUnreadMessages] After filtering to selected channels: ${JSON.stringify({
         filteredMentionsCount: filteredMentions.length,
         filteredThreadsCount: filteredThreads.length,
         filteredStarredCount: filteredStarred.length
-      });
+      })}`);
 
       // Combine all messages and remove duplicates by ID
       const allMessages = [
@@ -391,9 +405,9 @@ export class IntegrationManager {
       );
 
       const messages = uniqueMessages;
-      console.log('[IntegrationManager.getSlackUnreadMessages] Total unique messages:', {
+      logToFile(`[IntegrationManager.getSlackUnreadMessages] Total unique messages: ${JSON.stringify({
         totalCount: messages.length
-      });
+      })}`);
 
       // Map messages to the format expected by the UI
       const mappedMessages = messages.map(msg => ({
@@ -408,11 +422,11 @@ export class IntegrationManager {
         permalink: msg.permalink,
       }));
 
-      console.log('[IntegrationManager.getSlackUnreadMessages] Mapped messages:', {
+      logToFile(`[IntegrationManager.getSlackUnreadMessages] Mapped messages: ${JSON.stringify({
         count: mappedMessages.length,
         messages: mappedMessages
-      });
-      console.log('[IntegrationManager.getSlackUnreadMessages] ========== COMPLETE ==========');
+      })}`);
+      logToFile('[IntegrationManager.getSlackUnreadMessages] ========== COMPLETE ==========');
       return mappedMessages;
     } catch (error) {
       console.error('[IntegrationManager.getSlackUnreadMessages] ERROR:', {
