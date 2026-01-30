@@ -125,11 +125,11 @@ export class SlackService {
       console.log('[SlackService._fetchDirectMessages] Current user ID:', currentUserId);
 
       // Get DM conversations with unread messages
-      // Only check first 10 to avoid timeouts
+      // Check first 50 conversations (increased from 10 to catch more unread)
       console.log('[SlackService._fetchDirectMessages] Fetching IM conversations...');
       const conversations = await this.client.conversations.list({
         types: 'im',
-        limit: 10,
+        limit: 50,
         exclude_archived: true,
       });
 
@@ -161,16 +161,47 @@ export class SlackService {
             ? (convInfo.channel as any).unread_count_display || 0
             : 0;
 
+          // Extract timestamp fields for reliable unread detection
+          const lastRead = (convInfo.channel as any).last_read;
+          const latestMessageTs = (convInfo.channel as any).latest?.ts;
+
           console.log('[SlackService._fetchDirectMessages] Checking channel:', {
             id: channel.id,
             unread_count_display: unreadCount,
-            user: channelData.user
+            user: channelData.user,
+            lastRead,
+            latestMessageTs
           });
 
-          // Check if there are unread messages
-          if (!unreadCount || unreadCount === 0) {
+          // Multi-signal unread detection (Slack's unread_count_display is unreliable)
+          let hasUnreadMessages = false;
+          let detectionMethod = '';
+
+          // Signal 1: Explicit unread count
+          if (unreadCount && unreadCount > 0) {
+            hasUnreadMessages = true;
+            detectionMethod = 'explicit count';
+          }
+          // Signal 2: Timestamp comparison (most reliable)
+          else if (lastRead && latestMessageTs) {
+            const hasNewerMessages = parseFloat(latestMessageTs) > parseFloat(lastRead);
+            if (hasNewerMessages) {
+              hasUnreadMessages = true;
+              detectionMethod = 'timestamp comparison';
+            }
+          }
+          // Signal 3: Open conversation with recent activity
+          else if (channelData.is_open && latestMessageTs) {
+            hasUnreadMessages = true;
+            detectionMethod = 'open conversation';
+          }
+
+          if (!hasUnreadMessages) {
+            console.log(`[SlackService._fetchDirectMessages] No unread messages detected, skipping`);
             continue;
           }
+
+          console.log(`[SlackService._fetchDirectMessages] Unread detected via: ${detectionMethod}`);
 
           totalUnreadConversations++;
           console.log(`[SlackService._fetchDirectMessages] Found DM with ${unreadCount} unread messages`);
@@ -196,12 +227,24 @@ export class SlackService {
           if (history.ok && history.messages) {
             console.log(`[SlackService._fetchDirectMessages] Got ${history.messages.length} messages from history`);
 
-            // Only include messages not sent by current user, up to unread count
-            const unreadMessages = history.messages
-              .filter(msg => msg.user !== currentUserId && msg.user) // Filter out user's own messages and ensure user exists
-              .slice(0, unreadCount); // Take exactly unreadCount messages
+            // Filter messages from other users
+            let otherUserMessages = history.messages.filter(msg => {
+              if (msg.user === currentUserId || !msg.user) return false;
 
-            console.log(`[SlackService._fetchDirectMessages] Filtered to ${unreadMessages.length} unread messages from others (expected: ${unreadCount})`);
+              // Filter by timestamp if last_read available (most accurate)
+              if (lastRead && msg.ts) {
+                return parseFloat(msg.ts) > parseFloat(lastRead);
+              }
+
+              return true;
+            });
+
+            // If we have an explicit unread count, limit to that
+            const unreadMessages = unreadCount > 0
+              ? otherUserMessages.slice(0, unreadCount)
+              : otherUserMessages.slice(0, 20); // Default to 20 most recent
+
+            console.log(`[SlackService._fetchDirectMessages] Filtered to ${unreadMessages.length} unread messages from others (method: ${detectionMethod})`);
 
             for (const msg of unreadMessages) {
               messages.push({

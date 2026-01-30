@@ -907,7 +907,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                     Primary Timezone
                   </label>
                   <select
-                    value={settings.primaryTimezone || 'America/New_York'}
+                    value={settings.primaryTimezone || 'America/Los_Angeles'}
                     onChange={(e) => handleChange('primaryTimezone', e.target.value)}
                     className="w-full pl-3 pr-10 py-2 bg-dark-bg border border-dark-border rounded-lg
                              text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
@@ -958,7 +958,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                     Secondary Timezone
                   </label>
                   <select
-                    value={settings.secondaryTimezone || 'America/Los_Angeles'}
+                    value={settings.secondaryTimezone || 'America/New_York'}
                     onChange={(e) => handleChange('secondaryTimezone', e.target.value)}
                     className="w-full pl-3 pr-10 py-2 bg-dark-bg border border-dark-border rounded-lg
                              text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"

@@ -334,16 +334,64 @@ export class IntegrationManager {
     }
 
     try {
-      // Only fetch DMs (not channels) to avoid hanging
-      console.log('[IntegrationManager.getSlackUnreadMessages] Calling slackService.getDirectMessages for DMs only...');
-      const directMessages = await this.slackService.getDirectMessages();
-      console.log('[IntegrationManager.getSlackUnreadMessages] Direct messages:', {
-        count: directMessages?.length || 0
+      // Get user settings to find selected channels
+      const userSettings = store.get('userSettings', {}) as any;
+      const selectedChannels = userSettings.slackChannels || [];
+
+      // Fetch all message types in parallel
+      console.log('[IntegrationManager.getSlackUnreadMessages] Fetching all message types...');
+      const [directMessages, mentions, threads, starredMessages, channelMessages] = await Promise.all([
+        this.slackService.getDirectMessages(),
+        this.slackService.getMentions(),
+        this.slackService.getUnreadThreads(),
+        this.slackService.getSavedItems(),
+        selectedChannels.length > 0 ? this.slackService.getUnreadMessages(selectedChannels) : Promise.resolve([])
+      ]);
+
+      console.log('[IntegrationManager.getSlackUnreadMessages] Fetched:', {
+        dmCount: directMessages?.length || 0,
+        mentionsCount: mentions?.length || 0,
+        threadsCount: threads?.length || 0,
+        starredCount: starredMessages?.length || 0,
+        channelCount: channelMessages?.length || 0
       });
 
-      const messages = directMessages;
-      console.log('[IntegrationManager.getSlackUnreadMessages] Total messages:', {
-        dmCount: directMessages.length,
+      // Filter mentions, threads, and starred messages to only selected channels
+      // DMs are always included regardless of channel selection
+      const selectedChannelSet = new Set(selectedChannels);
+
+      const filteredMentions = mentions.filter(msg =>
+        msg.type === 'dm' || selectedChannelSet.has(msg.channel)
+      );
+      const filteredThreads = threads.filter(msg =>
+        msg.type === 'dm' || selectedChannelSet.has(msg.channel)
+      );
+      const filteredStarred = starredMessages.filter(msg =>
+        msg.type === 'dm' || selectedChannelSet.has(msg.channel)
+      );
+
+      console.log('[IntegrationManager.getSlackUnreadMessages] After filtering to selected channels:', {
+        filteredMentionsCount: filteredMentions.length,
+        filteredThreadsCount: filteredThreads.length,
+        filteredStarredCount: filteredStarred.length
+      });
+
+      // Combine all messages and remove duplicates by ID
+      const allMessages = [
+        ...directMessages,
+        ...filteredMentions,
+        ...filteredThreads,
+        ...filteredStarred,
+        ...channelMessages
+      ];
+
+      // Remove duplicates (a message might be both a mention and in a thread)
+      const uniqueMessages = Array.from(
+        new Map(allMessages.map(msg => [msg.id, msg])).values()
+      );
+
+      const messages = uniqueMessages;
+      console.log('[IntegrationManager.getSlackUnreadMessages] Total unique messages:', {
         totalCount: messages.length
       });
 
@@ -386,11 +434,39 @@ export class IntegrationManager {
       return [];
     }
 
+    // Check token health before making API call
+    const tokens = this.getStoredTokens('google');
+    const now = Date.now();
+    const isExpired = tokens.expiresAt && now > tokens.expiresAt;
+    console.log('[IntegrationManager.getStarredEmails] Token health:', {
+      hasAccessToken: !!tokens.accessToken,
+      hasRefreshToken: !!tokens.refreshToken,
+      expiresAt: tokens.expiresAt ? new Date(tokens.expiresAt).toISOString() : 'unknown',
+      isExpired,
+      timeUntilExpiry: tokens.expiresAt ? `${Math.round((tokens.expiresAt - now) / 1000 / 60)}min` : 'unknown',
+    });
+
+    // Proactively refresh if expired
+    if (isExpired && tokens.refreshToken) {
+      console.log('[IntegrationManager.getStarredEmails] Token expired, refreshing proactively...');
+      try {
+        await this.refreshGoogleTokens();
+        console.log('[IntegrationManager.getStarredEmails] Proactive token refresh successful');
+      } catch (refreshError: any) {
+        console.error('[IntegrationManager.getStarredEmails] Proactive token refresh failed:', refreshError);
+        // Continue anyway, let the API call handle it
+      }
+    }
+
     try {
       console.log('[IntegrationManager.getStarredEmails] Calling gmailService.getUnreadStarredEmails...');
+      const startTime = Date.now();
       const emails = await this.gmailService.getUnreadStarredEmails(20);
+      const duration = Date.now() - startTime;
+
       console.log('[IntegrationManager.getStarredEmails] Raw emails from service:', {
         count: emails.length,
+        duration: `${duration}ms`,
         emails: emails
       });
 

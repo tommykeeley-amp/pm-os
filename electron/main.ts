@@ -44,6 +44,9 @@ const envPath = app.isPackaged
 console.log('Loading .env from:', envPath);
 dotenv.config({ path: envPath });
 
+// Set app name (important for macOS dock and menu bar)
+app.name = 'PM-OS';
+
 // Debug: Log OAuth credentials (first 20 chars only for security)
 console.log('=== OAuth Configuration Debug ===');
 console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID?.substring(0, 20) + '...');
@@ -118,8 +121,10 @@ function createWindow() {
     height: windowHeight,
     x: savedPosition?.x ?? defaultX,
     y: savedPosition?.y ?? defaultY,
-    title: 'PM OS',
-    icon: path.join(__dirname, '../build/icon.png'),
+    title: 'PM-OS',
+    icon: process.platform === 'darwin'
+      ? path.join(__dirname, '../build/icon.icns')
+      : path.join(__dirname, '../build/icon.png'),
     frame: false,
     transparent: true,
     alwaysOnTop: isPinned, // Only always-on-top when pinned
@@ -1299,7 +1304,7 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
 
   const authUrls = {
     google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
-    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=app_mentions:read,chat:write&user_scope=channels:read,channels:history,groups:history,mpim:history,im:history,users:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
+    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=app_mentions:read,chat:write&user_scope=channels:read,channels:history,groups:history,mpim:history,im:read,im:history,users:read,stars:read,search:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
     zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&state=${state}`,
   };
 
@@ -1493,6 +1498,11 @@ ipcMain.handle('get-slack-unread-messages', async () => {
     console.log('[IPC] Getting Slack unread messages...');
     const messages = await integrationManager.getSlackUnreadMessages();
     console.log(`[IPC] Slack unread messages result: ${messages?.length || 0} messages`);
+    console.log('[IPC] Messages type:', typeof messages, 'isArray:', Array.isArray(messages));
+    if (messages && messages.length > 0) {
+      console.log('[IPC] First message sample:', JSON.stringify(messages[0]).substring(0, 200));
+    }
+    console.log('[IPC] Returning messages to renderer...');
     return messages;
   } catch (error: any) {
     console.error('[IPC] Failed to get Slack unread messages:', {

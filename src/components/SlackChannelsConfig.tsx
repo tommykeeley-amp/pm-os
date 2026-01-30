@@ -5,6 +5,7 @@ export default function SlackChannelsConfig() {
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadChannelsAndSettings();
@@ -62,6 +63,11 @@ export default function SlackChannelsConfig() {
     );
   }
 
+  // Filter channels based on search query
+  const filteredChannels = channels.filter(channel =>
+    channel.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="pt-6 border-t border-dark-border">
       <h3 className="text-base font-semibold text-dark-text-primary mb-4">
@@ -71,13 +77,24 @@ export default function SlackChannelsConfig() {
         Select which Slack channels you want to monitor in the Chats tab. Direct messages are always included.
       </p>
 
+      {/* Search input */}
+      <div className="mb-3">
+        <input
+          type="text"
+          placeholder="Search channels..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-3 py-2 text-sm bg-dark-bg border border-dark-border rounded-lg text-dark-text-primary placeholder-dark-text-muted focus:outline-none focus:ring-2 focus:ring-dark-accent-primary focus:border-transparent"
+        />
+      </div>
+
       <div className="space-y-2 max-h-64 overflow-y-auto bg-dark-bg border border-dark-border rounded-lg p-3">
-        {channels.length === 0 ? (
+        {filteredChannels.length === 0 ? (
           <div className="text-sm text-dark-text-muted text-center py-4">
-            No channels found
+            {searchQuery ? 'No channels match your search' : 'No channels found'}
           </div>
         ) : (
-          channels.map(channel => (
+          filteredChannels.map(channel => (
             <label
               key={channel.id}
               className="flex items-center gap-3 p-2 rounded hover:bg-dark-surface cursor-pointer transition-colors"
