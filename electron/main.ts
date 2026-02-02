@@ -904,9 +904,11 @@ ipcMain.handle('pin-window', (_event, isPinned: boolean) => {
   const { x: displayX, y: displayY, width: screenWidth, height: screenHeight } = currentDisplay.workArea;
 
   if (isPinned) {
-    // Pin to right side of current display with full height
+    // Pin to right side of current display
+    // workArea already accounts for menu bar and dock dynamically across all monitors
     const x = displayX + screenWidth - WINDOW_WIDTH;
     const y = displayY;
+
     mainWindow.setResizable(true);
     mainWindow.setBounds({
       x,
