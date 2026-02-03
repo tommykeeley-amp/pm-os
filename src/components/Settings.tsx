@@ -96,6 +96,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     },
   ]);
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<{ provider: string; error: string } | null>(null);
   const [jiraExpanded, setJiraExpanded] = useState(false);
   const [slackExpanded, setSlackExpanded] = useState(false);
   const [obsidianExpanded, setObsidianExpanded] = useState(false);
@@ -113,6 +114,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       console.log('[Settings] OAuth success event received, refreshing connections...');
       checkConnections();
       setIsConnecting(null);
+      setConnectionError(null); // Clear any errors on success
     };
 
     window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
@@ -185,18 +187,37 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
   const handleConnect = async (integrationId: 'google' | 'slack') => {
     setIsConnecting(integrationId);
+    setConnectionError(null); // Clear any previous errors
 
     try {
+      console.log(`[Settings] Starting OAuth flow for ${integrationId}...`);
       const result = await window.electronAPI.startOAuthFlow(integrationId);
+      console.log(`[Settings] OAuth flow result:`, result);
 
-      if (result.code) {
-        setIntegrations(prev => prev.map(integration =>
-          integration.id === integrationId ? { ...integration, connected: true } : integration
-        ));
+      if (result.success) {
+        console.log(`[Settings] OAuth flow started successfully for ${integrationId}`);
+        // Don't mark as connected yet - wait for oauth-success event
+        // The connecting state will be cleared when oauth-success event fires
+      } else {
+        console.error(`[Settings] OAuth flow failed for ${integrationId}:`, result.error);
+        let errorMessage = result.error || 'Unknown error occurred';
+
+        // Add helpful context based on the error
+        if (errorMessage.includes('not configured')) {
+          errorMessage += '. Please check that your .env file contains the correct OAuth credentials.';
+        } else if (errorMessage.includes('browser')) {
+          errorMessage += '. Please ensure your default browser is set correctly in system settings.';
+        }
+
+        setConnectionError({ provider: integrationId, error: errorMessage });
+        setIsConnecting(null);
       }
-    } catch (error) {
-      console.error(`Failed to connect ${integrationId}:`, error);
-    } finally {
+    } catch (error: any) {
+      console.error(`[Settings] Failed to connect ${integrationId}:`, error);
+      setConnectionError({
+        provider: integrationId,
+        error: error?.message || String(error) || 'An unexpected error occurred. Please try again.'
+      });
       setIsConnecting(null);
     }
   };
@@ -397,6 +418,31 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
               <p className="text-sm text-dark-text-secondary">
                 Connect your accounts to get smart task suggestions from your calendar, emails, and messages.
               </p>
+
+              {/* Connection Error Display */}
+              {connectionError && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-red-500 capitalize">
+                        {connectionError.provider} Connection Failed
+                      </h3>
+                      <p className="text-sm text-dark-text-secondary mt-1">
+                        {connectionError.error}
+                      </p>
+                      <button
+                        onClick={() => setConnectionError(null)}
+                        className="text-xs text-dark-accent-primary hover:text-dark-accent-secondary mt-2 transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {integrations.map(integration => (

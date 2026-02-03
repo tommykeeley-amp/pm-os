@@ -36,6 +36,8 @@ export class SlackEventsServer {
     description?: string;
     assigneeName?: string;
     assigneeEmail?: string;
+    reporterName?: string;
+    reporterEmail?: string;
     parent?: string;
     priority?: string;
     pillar?: string;
@@ -63,6 +65,8 @@ export class SlackEventsServer {
     description?: string;
     assigneeName?: string;
     assigneeEmail?: string;
+    reporterName?: string;
+    reporterEmail?: string;
     parent?: string;
     priority?: string;
     pillar?: string;
@@ -140,7 +144,7 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, parent, priority, pillar, pod } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, reporterName, reporterEmail, parent, priority, pillar, pod } = taskData;
       let confluencePage: { id: string; url: string } | null = null;
       let jiraTicket: { key: string; url: string } | null = null;
 
@@ -208,6 +212,8 @@ export class SlackEventsServer {
                 description,
                 assigneeName,
                 assigneeEmail,
+                reporterName,
+                reporterEmail,
                 parent,
                 priority,
                 pillar,
@@ -258,6 +264,8 @@ export class SlackEventsServer {
             description: description ? `${description}\n\n---\n\nSlack thread: ${permalink}` : `Slack thread: ${permalink}`,
             assigneeName,
             assigneeEmail,
+            reporterName,
+            reporterEmail,
             parent: extractedParent,
             priority: extractedPriority || 'Medium',
             pillar: 'Growth',

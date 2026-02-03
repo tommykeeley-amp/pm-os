@@ -754,6 +754,8 @@ app.whenReady().then(async () => {
       issueType: userSettings.jiraDefaultIssueType || 'Task',
       assigneeName: request.assigneeName,
       assigneeEmail: request.assigneeEmail,
+      reporterName: request.reporterName,
+      reporterEmail: request.reporterEmail,
       parent: request.parent,
       priority: request.priority,
       pillar: request.pillar,
@@ -767,6 +769,8 @@ app.whenReady().then(async () => {
       issueType: userSettings.jiraDefaultIssueType || 'Task',
       assigneeName: request.assigneeName,
       assigneeEmail: request.assigneeEmail,
+      reporterName: request.reporterName,
+      reporterEmail: request.reporterEmail,
       parent: request.parent,
       priority: request.priority,
       pillar: request.pillar,
@@ -1301,22 +1305,46 @@ ipcMain.handle('delete-task', (_event, id: string) => {
 
 // OAuth Handlers
 ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom') => {
-  // Encode provider in state parameter so callback knows which provider
-  const state = Buffer.from(JSON.stringify({ provider })).toString('base64');
+  try {
+    // Check if required env vars are set
+    if (!process.env.OAUTH_REDIRECT_URI) {
+      console.error('[OAuth] OAUTH_REDIRECT_URI not configured in .env');
+      return { success: false, error: 'OAuth redirect URI not configured' };
+    }
 
-  const authUrls = {
-    google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
-    slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=app_mentions:read,chat:write&user_scope=channels:read,channels:history,groups:read,groups:history,mpim:history,im:read,im:history,users:read,stars:read,search:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&state=${state}`,
-    zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI || '')}&response_type=code&state=${state}`,
-  };
+    const clientIds = {
+      google: process.env.GOOGLE_CLIENT_ID,
+      slack: process.env.SLACK_CLIENT_ID,
+      zoom: process.env.ZOOM_CLIENT_ID,
+    };
 
-  console.log(`[OAuth] Opening ${provider} auth URL in system browser`);
-  console.log(`[OAuth] Redirect URI: ${process.env.OAUTH_REDIRECT_URI}`);
+    if (!clientIds[provider]) {
+      console.error(`[OAuth] ${provider.toUpperCase()}_CLIENT_ID not configured in .env`);
+      return { success: false, error: `${provider} client ID not configured` };
+    }
 
-  // Open in system browser
-  await shell.openExternal(authUrls[provider]);
+    // Encode provider in state parameter so callback knows which provider
+    const state = Buffer.from(JSON.stringify({ provider })).toString('base64');
 
-  return { success: true };
+    const authUrls = {
+      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
+      slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=app_mentions:read,chat:write&user_scope=channels:read,channels:history,groups:read,groups:history,mpim:history,im:read,im:history,users:read,stars:read,search:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&state=${state}`,
+      zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&response_type=code&state=${state}`,
+    };
+
+    console.log(`[OAuth] Opening ${provider} auth URL in system browser`);
+    console.log(`[OAuth] Redirect URI: ${process.env.OAUTH_REDIRECT_URI}`);
+    console.log(`[OAuth] Full auth URL: ${authUrls[provider].substring(0, 100)}...`);
+
+    // Open in system browser
+    await shell.openExternal(authUrls[provider]);
+
+    console.log(`[OAuth] Browser opened successfully for ${provider}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('[OAuth] Failed to start OAuth flow:', error);
+    return { success: false, error: error.message || 'Failed to open browser' };
+  }
 });
 
 ipcMain.handle('get-oauth-tokens', (_event, provider: string) => {

@@ -38,6 +38,8 @@ interface CreateIssueRequest {
   priority?: string;
   assigneeName?: string; // Optional assignee name to search for
   assigneeEmail?: string; // Optional assignee email (more precise than name)
+  reporterName?: string; // Optional reporter name (person who requested the ticket)
+  reporterEmail?: string; // Optional reporter email (more precise than name)
   pillar?: string; // Custom field: Pillar
   pod?: string; // Custom field: Pod
   parent?: string; // Parent issue key (e.g., AMP-12345)
@@ -254,7 +256,7 @@ export class JiraService {
     // Search for assignee - prefer email over name for precision
     let assignee = null;
     if (request.assigneeEmail) {
-      logToFile(`[Jira] Searching for user by email: ${request.assigneeEmail}`);
+      logToFile(`[Jira] Searching for assignee by email: ${request.assigneeEmail}`);
       const user = await this.searchUserByEmail(request.assigneeEmail, request.projectKey);
       if (user) {
         assignee = { accountId: user.accountId };
@@ -263,7 +265,7 @@ export class JiraService {
         logToFile(`[Jira] Could not find user with email "${request.assigneeEmail}"`);
         // Fall back to name search if provided
         if (request.assigneeName) {
-          logToFile(`[Jira] Falling back to name search: ${request.assigneeName}`);
+          logToFile(`[Jira] Falling back to assignee name search: ${request.assigneeName}`);
           const nameUser = await this.searchUserByName(request.assigneeName, request.projectKey);
           if (nameUser) {
             assignee = { accountId: nameUser.accountId };
@@ -272,7 +274,7 @@ export class JiraService {
         }
       }
     } else if (request.assigneeName) {
-      logToFile(`[Jira] Searching for user by name: ${request.assigneeName}`);
+      logToFile(`[Jira] Searching for assignee by name: ${request.assigneeName}`);
       const user = await this.searchUserByName(request.assigneeName, request.projectKey);
       if (user) {
         assignee = { accountId: user.accountId };
@@ -280,6 +282,41 @@ export class JiraService {
       } else {
         logToFile(`[Jira] Could not find user matching "${request.assigneeName}", leaving unassigned`);
       }
+    }
+
+    // Search for reporter - prefer email over name for precision
+    let reporter = null;
+    if (request.reporterEmail) {
+      logToFile(`[Jira] Searching for reporter by email: ${request.reporterEmail}`);
+      const user = await this.searchUserByEmail(request.reporterEmail, request.projectKey);
+      if (user) {
+        reporter = { accountId: user.accountId };
+        logToFile(`[Jira] Setting reporter to ${user.displayName} via email match`);
+      } else {
+        logToFile(`[Jira] Could not find reporter with email "${request.reporterEmail}"`);
+        // Fall back to name search if provided
+        if (request.reporterName) {
+          logToFile(`[Jira] Falling back to reporter name search: ${request.reporterName}`);
+          const nameUser = await this.searchUserByName(request.reporterName, request.projectKey);
+          if (nameUser) {
+            reporter = { accountId: nameUser.accountId };
+            logToFile(`[Jira] Setting reporter to ${nameUser.displayName} via name match`);
+          }
+        }
+      }
+    } else if (request.reporterName) {
+      logToFile(`[Jira] Searching for reporter by name: ${request.reporterName}`);
+      const user = await this.searchUserByName(request.reporterName, request.projectKey);
+      if (user) {
+        reporter = { accountId: user.accountId };
+        logToFile(`[Jira] Setting reporter to ${user.displayName}`);
+      } else {
+        logToFile(`[Jira] Could not find reporter matching "${request.reporterName}", using default (API user)`);
+      }
+    }
+
+    if (!reporter) {
+      logToFile(`[Jira] No reporter specified, will use default (API user: ${this.config.email})`);
     }
 
     // Look up Pillar and Pod IDs from the field options
@@ -338,6 +375,7 @@ export class JiraService {
           name: request.priority,
         } : undefined,
         assignee: assignee,
+        reporter: reporter, // Set reporter to the person who requested the ticket
         // Parent issue
         ...(request.parent ? { parent: { key: request.parent } } : {}),
         // Custom fields - Pillar and Pod (look up IDs dynamically)
@@ -355,6 +393,7 @@ export class JiraService {
       pod: request.pod,
       parent: request.parent,
       hasAssignee: !!assignee,
+      hasReporter: !!reporter,
       hasDescription: !!request.description
     })}`);
 
