@@ -47,11 +47,13 @@ dotenv.config({ path: envPath });
 // Set app name (important for macOS dock and menu bar)
 app.name = 'PM-OS';
 
-// Debug: Log OAuth credentials (first 20 chars only for security)
-console.log('=== OAuth Configuration Debug ===');
-console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID?.substring(0, 20) + '...');
-console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET?.substring(0, 10) + '...');
-console.log('OAUTH_REDIRECT_URI:', process.env.OAUTH_REDIRECT_URI);
+// Debug: Log configuration
+console.log('=== PM-OS Configuration ===');
+console.log('NOTE: OAuth credentials are now server-side (Vercel)');
+console.log('Local .env credentials are OPTIONAL (only for token refresh)');
+console.log('GOOGLE_CLIENT_SECRET available:', !!process.env.GOOGLE_CLIENT_SECRET);
+console.log('SLACK_CLIENT_SECRET available:', !!process.env.SLACK_CLIENT_SECRET);
+console.log('OPENAI_API_KEY available:', !!process.env.OPENAI_API_KEY);
 console.log('================================');
 
 const store = new Store();
@@ -1377,52 +1379,23 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
   console.log(`[OAuth] User initiated OAuth flow from Settings`);
 
   try {
-    // Check if required env vars are set
-    console.log('[OAuth] Step 1: Checking environment variables...');
+    // OAuth credentials are stored server-side on Vercel
+    // We simply open the Vercel authorization endpoint which handles everything
+    const authUrl = `https://pm-os.vercel.app/api/oauth/${provider}/authorize`;
 
-    if (!process.env.OAUTH_REDIRECT_URI) {
-      console.error('[OAuth] ERROR: OAUTH_REDIRECT_URI not configured in .env');
-      console.error('[OAuth] This should be set to: https://pm-os.vercel.app/oauth-callback');
-      return { success: false, error: 'OAuth redirect URI not configured. Please ensure .env file is properly set up.' };
-    }
-    console.log(`[OAuth] ✓ OAUTH_REDIRECT_URI found: ${process.env.OAUTH_REDIRECT_URI}`);
-
-    const clientIds = {
-      google: process.env.GOOGLE_CLIENT_ID,
-      slack: process.env.SLACK_CLIENT_ID,
-      zoom: process.env.ZOOM_CLIENT_ID,
-    };
-
-    if (!clientIds[provider]) {
-      console.error(`[OAuth] ERROR: ${provider.toUpperCase()}_CLIENT_ID not configured in .env`);
-      return { success: false, error: `${provider} client ID not configured. Please ensure .env file contains ${provider.toUpperCase()}_CLIENT_ID.` };
-    }
-    console.log(`[OAuth] ✓ ${provider.toUpperCase()}_CLIENT_ID found: ${(clientIds[provider] || '').substring(0, 20)}...`);
-
-    // Encode provider in state parameter so callback knows which provider
-    console.log('[OAuth] Step 2: Building authorization URL...');
-    const state = Buffer.from(JSON.stringify({ provider })).toString('base64');
-
-    const authUrls = {
-      google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&response_type=code&scope=https://www.googleapis.com/auth/calendar%20https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
-      slack: `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&scope=app_mentions:read,chat:write&user_scope=channels:read,channels:history,groups:read,groups:history,mpim:history,im:read,im:history,users:read,stars:read,search:read&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&state=${state}`,
-      zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&response_type=code&state=${state}`,
-    };
-
-    console.log(`[OAuth] ✓ Authorization URL built (length: ${authUrls[provider].length} chars)`);
-    console.log(`[OAuth] URL preview: ${authUrls[provider].substring(0, 150)}...`);
+    console.log('[OAuth] Step 1: Opening Vercel authorization endpoint...');
+    console.log(`[OAuth] URL: ${authUrl}`);
+    console.log('[OAuth] Vercel will generate the OAuth URL with server-side credentials');
+    console.log('[OAuth] and redirect to the provider (Slack/Google)');
 
     // Open in system browser
-    console.log('[OAuth] Step 3: Opening system browser...');
-    console.log('[OAuth] Calling shell.openExternal()...');
-
-    await shell.openExternal(authUrls[provider]);
+    console.log('[OAuth] Step 2: Calling shell.openExternal()...');
+    await shell.openExternal(authUrl);
 
     const elapsed = Date.now() - startTime;
     console.log(`[OAuth] ✓ Browser opened successfully (took ${elapsed}ms)`);
-    console.log('[OAuth] Next: User should see browser open to authorization page');
-    console.log('[OAuth] After user authorizes, browser will redirect to Vercel');
-    console.log('[OAuth] Vercel will then redirect to pmos:// which will trigger protocol handler');
+    console.log('[OAuth] Next: Browser redirects to Vercel → Provider → Authorization');
+    console.log('[OAuth] After user authorizes, flow returns via /oauth-callback → pmos://');
     console.log(`[OAuth] END - Success`);
     console.log(`========================================\n`);
 
