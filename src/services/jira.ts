@@ -87,13 +87,54 @@ export class JiraService {
   /**
    * Test connection to Jira
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<{ success: boolean; error?: string; details?: string }> {
     try {
-      await this.makeRequest('/myself');
-      return true;
-    } catch (error) {
-      console.error('Jira connection test failed:', error);
-      return false;
+      logToFile('[Jira] Testing connection...');
+      const user = await this.makeRequest('/myself');
+      logToFile(`[Jira] Connected as: ${user.displayName} (${user.emailAddress})`);
+
+      // Also check if we can access projects
+      const projects = await this.makeRequest('/project');
+      logToFile(`[Jira] Found ${projects.length} accessible projects`);
+
+      if (projects.length === 0) {
+        return {
+          success: false,
+          error: 'No projects accessible',
+          details: 'Connection successful, but your account has no access to any Jira projects. Check your permissions or API token scopes.'
+        };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      logToFile(`[Jira] Connection test failed: ${error.message}`);
+
+      // Parse specific error types
+      if (error.message.includes('401')) {
+        return {
+          success: false,
+          error: 'Authentication failed',
+          details: 'Invalid email or API token. Please check your credentials.'
+        };
+      } else if (error.message.includes('404')) {
+        return {
+          success: false,
+          error: 'Domain not found',
+          details: 'The Jira domain is incorrect. Make sure it\'s in the format: yourcompany.atlassian.net'
+        };
+      } else if (error.message.includes('fetch')) {
+        return {
+          success: false,
+          error: 'Network error',
+          details: 'Cannot reach Jira. Check your internet connection.'
+        };
+      }
+
+      return {
+        success: false,
+        error: 'Connection failed',
+        details: error.message || 'Unknown error occurred'
+      };
     }
   }
 
