@@ -38,10 +38,36 @@ When Will clicks the "Connect" button for Slack in Settings, nothing visible hap
 ### Problem
 When Will creates a Jira ticket from Slack via the PM-OS bot, the ticket is created with Tommy (the API credential owner) as the reporter instead of Will.
 
-### Root Cause
-The Jira API automatically sets the authenticated user (the API token owner) as the reporter. The code was not explicitly setting the `reporter` field to the actual requester.
+### Root Causes
+1. **Task Routing:** All running PM-OS instances poll for ALL tasks, so whoever's instance picks it up first processes it with THEIR credentials
+2. **Reporter Field:** The Jira API automatically sets the authenticated user (the API token owner) as the reporter
 
-### Solution
+### Solution - Part 1: User-Specific Task Routing ⚠️ **CRITICAL**
+**Files Modified:**
+1. `electron/slack-events.ts`
+   - Added user email filtering when polling for tasks
+   - Each PM-OS instance now only processes tasks where the requester's email matches the configured email
+   - Added logging to show task routing decisions
+
+2. `src/components/Settings.tsx`
+   - Marked email field as required with asterisk
+   - Added clear explanation that email must match Slack account
+   - Emphasized importance for correct task routing
+
+**How It Works:**
+1. Will configures his email (will@amplitude.com) in PM-OS Settings → Personal tab
+2. When Will mentions `@PM-OS` in Slack, the Vercel webhook captures his Slack email
+3. Will's PM-OS polls Vercel and ONLY picks up tasks where `requesterEmail === will@amplitude.com`
+4. Tommy's PM-OS polls Vercel and ONLY picks up tasks where `requesterEmail === tommy@amplitude.com`
+5. Will's tasks use Will's Jira credentials → Will is the reporter ✅
+
+**⚠️ IMPORTANT - Vercel Update Required:**
+The Vercel webhook must extract and include the requester's email in the task data:
+- Field name: `reporterEmail` or `user_email`
+- Source: Slack user's email address from the Slack API
+- This is needed for task routing to work correctly
+
+### Solution - Part 2: Reporter Field Support
 **Files Modified:**
 1. `src/services/jira.ts`
    - Added `reporterName` and `reporterEmail` fields to `CreateIssueRequest` interface
@@ -103,10 +129,47 @@ The Jira API automatically sets the authenticated user (the API token owner) as 
 
 ---
 
+## Critical Setup Required
+
+### For Each User (Will, Tommy, etc.):
+
+1. **Configure Personal Email in PM-OS:**
+   - Open PM-OS Settings → Personal tab
+   - Enter YOUR email (must match your Slack account)
+   - Example: Will enters `will@amplitude.com`
+   - This email is used to route Slack tasks to the correct PM-OS instance
+
+2. **Configure Jira Credentials:**
+   - Settings → Integrations → Atlassian
+   - Enter YOUR Jira email and API token
+   - This ensures tickets use YOUR credentials
+
+### For Vercel Webhook (Backend Update Needed):
+
+⚠️ **The Vercel Slack webhook must be updated** to include the requester's email:
+
+```javascript
+// When processing Slack events, extract user's email:
+const userInfo = await slack.users.info({ user: event.user });
+const userEmail = userInfo.user.profile.email;
+
+// Include in task data:
+{
+  ...taskData,
+  reporterEmail: userEmail,  // or user_email
+  reporterName: userInfo.user.real_name
+}
+```
+
+Without this, task routing won't work and all tasks will be processed by whoever polls first.
+
+---
+
 ## Next Steps
 
-1. **Deploy and test** the changes with Will
-2. **Grant Jira permissions** if needed:
+1. **Update Vercel webhook** to include requester email (see above)
+2. **Deploy and test** the changes with Will
+3. **Grant Jira permissions** if needed:
    - Jira Settings → Issues → Permission Schemes
    - Find the scheme used by your projects (e.g., "Default Permission Scheme")
    - Edit → Find "Modify Reporter" → Add Tommy's role/group

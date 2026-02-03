@@ -395,7 +395,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
               <div>
                 <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                  Email Address
+                  Email Address <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
@@ -406,7 +406,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                   placeholder="your.email@company.com"
                 />
                 <p className="text-xs text-dark-text-muted mt-1">
-                  Your email address for integrations and notifications
+                  <strong>Important:</strong> Use the same email as your Slack account. This ensures Jira tickets created from Slack use YOUR credentials and show YOU as the reporter.
                 </p>
               </div>
             </div>

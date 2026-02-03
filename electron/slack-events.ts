@@ -116,13 +116,41 @@ export class SlackEventsServer {
     this.isPolling = true;
 
     try {
+      // Get user's Slack email from settings to filter tasks
+      const userSettings = store.get('userSettings', {}) as any;
+      const mySlackEmail = userSettings.email?.toLowerCase() || '';
+
+      logToFile(`[SlackEvents] Polling for tasks (my email: ${mySlackEmail || 'not set'})`);
+
       const response = await fetch(`${VERCEL_API_URL}/pending-tasks`);
       const data = await response.json();
 
       if (data.success && data.tasks && data.tasks.length > 0) {
         logToFile(`[SlackEvents] Found ${data.tasks.length} pending task(s)`);
 
-        for (const taskData of data.tasks) {
+        // Filter tasks to only process ones for this user
+        const myTasks = data.tasks.filter((task: any) => {
+          // If user hasn't configured their email, process all tasks (backward compatibility)
+          if (!mySlackEmail) {
+            logToFile(`[SlackEvents] No email configured, processing all tasks`);
+            return true;
+          }
+
+          // Check if task has requester email that matches our email
+          const requesterEmail = task.reporterEmail?.toLowerCase() || task.user_email?.toLowerCase() || '';
+
+          if (requesterEmail === mySlackEmail) {
+            logToFile(`[SlackEvents] Task ${task.id} is for me (${mySlackEmail})`);
+            return true;
+          } else {
+            logToFile(`[SlackEvents] Task ${task.id} is NOT for me (requester: ${requesterEmail || 'unknown'}, me: ${mySlackEmail})`);
+            return false;
+          }
+        });
+
+        logToFile(`[SlackEvents] Processing ${myTasks.length} of ${data.tasks.length} tasks for this user`);
+
+        for (const taskData of myTasks) {
           await this.processTask(taskData);
 
           // Mark task as processed
