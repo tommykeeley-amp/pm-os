@@ -178,6 +178,25 @@ async function handleTaskCreation(event: any, teamId: string) {
 
   console.log('[Slack Events] Final assignee values:', { assigneeName, assigneeEmail });
 
+  // CRITICAL: Get the requester's info (person who mentioned @PM-OS)
+  // This is needed for task routing - each user's PM-OS only processes their own tasks
+  let reporterName: string | undefined = undefined;
+  let reporterEmail: string | undefined = undefined;
+
+  try {
+    console.log('[Slack Events] Fetching requester info for user:', event.user);
+    const requesterInfo = await fetchSlackUserInfo(event.user);
+    if (requesterInfo && requesterInfo.email) {
+      reporterName = requesterInfo.name;
+      reporterEmail = requesterInfo.email;
+      console.log('[Slack Events] Requester identified:', { reporterName, reporterEmail });
+    } else {
+      console.error('[Slack Events] Failed to get requester email - task routing will not work!');
+    }
+  } catch (error) {
+    console.error('[Slack Events] Error fetching requester info:', error);
+  }
+
   // Always create a task when PM-OS is mentioned (no keyword checking)
   console.log('[Slack Events] PM-OS mentioned, creating task...');
   console.log('[Slack Events] Event details:', {
@@ -186,7 +205,8 @@ async function handleTaskCreation(event: any, teamId: string) {
     threadTs,
     isInThread: !!threadTs,
     text: event.text,
-    shouldCreateJira
+    shouldCreateJira,
+    reporterEmail
   });
 
   // Determine if we're in a thread or a regular channel message
@@ -349,6 +369,8 @@ async function handleTaskCreation(event: any, teamId: string) {
     shouldCreateConfluence: false, // Confluence is handled separately with modal
     assigneeName,
     assigneeEmail,
+    reporterEmail,
+    reporterName,
   };
 
   // Store in pending tasks
@@ -359,7 +381,9 @@ async function handleTaskCreation(event: any, teamId: string) {
     title: taskTitle,
     shouldCreateJira,
     assigneeName,
-    assigneeEmail
+    assigneeEmail,
+    reporterEmail,
+    reporterName
   }));
 
   // Mark thread as having a Jira ticket if we're creating one

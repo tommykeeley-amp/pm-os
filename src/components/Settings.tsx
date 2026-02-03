@@ -110,14 +110,40 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     checkConnections();
 
     // Listen for OAuth success events
-    const handleOAuthSuccess = () => {
-      console.log('[Settings] OAuth success event received, refreshing connections...');
+    const handleOAuthSuccess = (data?: any) => {
+      console.log(`\n========== [Settings] OAuth Success Event ==========`);
+      console.log(`[Settings] Time: ${new Date().toISOString()}`);
+      console.log(`[Settings] Event data:`, data);
+      console.log(`[Settings] Provider: ${data?.provider || 'unknown'}`);
+      console.log(`[Settings] ✓✓✓ OAuth flow completed successfully!`);
+      console.log(`[Settings] Refreshing connection status...`);
+
       checkConnections();
       setIsConnecting(null);
       setConnectionError(null); // Clear any errors on success
+
+      console.log(`[Settings] Connection status updated, user should see "Connected" now`);
+      console.log(`========== [Settings] OAuth Success Handler Done ==========\n`);
+    };
+
+    const handleOAuthError = (data?: any) => {
+      console.error(`\n========== [Settings] OAuth Error Event ==========`);
+      console.error(`[Settings] Time: ${new Date().toISOString()}`);
+      console.error(`[Settings] Event data:`, data);
+      console.error(`[Settings] ❌❌❌ OAuth flow failed`);
+      console.error(`[Settings] Error: ${data?.error || 'Unknown error'}`);
+
+      setConnectionError({
+        provider: isConnecting || 'unknown',
+        error: data?.error || 'An error occurred during OAuth flow'
+      });
+      setIsConnecting(null);
+
+      console.error(`========== [Settings] OAuth Error Handler Done ==========\n`);
     };
 
     window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
+    window.electronAPI.onOAuthError?.(handleOAuthError);
 
     return () => {
       // Cleanup listener if needed
@@ -186,40 +212,57 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   };
 
   const handleConnect = async (integrationId: 'google' | 'slack') => {
+    console.log(`\n========== [Settings] OAuth Connect Clicked ==========`);
+    console.log(`[Settings] Time: ${new Date().toISOString()}`);
+    console.log(`[Settings] Provider: ${integrationId}`);
+    console.log(`[Settings] User action: Clicked "Connect" button`);
+
     setIsConnecting(integrationId);
     setConnectionError(null); // Clear any previous errors
 
     try {
-      console.log(`[Settings] Starting OAuth flow for ${integrationId}...`);
+      console.log(`[Settings] Step 1: Calling window.electronAPI.startOAuthFlow('${integrationId}')`);
       const result = await window.electronAPI.startOAuthFlow(integrationId);
-      console.log(`[Settings] OAuth flow result:`, result);
+      console.log(`[Settings] Step 2: Received result from main process:`, JSON.stringify(result, null, 2));
 
       if (result.success) {
-        console.log(`[Settings] OAuth flow started successfully for ${integrationId}`);
+        console.log(`[Settings] ✓ OAuth flow initiated successfully`);
+        console.log(`[Settings] Waiting for browser authorization...`);
+        console.log(`[Settings] After user authorizes, an 'oauth-success' event should fire`);
         // Don't mark as connected yet - wait for oauth-success event
         // The connecting state will be cleared when oauth-success event fires
       } else {
-        console.error(`[Settings] OAuth flow failed for ${integrationId}:`, result.error);
+        console.error(`[Settings] ❌ OAuth flow failed to start`);
+        console.error(`[Settings] Error:`, result.error);
         let errorMessage = result.error || 'Unknown error occurred';
 
         // Add helpful context based on the error
         if (errorMessage.includes('not configured')) {
           errorMessage += '. Please check that your .env file contains the correct OAuth credentials.';
+          console.error(`[Settings] This likely means the .env file is missing or has incorrect OAuth settings`);
         } else if (errorMessage.includes('browser')) {
           errorMessage += '. Please ensure your default browser is set correctly in system settings.';
+          console.error(`[Settings] The browser failed to open - check system permissions`);
         }
 
+        console.error(`[Settings] Displaying error to user: ${errorMessage}`);
         setConnectionError({ provider: integrationId, error: errorMessage });
         setIsConnecting(null);
       }
     } catch (error: any) {
-      console.error(`[Settings] Failed to connect ${integrationId}:`, error);
+      console.error(`[Settings] ❌ Exception thrown during OAuth flow`);
+      console.error(`[Settings] Error type:`, error?.constructor?.name || 'unknown');
+      console.error(`[Settings] Error message:`, error?.message || String(error));
+      console.error(`[Settings] Error stack:`, error?.stack || 'no stack');
+
       setConnectionError({
         provider: integrationId,
         error: error?.message || String(error) || 'An unexpected error occurred. Please try again.'
       });
       setIsConnecting(null);
     }
+
+    console.log(`========== [Settings] OAuth Connect Handler Done ==========\n`);
   };
 
   const handleDisconnect = async (integrationId: 'google' | 'slack') => {

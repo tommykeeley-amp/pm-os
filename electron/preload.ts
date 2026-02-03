@@ -103,6 +103,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('oauth-success', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('oauth-success');
   },
+  onOAuthError: (callback: (data: { error: string }) => void) => {
+    ipcRenderer.on('oauth-error', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('oauth-error');
+  },
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => {
     const handler = (_event: any, tab: 'tasks' | 'meetings' | 'docs' | 'chats') => callback(tab);
     ipcRenderer.on('switch-tab', handler);
@@ -174,6 +178,7 @@ export interface ElectronAPI {
   slackSendReply: (channelId: string, threadTs: string, text: string) => Promise<{success: boolean}>;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
+  onOAuthError: (callback: (data: { error: string }) => void) => () => void;
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => () => void;
   onTaskCreated: (callback: (task: any) => void) => () => void;
 }

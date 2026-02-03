@@ -357,36 +357,51 @@ if (!gotTheLock) {
 
 // Function to handle protocol URLs
 async function handleProtocolUrl(url: string) {
-  console.log('[Protocol] Received URL:', url);
+  const startTime = Date.now();
+  console.log(`\n========================================`);
+  console.log(`[Protocol] CALLBACK RECEIVED - ${new Date().toISOString()}`);
+  console.log('[Protocol] Full URL:', url);
 
   try {
+    console.log('[Protocol] Step 1: Parsing callback URL...');
     const urlObj = new URL(url);
     const provider = urlObj.searchParams.get('provider');
     const sessionId = urlObj.searchParams.get('sessionId');
 
-    console.log('[Protocol] Provider:', provider);
-    console.log('[Protocol] Session ID:', sessionId ? 'received' : 'missing');
+    console.log(`[Protocol] ✓ URL parsed successfully`);
+    console.log('[Protocol] Provider:', provider || 'MISSING');
+    console.log('[Protocol] Session ID:', sessionId ? `${sessionId.substring(0, 20)}...` : 'MISSING');
 
     if (!provider || !sessionId) {
-      console.error('[Protocol] Missing provider or sessionId');
+      console.error('[Protocol] ❌ ERROR: Missing required parameters');
+      console.error('[Protocol] Expected format: pmos://callback?provider=slack&sessionId=xxx');
+      console.error('[Protocol] This indicates a problem with the Vercel redirect');
       return;
     }
 
     // Fetch tokens from Vercel using session ID
-    console.log('[Protocol] Fetching tokens from Vercel...');
+    console.log('[Protocol] Step 2: Exchanging session ID for tokens...');
+    console.log('[Protocol] Calling Vercel API: /api/exchange-token');
+
     const tokenResponse = await fetch(`https://pm-os.vercel.app/api/exchange-token?sessionId=${sessionId}`);
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      console.error('[Protocol] Failed to fetch tokens:', tokenData);
+      console.error('[Protocol] ❌ Failed to fetch tokens from Vercel');
+      console.error('[Protocol] HTTP Status:', tokenResponse.status);
+      console.error('[Protocol] Response:', tokenData);
       throw new Error(tokenData.error || 'Failed to fetch tokens');
     }
 
-    console.log('[Protocol] Tokens received from Vercel');
+    console.log('[Protocol] ✓ Tokens received from Vercel');
+    console.log('[Protocol] Token data keys:', Object.keys(tokenData));
     const { tokens } = tokenData;
 
     // Save tokens directly to store
+    console.log('[Protocol] Step 3: Saving tokens to electron-store...');
+
     if (provider === 'google') {
+      console.log('[Protocol] Processing Google tokens...');
       const expiresAt = Date.now() + (tokens.expires_in * 1000);
       const tokenData = {
         accessToken: tokens.access_token,
@@ -394,49 +409,99 @@ async function handleProtocolUrl(url: string) {
         expiresAt,
       };
 
+      console.log('[Protocol] Saving to store: google_access_token (length:', tokenData.accessToken?.length || 0, ')');
       store.set('google_access_token', tokenData.accessToken);
+
       if (tokenData.refreshToken) {
+        console.log('[Protocol] Saving to store: google_refresh_token');
         store.set('google_refresh_token', tokenData.refreshToken);
+      } else {
+        console.log('[Protocol] No refresh token received');
       }
+
+      console.log('[Protocol] Saving to store: google_expires_at');
       store.set('google_expires_at', tokenData.expiresAt);
       store.set('google_oauth_scope_version', 2);
 
-      console.log('[Protocol] Google tokens saved to store');
+      console.log('[Protocol] ✓ Google tokens saved successfully');
 
       // Initialize services
+      console.log('[Protocol] Step 4: Initializing Google integration...');
       await integrationManager.initialize();
-      console.log('[Protocol] Google connection successful');
+      console.log('[Protocol] ✓ Google integration initialized');
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[Protocol] ✓✓✓ Google connection SUCCESSFUL (took ${elapsed}ms)`);
     } else if (provider === 'slack') {
+      console.log('[Protocol] Processing Slack tokens...');
+      console.log('[Protocol] Token structure:', {
+        has_authed_user: !!tokens.authed_user,
+        has_access_token: !!tokens.access_token,
+        authed_user_keys: tokens.authed_user ? Object.keys(tokens.authed_user) : []
+      });
+
       // Slack returns tokens in authed_user for user tokens
       const accessToken = tokens.authed_user?.access_token || tokens.access_token;
 
       if (accessToken) {
+        console.log('[Protocol] ✓ Access token found (length:', accessToken.length, ')');
+        console.log('[Protocol] Saving to store: slack_access_token');
         store.set('slack_access_token', accessToken);
+
         if (tokens.authed_user?.refresh_token) {
+          console.log('[Protocol] Saving to store: slack_refresh_token');
           store.set('slack_refresh_token', tokens.authed_user.refresh_token);
+        } else {
+          console.log('[Protocol] No refresh token provided (this is normal for Slack)');
         }
+
         if (tokens.authed_user?.expires_in) {
+          console.log('[Protocol] Saving to store: slack_expires_at');
           store.set('slack_expires_at', Date.now() + (tokens.authed_user.expires_in * 1000));
         }
-        console.log('[Protocol] Slack tokens saved to store');
+
+        console.log('[Protocol] ✓ Slack tokens saved successfully');
 
         // Initialize services
+        console.log('[Protocol] Step 4: Initializing Slack integration...');
         await integrationManager.initialize();
-        console.log('[Protocol] Slack connection successful');
+        console.log('[Protocol] ✓ Slack integration initialized');
+
+        const elapsed = Date.now() - startTime;
+        console.log(`[Protocol] ✓✓✓ Slack connection SUCCESSFUL (took ${elapsed}ms)`);
       } else {
+        console.error('[Protocol] ❌ ERROR: No access token found in Slack response');
+        console.error('[Protocol] Token structure received:', JSON.stringify(tokens, null, 2));
         throw new Error('No access token found in Slack response');
       }
     }
 
     // Notify the renderer process
+    console.log('[Protocol] Step 5: Notifying renderer process...');
     if (mainWindow) {
       mainWindow.webContents.send('oauth-success', { provider });
+      console.log('[Protocol] ✓ oauth-success event sent to renderer');
+    } else {
+      console.log('[Protocol] ⚠️  WARNING: mainWindow is null, cannot notify renderer');
     }
-  } catch (error) {
-    console.error('[Protocol] Failed to handle OAuth callback:', error);
+
+    console.log(`[Protocol] END - Success`);
+    console.log(`========================================\n`);
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[Protocol] ❌❌❌ FAILED to handle OAuth callback`);
+    console.error('[Protocol] Error type:', error.constructor?.name || 'unknown');
+    console.error('[Protocol] Error message:', error.message || String(error));
+    console.error('[Protocol] Error stack:', error.stack || 'no stack trace');
+    console.error('[Protocol] Time elapsed before error:', elapsed, 'ms');
+
     if (mainWindow) {
       mainWindow.webContents.send('oauth-error', { error: String(error) });
+      console.error('[Protocol] oauth-error event sent to renderer');
     }
+
+    console.error(`[Protocol] END - Failed`);
+    console.error(`========================================\n`);
   }
 }
 
@@ -1305,12 +1370,22 @@ ipcMain.handle('delete-task', (_event, id: string) => {
 
 // OAuth Handlers
 ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom') => {
+  const startTime = Date.now();
+  console.log(`\n========================================`);
+  console.log(`[OAuth] START - ${new Date().toISOString()}`);
+  console.log(`[OAuth] Provider: ${provider}`);
+  console.log(`[OAuth] User initiated OAuth flow from Settings`);
+
   try {
     // Check if required env vars are set
+    console.log('[OAuth] Step 1: Checking environment variables...');
+
     if (!process.env.OAUTH_REDIRECT_URI) {
-      console.error('[OAuth] OAUTH_REDIRECT_URI not configured in .env');
-      return { success: false, error: 'OAuth redirect URI not configured' };
+      console.error('[OAuth] ERROR: OAUTH_REDIRECT_URI not configured in .env');
+      console.error('[OAuth] This should be set to: https://pm-os.vercel.app/oauth-callback');
+      return { success: false, error: 'OAuth redirect URI not configured. Please ensure .env file is properly set up.' };
     }
+    console.log(`[OAuth] ✓ OAUTH_REDIRECT_URI found: ${process.env.OAUTH_REDIRECT_URI}`);
 
     const clientIds = {
       google: process.env.GOOGLE_CLIENT_ID,
@@ -1319,11 +1394,13 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
     };
 
     if (!clientIds[provider]) {
-      console.error(`[OAuth] ${provider.toUpperCase()}_CLIENT_ID not configured in .env`);
-      return { success: false, error: `${provider} client ID not configured` };
+      console.error(`[OAuth] ERROR: ${provider.toUpperCase()}_CLIENT_ID not configured in .env`);
+      return { success: false, error: `${provider} client ID not configured. Please ensure .env file contains ${provider.toUpperCase()}_CLIENT_ID.` };
     }
+    console.log(`[OAuth] ✓ ${provider.toUpperCase()}_CLIENT_ID found: ${(clientIds[provider] || '').substring(0, 20)}...`);
 
     // Encode provider in state parameter so callback knows which provider
+    console.log('[OAuth] Step 2: Building authorization URL...');
     const state = Buffer.from(JSON.stringify({ provider })).toString('base64');
 
     const authUrls = {
@@ -1332,18 +1409,38 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
       zoom: `https://zoom.us/oauth/authorize?client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.OAUTH_REDIRECT_URI)}&response_type=code&state=${state}`,
     };
 
-    console.log(`[OAuth] Opening ${provider} auth URL in system browser`);
-    console.log(`[OAuth] Redirect URI: ${process.env.OAUTH_REDIRECT_URI}`);
-    console.log(`[OAuth] Full auth URL: ${authUrls[provider].substring(0, 100)}...`);
+    console.log(`[OAuth] ✓ Authorization URL built (length: ${authUrls[provider].length} chars)`);
+    console.log(`[OAuth] URL preview: ${authUrls[provider].substring(0, 150)}...`);
 
     // Open in system browser
+    console.log('[OAuth] Step 3: Opening system browser...');
+    console.log('[OAuth] Calling shell.openExternal()...');
+
     await shell.openExternal(authUrls[provider]);
 
-    console.log(`[OAuth] Browser opened successfully for ${provider}`);
+    const elapsed = Date.now() - startTime;
+    console.log(`[OAuth] ✓ Browser opened successfully (took ${elapsed}ms)`);
+    console.log('[OAuth] Next: User should see browser open to authorization page');
+    console.log('[OAuth] After user authorizes, browser will redirect to Vercel');
+    console.log('[OAuth] Vercel will then redirect to pmos:// which will trigger protocol handler');
+    console.log(`[OAuth] END - Success`);
+    console.log(`========================================\n`);
+
     return { success: true };
   } catch (error: any) {
-    console.error('[OAuth] Failed to start OAuth flow:', error);
-    return { success: false, error: error.message || 'Failed to open browser' };
+    const elapsed = Date.now() - startTime;
+    console.error('[OAuth] ❌ FAILED to start OAuth flow');
+    console.error('[OAuth] Error type:', error.constructor.name);
+    console.error('[OAuth] Error message:', error.message);
+    console.error('[OAuth] Error stack:', error.stack);
+    console.error('[OAuth] Time elapsed before error:', elapsed, 'ms');
+    console.error(`[OAuth] END - Failed`);
+    console.error(`========================================\n`);
+
+    return {
+      success: false,
+      error: `Failed to open browser: ${error.message}. Please check console logs for details.`
+    };
   }
 });
 
