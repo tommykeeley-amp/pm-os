@@ -12,6 +12,7 @@ import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
 import { ConfluenceService } from '../src/services/confluence';
 import { SlackEventsServer } from './slack-events';
+import { SlackDigestService } from './slack-digest-service';
 import OpenAI from 'openai';
 
 // Get __dirname equivalent in ES modules
@@ -939,6 +940,18 @@ app.whenReady().then(async () => {
   }).catch((error) => {
     console.error('[Main] Failed to start Slack events server:', error);
   });
+
+  // Start Slack Digest Service (Smart Inbox)
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  const slackToken = store.get('slack_access_token') as string | undefined;
+
+  if (openaiApiKey && slackToken) {
+    const digestService = new SlackDigestService(openaiApiKey, slackToken);
+    digestService.start();
+    console.log('[Main] Slack Digest Service started');
+  } else {
+    console.log('[Main] Slack Digest Service not started - missing OpenAI key or Slack token');
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

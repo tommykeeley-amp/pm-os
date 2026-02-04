@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import SlackChannelsConfig from './SlackChannelsConfig';
+import SlackDailyDigestConfig from './SlackDailyDigestConfig';
 import TabPanel from './TabPanel';
 
 interface SettingsProps {
@@ -33,6 +34,9 @@ interface UserSettings {
 
   // Slack Settings
   slackBotToken?: string;
+  slackMonitoredChannels?: string[]; // Channel IDs to monitor
+  slackVipContacts?: string[]; // User IDs marked as VIPs
+  slackDailyDigestEnabled?: boolean; // 3x daily at 9AM, 12PM, 5PM in user's timezone
 
   // Customization Settings
   showDeclinedMeetings?: boolean;
@@ -929,6 +933,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           </p>
                         </div>
                         <SlackChannelsConfig />
+                        <SlackDailyDigestConfig />
                       </div>
                     )}
 
