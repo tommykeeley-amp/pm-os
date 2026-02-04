@@ -56,6 +56,40 @@ function formatSlackText(text: string): string {
   return formatted;
 }
 
+// Decode HTML entities in email text
+function decodeHtmlEntities(text: string): string {
+  if (!text) return '';
+
+  const entities: { [key: string]: string } = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&#x27;': "'",
+    '&apos;': "'",
+    '&nbsp;': ' ',
+  };
+
+  let decoded = text;
+
+  // Replace named entities
+  Object.keys(entities).forEach(entity => {
+    decoded = decoded.replace(new RegExp(entity, 'g'), entities[entity]);
+  });
+
+  // Replace numeric entities (e.g., &#39;, &#x27;)
+  decoded = decoded.replace(/&#(\d+);/g, (match, dec) => {
+    return String.fromCharCode(dec);
+  });
+
+  decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+
+  return decoded;
+}
+
 export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps) {
   const [slackMessages, setSlackMessages] = useState<SlackMessage[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
@@ -403,7 +437,7 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
                           <span className="text-sm font-medium text-dark-text-primary truncate">
-                            {email.subject || '(No subject)'}
+                            {decodeHtmlEntities(email.subject) || '(No subject)'}
                           </span>
                         </div>
                         <span className="text-xs text-dark-text-muted flex-shrink-0">
@@ -411,10 +445,10 @@ export default function Chats({ isPinned: _isPinned, onCountChange }: ChatsProps
                         </span>
                       </div>
                       <div className="text-xs text-dark-text-muted mb-1">
-                        From: {email.from}
+                        From: {decodeHtmlEntities(email.from)}
                       </div>
                       <div className="text-sm text-dark-text-secondary line-clamp-2">
-                        {email.snippet}
+                        {decodeHtmlEntities(email.snippet)}
                       </div>
                     </div>
                   );
