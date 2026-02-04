@@ -172,7 +172,7 @@ export class SlackEventsServer {
 
   private async processTask(taskData: any): Promise<void> {
     try {
-      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, reporterName, reporterEmail, parent, priority, pillar, pod } = taskData;
+      let { title, description, channel, messageTs, threadTs, user, teamId, shouldCreateJira, shouldCreateConfluence, assigneeName, assigneeEmail, reporterName, reporterEmail, parent, priority, pillar, pod, source, digestMessageId } = taskData;
       let confluencePage: { id: string; url: string } | null = null;
       let jiraTicket: { key: string; url: string } | null = null;
 
@@ -389,7 +389,27 @@ export class SlackEventsServer {
 
         // Call the task creation handler
         if (this.onTaskCreate) {
-          await this.onTaskCreate(task);
+          const createdTask = await this.onTaskCreate(task);
+
+          // If this task came from Smart Inbox digest, mark the message as having a task created
+          if (source === 'smart_inbox' && digestMessageId) {
+            logToFile(`[SlackEvents] Task created from Smart Inbox digest, marking message ${digestMessageId} as completed`);
+
+            // Update digest state to mark this message as having a task created
+            const Store = (await import('electron-store')).default;
+            const store = new Store();
+            const digestState = store.get('digestState', {
+              lastSent: {},
+              suggestedMessages: {},
+              createdTasks: {},
+            }) as any;
+
+            // Mark message as having task created
+            digestState.createdTasks[digestMessageId] = task.sourceId || task.title;
+            store.set('digestState', digestState);
+
+            logToFile(`[SlackEvents] Marked digest message ${digestMessageId} as having task created`);
+          }
         }
       } else {
         logToFile('[SlackEvents] Skipping task creation - Jira or Confluence handling separately');

@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
       if (action.action_id === 'open_jira_modal') {
         return await handleOpenJiraModal(payload);
       }
+
+      // Handle Smart Inbox "Create Task" button
+      if (action.action_id && action.action_id.startsWith('create_task_')) {
+        return await handleCreateTaskFromDigest(payload);
+      }
     }
 
     // Handle modal submission
@@ -567,5 +572,102 @@ async function handleJiraModalSubmission(payload: any) {
         ticket_title: 'An error occurred. Please try again.',
       },
     });
+  }
+}
+
+/**
+ * Handle "Create Task" button from Smart Inbox digest
+ */
+async function handleCreateTaskFromDigest(payload: any) {
+  console.log('[Slack Interactions] ===== CREATE TASK FROM DIGEST =====');
+
+  try {
+    const action = payload.actions[0];
+    const user = payload.user;
+    const channel = payload.channel?.id;
+    const messageTs = payload.message?.ts;
+
+    console.log('[Slack Interactions] User:', user.id, user.username);
+    console.log('[Slack Interactions] Action ID:', action.action_id);
+    console.log('[Slack Interactions] Action value:', action.value);
+
+    // Parse the value which contains message metadata
+    const metadata = JSON.parse(action.value);
+    console.log('[Slack Interactions] Metadata:', metadata);
+
+    const { messageId, summary, channel: originalChannel, permalink } = metadata;
+
+    // Create task data for PM-OS to pick up
+    const taskId = `digest_${messageId}_${Date.now()}`;
+    const taskData = {
+      id: taskId,
+      title: summary,
+      description: `From Smart Inbox digest\n\nOriginal message: ${permalink || 'N/A'}`,
+      channel: originalChannel,
+      messageTs: messageId,
+      user: user.id,
+      teamId: payload.team?.id,
+      timestamp: Date.now(),
+      processed: false,
+      source: 'smart_inbox',
+      digestMessageId: messageId, // Track which digest message this came from
+    };
+
+    // Store in pending tasks
+    addPendingTask(taskData);
+    console.log('[Slack Interactions] Task queued:', taskId);
+
+    // Update the digest message to show task was created
+    const botToken = process.env.SLACK_BOT_TOKEN;
+    if (botToken) {
+      try {
+        // Update the button to show "✅ Task Created"
+        const originalBlocks = payload.message.blocks;
+
+        // Find and update the block with this button
+        const updatedBlocks = originalBlocks.map((block: any) => {
+          if (block.type === 'section' && block.accessory?.action_id === action.action_id) {
+            return {
+              ...block,
+              accessory: {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: '✅ Task Created',
+                },
+                action_id: 'task_created_disabled',
+                style: 'primary',
+              },
+            };
+          }
+          return block;
+        });
+
+        await fetch('https://slack.com/api/chat.update', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${botToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            channel: channel,
+            ts: messageTs,
+            blocks: updatedBlocks,
+          }),
+        });
+
+        console.log('[Slack Interactions] Updated digest message to show task created');
+      } catch (error) {
+        console.error('[Slack Interactions] Failed to update message:', error);
+      }
+    }
+
+    console.log('[Slack Interactions] ===== CREATE TASK SUCCESS =====');
+
+    // Acknowledge the interaction
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('[Slack Interactions] ERROR in handleCreateTaskFromDigest:', error);
+    return NextResponse.json({ error: 'Failed to create task' }, { status: 500 });
   }
 }
