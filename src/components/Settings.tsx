@@ -21,6 +21,8 @@ interface UserSettings {
   jiraApiToken?: string;
   jiraDefaultProject?: string;
   jiraDefaultIssueType?: string;
+  jiraDefaultPillar?: string;
+  jiraDefaultPod?: string;
   jiraSystemPrompt?: string;
 
   // Confluence Settings
@@ -106,8 +108,6 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   const [obsidianExpanded, setObsidianExpanded] = useState(false);
   const [jiraTestResult, setJiraTestResult] = useState<{ success: boolean; error?: string; details?: string } | null>(null);
   const [testingJira, setTestingJira] = useState(false);
-  const [debuggingFields, setDebuggingFields] = useState(false);
-  const [fieldDebugResult, setFieldDebugResult] = useState<any>(null);
 
   useEffect(() => {
     loadSettings();
@@ -299,29 +299,6 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
-  const handleDebugCustomFields = async () => {
-    setDebuggingFields(true);
-    setFieldDebugResult(null);
-    try {
-      const projectKey = settings.jiraDefaultProject || '';
-      const issueType = settings.jiraDefaultIssueType || 'Task';
-
-      if (!projectKey) {
-        setFieldDebugResult({ error: 'Please set a default project first' });
-        return;
-      }
-
-      const metadata = await window.electronAPI.jiraGetCreateMetadata(projectKey, issueType);
-      setFieldDebugResult(metadata);
-      console.log('[Settings] Jira create metadata:', metadata);
-    } catch (error) {
-      console.error('Failed to debug custom fields:', error);
-      setFieldDebugResult({ error: 'Failed to fetch metadata: ' + (error as Error).message });
-    } finally {
-      setDebuggingFields(false);
-    }
-  };
-
   return (
     <div className="w-full h-full bg-dark-bg flex flex-col">
       {/* Header */}
@@ -494,16 +471,17 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
               <div className="space-y-3">
                 {integrations.map(integration => (
                   <div key={integration.id}>
-                    <div
-                      onClick={() => {
-                        if (integration.id === 'jira' && integration.connected) setJiraExpanded(!jiraExpanded);
-                        if (integration.id === 'slack' && integration.connected) setSlackExpanded(!slackExpanded);
-                        if (integration.id === 'obsidian' && integration.connected) setObsidianExpanded(!obsidianExpanded);
-                      }}
-                      className={`bg-dark-bg border border-dark-border rounded-lg p-4 flex items-center justify-between ${
-                        ((integration.id === 'jira' || integration.id === 'obsidian' || integration.id === 'slack') && integration.connected) ? 'cursor-pointer hover:border-dark-accent-primary/50 transition-colors' : ''
-                      }`}
-                    >
+                    <div className="bg-dark-bg border border-dark-border rounded-lg">
+                      <div
+                        onClick={() => {
+                          if (integration.id === 'jira' && integration.connected) setJiraExpanded(!jiraExpanded);
+                          if (integration.id === 'slack' && integration.connected) setSlackExpanded(!slackExpanded);
+                          if (integration.id === 'obsidian' && integration.connected) setObsidianExpanded(!obsidianExpanded);
+                        }}
+                        className={`p-4 flex items-center justify-between ${
+                          ((integration.id === 'jira' || integration.id === 'obsidian' || integration.id === 'slack') && integration.connected) ? 'cursor-pointer hover:bg-dark-surface/50 transition-colors' : ''
+                        }`}
+                      >
                       <div className="flex items-center gap-3">
                         <div className="text-dark-text-primary">
                           {integration.id === 'google' && (
@@ -556,10 +534,9 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {integration.type === 'config' ? (
-                      <div className="flex items-center gap-2">
-                        <button
+                      {integration.type === 'config' ? (
+                        <div className="flex items-center gap-2">
+                          <button
                           onClick={async (e) => {
                             e.stopPropagation();
                             if (integration.id === 'jira') {
@@ -602,10 +579,10 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         )}
-                      </div>
-                    ) : (
-                      integration.connected ? (
-                        <div className="flex items-center gap-2">
+                        </div>
+                      ) : (
+                        integration.connected ? (
+                          <div className="flex items-center gap-2">
                           <span className="text-xs text-dark-accent-success flex items-center gap-1">
                             <svg className="icon-xs" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -631,18 +608,17 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           >
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => handleConnect(integration.id as 'google' | 'slack')}
-                          disabled={isConnecting === integration.id}
-                          className="btn-primary btn-sm"
-                        >
-                          {isConnecting === integration.id ? 'Connecting...' : 'Connect'}
-                        </button>
-                      )
-                    )}
-                      </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleConnect(integration.id as 'google' | 'slack')}
+                            disabled={isConnecting === integration.id}
+                            className="btn-primary btn-sm"
+                          >
+                            {isConnecting === integration.id ? 'Connecting...' : 'Connect'}
+                          </button>
+                        )
+                      )}
                     </div>
 
                     {/* Atlassian Configuration - shows when this is Jira and it's enabled and expanded */}
@@ -740,6 +716,40 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                             </p>
                           </div>
 
+                          <div>
+                            <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                              Default Pillar
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.jiraDefaultPillar || ''}
+                              onChange={(e) => handleChange('jiraDefaultPillar', e.target.value)}
+                              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                              placeholder="Growth"
+                            />
+                            <p className="text-xs text-dark-text-muted mt-1">
+                              Default Pillar value for new tickets (e.g., Growth, Analytics)
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                              Default Pod
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.jiraDefaultPod || ''}
+                              onChange={(e) => handleChange('jiraDefaultPod', e.target.value)}
+                              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                              placeholder="Growth - Retention"
+                            />
+                            <p className="text-xs text-dark-text-muted mt-1">
+                              Default Pod value for new tickets - must match a valid option in Jira
+                            </p>
+                          </div>
+
                           {/* Jira AI Settings */}
                           <div className="pt-4 border-t border-dark-border">
                             <h4 className="text-sm font-medium text-dark-text-primary mb-3">AI Settings</h4>
@@ -771,22 +781,13 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
                           {/* Test Connection Button */}
                           <div className="pt-2">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={handleTestJiraConnection}
-                                disabled={testingJira}
-                                className="btn-primary btn-sm"
-                              >
-                                {testingJira ? 'Testing...' : 'Test Connection'}
-                              </button>
-                              <button
-                                onClick={handleDebugCustomFields}
-                                disabled={debuggingFields}
-                                className="btn-secondary btn-sm"
-                              >
-                                {debuggingFields ? 'Loading...' : 'Debug Custom Fields'}
-                              </button>
-                            </div>
+                            <button
+                              onClick={handleTestJiraConnection}
+                              disabled={testingJira}
+                              className="btn-primary btn-sm"
+                            >
+                              {testingJira ? 'Testing...' : 'Test Connection'}
+                            </button>
                             {jiraTestResult && (
                               <div className={`mt-2 p-3 rounded-lg ${jiraTestResult.success ? 'bg-green-500/10 border border-green-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
                                 {jiraTestResult.success ? (
@@ -812,30 +813,6 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                                         <div className="text-xs text-dark-text-secondary mt-1">{jiraTestResult.details}</div>
                                       )}
                                     </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {fieldDebugResult && (
-                              <div className="mt-3 p-3 bg-dark-surface border border-dark-border rounded-lg">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h5 className="text-xs font-medium text-dark-text-primary">Custom Fields Debug Info</h5>
-                                  <button
-                                    onClick={() => setFieldDebugResult(null)}
-                                    className="text-xs text-dark-text-muted hover:text-dark-text-primary"
-                                  >
-                                    Close
-                                  </button>
-                                </div>
-                                {fieldDebugResult.error ? (
-                                  <p className="text-xs text-dark-accent-danger">{fieldDebugResult.error}</p>
-                                ) : (
-                                  <div className="text-xs text-dark-text-secondary space-y-2 max-h-60 overflow-y-auto">
-                                    <p className="font-medium text-dark-text-primary mb-2">Check the console for full metadata (F12)</p>
-                                    <p className="text-dark-text-muted">Look for fields named "Pillar" and "Pod" in the console output to find their correct field IDs (e.g., customfield_XXXXX)</p>
-                                    <pre className="bg-dark-bg p-2 rounded text-xs overflow-x-auto">
-                                      {JSON.stringify(fieldDebugResult, null, 2)}
-                                    </pre>
                                   </div>
                                 )}
                               </div>
@@ -915,25 +892,28 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
                     {/* Slack Settings - shows when this is Slack and it's connected and expanded */}
                     {integration.id === 'slack' && integration.connected && slackExpanded && (
-                      <div className="space-y-3 mt-3">
-                        <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
-                          <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                            Slack Bot Token (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={settings.slackBotToken || ''}
-                            onChange={(e) => handleChange('slackBotToken', e.target.value)}
-                            className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                                     text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary font-mono text-xs"
-                            placeholder="xoxb-..."
-                          />
-                          <p className="text-xs text-dark-text-muted mt-1">
-                            For reactions and replies on Slack messages. Get your bot token from <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-dark-accent-primary hover:underline">api.slack.com/apps</a> → Your App → OAuth & Permissions → Bot User OAuth Token
-                          </p>
+                      <div className="bg-dark-surface border border-dark-border rounded-lg p-4 mt-3">
+                        <h3 className="text-sm font-medium text-dark-text-primary mb-3">Slack Configuration</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                              Slack Bot Token (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.slackBotToken || ''}
+                              onChange={(e) => handleChange('slackBotToken', e.target.value)}
+                              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary font-mono text-xs"
+                              placeholder="xoxb-..."
+                            />
+                            <p className="text-xs text-dark-text-muted mt-1">
+                              For reactions and replies on Slack messages. Get your bot token from <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-dark-accent-primary hover:underline">api.slack.com/apps</a> → Your App → OAuth & Permissions → Bot User OAuth Token
+                            </p>
+                          </div>
+                          <SlackChannelsConfig />
+                          <SlackDailyDigestConfig />
                         </div>
-                        <SlackChannelsConfig />
-                        <SlackDailyDigestConfig />
                       </div>
                     )}
 
@@ -956,6 +936,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </p>
                       </div>
                     )}
+                    </div>
                   </div>
                 ))}
 

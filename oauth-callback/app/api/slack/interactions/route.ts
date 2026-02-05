@@ -401,12 +401,10 @@ async function handleOpenJiraModal(payload: any) {
         element: requestData.pillarOptions && requestData.pillarOptions.length > 0 ? {
           type: 'static_select',
           action_id: 'pillar_select',
+          // Use user's default pillar from settings (passed via requestData) - no hardcoded fallback
           initial_option: requestData.pillar ? {
             text: { type: 'plain_text', text: requestData.pillar },
             value: requestData.pillar,
-          } : requestData.pillarOptions.find((opt: any) => opt.value === 'Growth') ? {
-            text: { type: 'plain_text', text: 'Growth' },
-            value: 'Growth',
           } : undefined,
           options: requestData.pillarOptions.map((opt: any) => ({
             text: { type: 'plain_text', text: opt.value },
@@ -415,7 +413,8 @@ async function handleOpenJiraModal(payload: any) {
         } : {
           type: 'plain_text_input',
           action_id: 'pillar_input',
-          initial_value: requestData.pillar || 'Growth',
+          // Use user's default pillar from settings (passed via requestData) - no hardcoded fallback
+          initial_value: requestData.pillar || '',
           placeholder: {
             type: 'plain_text',
             text: 'e.g., Growth, Product, Platform',
@@ -433,12 +432,10 @@ async function handleOpenJiraModal(payload: any) {
         element: requestData.podOptions && requestData.podOptions.length > 0 ? {
           type: 'static_select',
           action_id: 'pod_select',
+          // Use user's default pod from settings (passed via requestData) - no hardcoded fallback
           initial_option: requestData.pod ? {
             text: { type: 'plain_text', text: requestData.pod },
             value: requestData.pod,
-          } : requestData.podOptions.find((opt: any) => opt.value === 'Growth - Retention') ? {
-            text: { type: 'plain_text', text: 'Growth - Retention' },
-            value: 'Growth - Retention',
           } : undefined,
           options: requestData.podOptions.map((opt: any) => ({
             text: { type: 'plain_text', text: opt.value },
@@ -447,7 +444,8 @@ async function handleOpenJiraModal(payload: any) {
         } : {
           type: 'plain_text_input',
           action_id: 'pod_input',
-          initial_value: requestData.pod || 'Retention',
+          // Use user's default pod from settings (passed via requestData) - no hardcoded fallback
+          initial_value: requestData.pod || '',
           placeholder: {
             type: 'plain_text',
             text: 'e.g., Retention, Acquisition, Core',
@@ -509,14 +507,15 @@ async function handleJiraModalSubmission(payload: any) {
   const assigneeEmail = values.assignee_email?.assignee_email_input?.value || requestData.assigneeEmail;
 
   // Pillar and Pod can be either select (dropdown) or text input depending on whether options were available
+  // Use user's settings (passed via requestData) - no hardcoded fallbacks
   const pillar = values.pillar?.pillar_select?.selected_option?.value ||
                  values.pillar?.pillar_input?.value ||
                  requestData.pillar ||
-                 'Growth';
+                 '';
   const pod = values.pod?.pod_select?.selected_option?.value ||
               values.pod?.pod_input?.value ||
               requestData.pod ||
-              'Retention';
+              '';
 
   console.log('[Slack Interactions] Creating Jira ticket:', { title, parent, priority, assigneeName, pillar, pod });
 
@@ -537,6 +536,8 @@ async function handleJiraModalSubmission(payload: any) {
     shouldCreateConfluence: false,
     assigneeName,
     assigneeEmail,
+    reporterName: requestData.reporterName,
+    reporterEmail: requestData.reporterEmail,
     parent,
     priority,
     pillar,

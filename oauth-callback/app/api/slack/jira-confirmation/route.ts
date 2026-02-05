@@ -10,6 +10,8 @@ export async function POST(request: NextRequest) {
       description,
       assigneeName,
       assigneeEmail,
+      reporterName,
+      reporterEmail,
       parent,
       priority,
       pillar,
@@ -23,6 +25,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[Jira Confirmation] Received request:', requestId);
     console.log('[Jira Confirmation] Assignee info:', { assigneeName, assigneeEmail });
+    console.log('[Jira Confirmation] Reporter info:', { reporterName, reporterEmail });
 
     // Fetch field options from Jira
     let pillarOptions: Array<{ id: string; value: string }> = [];
@@ -54,6 +57,8 @@ export async function POST(request: NextRequest) {
       description,
       assigneeName,
       assigneeEmail,
+      reporterName,
+      reporterEmail,
       parent,
       priority,
       pillar,

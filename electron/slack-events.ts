@@ -286,6 +286,14 @@ export class SlackEventsServer {
 
           // Store request data for modal
           const requestId = generateRequestId();
+
+          // Get default pillar and pod from user settings
+          const userSettings = store.get('userSettings', {}) as any;
+          const defaultPillar = userSettings.jiraDefaultPillar || '';
+          const defaultPod = userSettings.jiraDefaultPod || '';
+
+          logToFile(`[SlackEvents] Using user settings - defaultPillar: "${defaultPillar}", defaultPod: "${defaultPod}"`);
+
           const jiraRequestData = {
             requestId,
             title,
@@ -296,8 +304,8 @@ export class SlackEventsServer {
             reporterEmail,
             parent: extractedParent,
             priority: extractedPriority || 'Medium',
-            pillar: 'Growth',
-            pod: 'Retention',
+            pillar: defaultPillar,
+            pod: defaultPod,
             channel,
             messageTs,
             threadTs,

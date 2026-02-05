@@ -18,11 +18,12 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
   const [error, setError] = useState('');
   const [isFetchingThread, setIsFetchingThread] = useState(false);
   const [threadFetched, setThreadFetched] = useState(false);
+  const [userSettings, setUserSettings] = useState<any>(null);
 
   // Fields you actually use - initialize from jiraMetadata if available
   const [priority, setPriority] = useState(task.jiraMetadata?.priority || 'Medium');
-  const [pillar, setPillar] = useState(task.jiraMetadata?.pillar || 'Growth');
-  const [pod, setPod] = useState(task.jiraMetadata?.pod || 'Retention');
+  const [pillar, setPillar] = useState('');
+  const [pod, setPod] = useState('');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [assigneeResults, setAssigneeResults] = useState<Array<{ accountId: string; displayName: string; emailAddress: string }>>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<{ accountId: string; displayName: string; emailAddress: string } | null>(
@@ -40,6 +41,7 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
 
   useEffect(() => {
     loadProjects();
+    loadUserSettings();
   }, []);
 
   useEffect(() => {
@@ -47,6 +49,21 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
       loadIssueTypes(selectedProject);
     }
   }, [selectedProject]);
+
+  // Set default pillar/pod from settings once loaded
+  useEffect(() => {
+    if (userSettings) {
+      // Use user's configured defaults - don't fall back to hardcoded values
+      const defaultPillar = userSettings.jiraDefaultPillar || '';
+      const defaultPod = userSettings.jiraDefaultPod || '';
+      console.log('[JiraTicketModal] Setting defaults from settings:', {
+        pillar: defaultPillar,
+        pod: defaultPod
+      });
+      setPillar(defaultPillar);
+      setPod(defaultPod);
+    }
+  }, [userSettings]);
 
   // Search for assignees when user types
   useEffect(() => {
@@ -72,6 +89,19 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
       }
     } catch (err: any) {
       setError('Failed to load projects: ' + err.message);
+    }
+  };
+
+  const loadUserSettings = async () => {
+    try {
+      const settings = await window.electronAPI.getUserSettings();
+      console.log('[JiraTicketModal] Loaded user settings:', {
+        jiraDefaultPillar: settings?.jiraDefaultPillar,
+        jiraDefaultPod: settings?.jiraDefaultPod
+      });
+      setUserSettings(settings);
+    } catch (err: any) {
+      console.error('[JiraTicketModal] Failed to load user settings:', err);
     }
   };
 
@@ -147,6 +177,17 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
     setError('');
 
     try {
+      console.log('[JiraTicketModal] Creating issue with:', {
+        summary,
+        projectKey: selectedProject,
+        issueType: selectedIssueType,
+        priority,
+        pillar,
+        pod,
+        parent: parentTicket || undefined,
+        assigneeEmail: selectedAssignee?.emailAddress,
+      });
+
       const result = await window.electronAPI.jiraCreateIssue({
         summary,
         description,
@@ -159,9 +200,16 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
         assigneeEmail: selectedAssignee?.emailAddress,
       });
 
+      console.log('[JiraTicketModal] Issue created successfully:', result);
       onSuccess(result.key, result.url);
     } catch (err: any) {
-      setError('Failed to create ticket: ' + err.message);
+      console.error('[JiraTicketModal] Error creating issue:', err);
+      const errorMessage = err.message || 'Unknown error';
+      const statusMatch = errorMessage.match(/(\d{3})/);  // Extract HTTP status code
+      const displayError = statusMatch
+        ? `Failed to create ticket (HTTP ${statusMatch[1]}): ${errorMessage}`
+        : `Failed to create ticket: ${errorMessage}`;
+      setError(displayError);
       setIsCreating(false);
     }
   };
@@ -341,19 +389,16 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
             <label className="text-sm font-medium text-dark-text-secondary mb-1.5 block">
               Pillar
             </label>
-            <select
+            <input
+              type="text"
               value={pillar}
               onChange={(e) => setPillar(e.target.value)}
               className="w-full bg-dark-bg text-dark-text-primary border border-dark-border rounded-lg px-3 py-2
                          focus:border-dark-accent-primary focus:ring-1 focus:ring-dark-accent-primary
                          transition-all outline-none"
+              placeholder="e.g., Growth"
               disabled={isCreating}
-            >
-              <option value="Growth">Growth</option>
-              <option value="Product">Product</option>
-              <option value="Platform">Platform</option>
-              <option value="Data">Data</option>
-            </select>
+            />
           </div>
 
           {/* Pod */}
@@ -361,19 +406,16 @@ export default function JiraTicketModal({ task, onClose, onSuccess }: JiraTicket
             <label className="text-sm font-medium text-dark-text-secondary mb-1.5 block">
               Pod
             </label>
-            <select
+            <input
+              type="text"
               value={pod}
               onChange={(e) => setPod(e.target.value)}
               className="w-full bg-dark-bg text-dark-text-primary border border-dark-border rounded-lg px-3 py-2
                          focus:border-dark-accent-primary focus:ring-1 focus:ring-dark-accent-primary
                          transition-all outline-none"
+              placeholder="e.g., Growth - Retention"
               disabled={isCreating}
-            >
-              <option value="Retention">Retention</option>
-              <option value="Acquisition">Acquisition</option>
-              <option value="Monetization">Monetization</option>
-              <option value="Core">Core</option>
-            </select>
+            />
           </div>
 
           {/* Assignee */}
