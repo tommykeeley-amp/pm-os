@@ -167,7 +167,9 @@ async function handleTaskCreation(event: any, teamId: string) {
         assigneeEmail = userInfo.email;
         console.log('[Slack Events] Resolved Slack user:', { name: assigneeName, email: assigneeEmail });
       } else {
-        console.log('[Slack Events] Failed to get email from user info');
+        console.log('[Slack Events] Failed to get email from user info, using Slack ID as fallback');
+        // Don't leave assigneeName undefined - we at least know someone was mentioned
+        // The AI might fill this in with a better name later
       }
     } catch (error) {
       console.error('[Slack Events] Error fetching Slack user info:', error);
@@ -175,6 +177,9 @@ async function handleTaskCreation(event: any, teamId: string) {
   } else {
     console.log('[Slack Events] No assignment mention found in text');
   }
+
+  // Store the Slack user ID if we found a mention but couldn't resolve the name
+  const assigneeSlackId = assignMentionMatch ? assignMentionMatch[1] : undefined;
 
   console.log('[Slack Events] Final assignee values:', { assigneeName, assigneeEmail });
 
@@ -213,11 +218,22 @@ async function handleTaskCreation(event: any, teamId: string) {
   // If thread_ts exists AND is different from message ts, we're in a reply thread
   const isInThread = threadTs && threadTs !== messageTs;
 
+  // Log thread detection details for debugging
+  console.log('[Slack Events] Thread detection:', {
+    threadTs,
+    messageTs,
+    isInThread,
+    threadTsExists: !!threadTs,
+    tsMatch: threadTs === messageTs
+  });
+
   try {
     if (isInThread) {
       // IN A THREAD: Fetch all thread messages and use AI to synthesize
       console.log('[Slack Events] Message is in a thread, fetching full thread context');
+      console.log('[Slack Events] Calling fetchThreadContext with channel:', channel, 'threadTs:', threadTs);
       const threadData = await fetchThreadContext(channel, threadTs);
+      console.log('[Slack Events] fetchThreadContext result:', threadData ? `${threadData.messages.length} messages` : 'null');
 
       if (threadData && threadData.messages.length > 0) {
         console.log('[Slack Events] Found thread with', threadData.messages.length, 'messages');
@@ -226,8 +242,14 @@ async function handleTaskCreation(event: any, teamId: string) {
           taskTitle = aiResult.title;
           taskDescription = aiResult.description;
           // Only use AI assignee if we haven't already resolved it from a Slack mention
-          if (!assigneeName) {
-            assigneeName = aiResult.assignee;
+          // Also skip if the AI returns something that looks like a Slack user ID (starts with U and is alphanumeric)
+          if (!assigneeName && aiResult.assignee) {
+            const looksLikeSlackId = /^U[A-Z0-9]{8,}$/i.test(aiResult.assignee);
+            if (!looksLikeSlackId) {
+              assigneeName = aiResult.assignee;
+            } else {
+              console.log('[Slack Events] Skipping AI assignee - looks like Slack ID:', aiResult.assignee);
+            }
           }
           console.log('[Slack Events] AI-generated task from thread:', { taskTitle, taskDescription, assigneeName });
         } catch (aiError) {
@@ -255,16 +277,23 @@ async function handleTaskCreation(event: any, teamId: string) {
     } else {
       // IN A CHANNEL: Just use this single message as context
       console.log('[Slack Events] Message is in channel (not thread), using message text as context');
+      console.log('[Slack Events] Raw message text:', event.text);
+
       taskTitle = event.text
-        .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions
+        .replace(/<@[A-Z0-9]+>/gi, '') // Remove mentions (like @PM-OS, @Tommy)
         .trim();
 
-      // Remove command phrases (including "jira ticket")
+      console.log('[Slack Events] After removing mentions:', taskTitle);
+
+      // Remove command phrases (including "jira ticket") - more comprehensive patterns
       taskTitle = taskTitle
-        .replace(/^(can you |could you |please )?(make|create|add)( me| you| us)?( a)?( jira)?( ticket| task)( for| called| to| about)?/gi, '')
+        .replace(/^(can you |could you |please )?(make|create|add)( me| you| us)?( a)?( jira)?( ticket| task| issue)?( for| called| to| about| assign(ed)? to)?/gi, '')
+        .replace(/\s*(for|assign(ed)? to)\s*$/gi, '') // Remove trailing "for" or "assigned to"
         .trim();
 
-      if (!taskTitle || taskTitle.length === 0) {
+      console.log('[Slack Events] After removing command phrases:', taskTitle);
+
+      if (!taskTitle || taskTitle.length === 0 || taskTitle.toLowerCase() === 'assignee') {
         taskTitle = 'Task from Slack';
       }
 

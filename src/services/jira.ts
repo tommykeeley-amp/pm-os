@@ -284,66 +284,45 @@ export class JiraService {
       }
     }
 
-    // Search for reporter - prefer email over name for precision
-    let reporter = null;
-    if (request.reporterEmail) {
-      logToFile(`[Jira] Searching for reporter by email: ${request.reporterEmail}`);
-      const user = await this.searchUserByEmail(request.reporterEmail, request.projectKey);
-      if (user) {
-        reporter = { accountId: user.accountId };
-        logToFile(`[Jira] Setting reporter to ${user.displayName} via email match`);
-      } else {
-        logToFile(`[Jira] Could not find reporter with email "${request.reporterEmail}"`);
-        // Fall back to name search if provided
-        if (request.reporterName) {
-          logToFile(`[Jira] Falling back to reporter name search: ${request.reporterName}`);
-          const nameUser = await this.searchUserByName(request.reporterName, request.projectKey);
-          if (nameUser) {
-            reporter = { accountId: nameUser.accountId };
-            logToFile(`[Jira] Setting reporter to ${nameUser.displayName} via name match`);
-          }
-        }
-      }
-    } else if (request.reporterName) {
-      logToFile(`[Jira] Searching for reporter by name: ${request.reporterName}`);
-      const user = await this.searchUserByName(request.reporterName, request.projectKey);
-      if (user) {
-        reporter = { accountId: user.accountId };
-        logToFile(`[Jira] Setting reporter to ${user.displayName}`);
-      } else {
-        logToFile(`[Jira] Could not find reporter matching "${request.reporterName}", using default (API user)`);
-      }
-    }
-
-    if (!reporter) {
-      logToFile(`[Jira] No reporter specified, will use default (API user: ${this.config.email})`);
-    }
+    // NOTE: Reporter field is disabled because many Jira projects don't allow setting it via API
+    // The error "Field 'reporter' cannot be set. It is not on the appropriate screen" means
+    // the project's issue screen doesn't include the reporter field for API access.
+    // Jira will automatically set the reporter to the API user (the person whose credentials are used).
+    const reporter = null;
+    logToFile(`[Jira] Reporter field skipped (not supported by most Jira project configurations)`);
+    logToFile(`[Jira] Jira will use the API user as reporter: ${this.config.email}`);
 
     // Look up Pillar and Pod IDs from the field options
     let pillarField: { id: string } | undefined;
     let podField: { id: string } | undefined;
 
     if (request.pillar || request.pod) {
-      const fieldOptions = await this.getPillarAndPodOptions(request.projectKey);
+      try {
+        const fieldOptions = await this.getPillarAndPodOptions(request.projectKey, request.issueType);
 
-      if (request.pillar) {
-        const pillarOption = fieldOptions.pillars.find(opt => opt.value === request.pillar);
-        if (pillarOption) {
-          pillarField = { id: pillarOption.id };
-          logToFile(`[Jira] Found Pillar ID ${pillarOption.id} for value "${request.pillar}"`);
-        } else {
-          logToFile(`[Jira] Warning: Could not find Pillar option for "${request.pillar}"`);
+        if (request.pillar) {
+          const pillarOption = fieldOptions.pillars.find(opt => opt.value === request.pillar);
+          if (pillarOption) {
+            pillarField = { id: pillarOption.id };
+            logToFile(`[Jira] Found Pillar ID ${pillarOption.id} for value "${request.pillar}"`);
+          } else {
+            logToFile(`[Jira] Warning: Could not find Pillar option for "${request.pillar}". Available options: ${fieldOptions.pillars.map(p => p.value).join(', ')}`);
+          }
         }
-      }
 
-      if (request.pod) {
-        const podOption = fieldOptions.pods.find(opt => opt.value === request.pod);
-        if (podOption) {
-          podField = { id: podOption.id };
-          logToFile(`[Jira] Found Pod ID ${podOption.id} for value "${request.pod}"`);
-        } else {
-          logToFile(`[Jira] Warning: Could not find Pod option for "${request.pod}"`);
+        if (request.pod) {
+          const podOption = fieldOptions.pods.find(opt => opt.value === request.pod);
+          if (podOption) {
+            podField = { id: podOption.id };
+            logToFile(`[Jira] Found Pod ID ${podOption.id} for value "${request.pod}"`);
+          } else {
+            logToFile(`[Jira] Warning: Could not find Pod option for "${request.pod}". Available options: ${fieldOptions.pods.map(p => p.value).join(', ')}`);
+          }
         }
+      } catch (error) {
+        logToFile(`[Jira] ERROR fetching pillar/pod options: ${error}`);
+        logToFile(`[Jira] Continuing with ticket creation without Pillar/Pod fields`);
+        // Continue creating ticket without these fields
       }
     }
 
@@ -375,10 +354,11 @@ export class JiraService {
           name: request.priority,
         } : undefined,
         assignee: assignee,
-        reporter: reporter, // Set reporter to the person who requested the ticket
-        // Parent issue
+        // Only include reporter if found - some Jira projects don't allow setting reporter via API
+        ...(reporter ? { reporter: reporter } : {}),
+        // Parent issue (optional)
         ...(request.parent ? { parent: { key: request.parent } } : {}),
-        // Custom fields - Pillar and Pod (look up IDs dynamically)
+        // Custom fields - Pillar and Pod (hardcoded field IDs for Amplitude Jira)
         ...(pillarField ? { customfield_11481: pillarField } : {}),
         ...(podField ? { customfield_11200: podField } : {}),
       },
@@ -394,15 +374,38 @@ export class JiraService {
       parent: request.parent,
       hasAssignee: !!assignee,
       hasReporter: !!reporter,
-      hasDescription: !!request.description
+      hasDescription: !!request.description,
+      hasPillarField: !!pillarField,
+      hasPodField: !!podField
     })}`);
 
-    const response = await this.makeRequest('/issue', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    try {
+      const response = await this.makeRequest('/issue', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
 
-    return this.getIssue(response.key);
+      logToFile(`[Jira] Issue created successfully. Key: ${response.key}, ID: ${response.id}`);
+
+      try {
+        return await this.getIssue(response.key);
+      } catch (getError: any) {
+        logToFile(`[Jira] Error fetching created issue ${response.key}: ${getError.message}`);
+        // Return minimal issue info if fetch fails
+        return {
+          key: response.key,
+          id: response.id,
+          fields: {
+            summary: request.summary,
+            status: { name: 'Unknown' }
+          } as any
+        };
+      }
+    } catch (createError: any) {
+      logToFile(`[Jira] Error creating issue: ${createError.message}`);
+      logToFile(`[Jira] Full error: ${JSON.stringify(createError)}`);
+      throw createError;
+    }
   }
 
   /**
@@ -550,12 +553,13 @@ export class JiraService {
   /**
    * Get available options for Pillar and Pod custom fields
    */
-  async getPillarAndPodOptions(projectKey: string): Promise<{
+  async getPillarAndPodOptions(projectKey: string, issueTypeName: string = 'Task'): Promise<{
     pillars: Array<{ id: string; value: string }>;
     pods: Array<{ id: string; value: string }>;
   }> {
     try {
-      const metadata = await this.getCreateMetadata(projectKey, 'Task');
+      logToFile(`[Jira] Getting Pillar/Pod options for project ${projectKey} and issue type ${issueTypeName}`);
+      const metadata = await this.getCreateMetadata(projectKey, issueTypeName);
 
       if (!metadata || !metadata.projects || metadata.projects.length === 0) {
         logToFile('[Jira] No metadata found for project');
@@ -563,7 +567,7 @@ export class JiraService {
       }
 
       const project = metadata.projects[0];
-      const issueType = project.issuetypes?.find((it: any) => it.name === 'Task');
+      const issueType = project.issuetypes?.find((it: any) => it.name === issueTypeName);
 
       if (!issueType || !issueType.fields) {
         logToFile('[Jira] No fields found for Task issue type');
