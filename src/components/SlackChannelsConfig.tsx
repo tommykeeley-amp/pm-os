@@ -20,7 +20,7 @@ export default function SlackChannelsConfig() {
 
       // Load user settings to get selected channels
       const userSettings = await window.electronAPI.getUserSettings();
-      setSelectedChannels(userSettings.slackChannels || []);
+      setSelectedChannels(userSettings.slackMonitoredChannels || []);
     } catch (error) {
       console.error('Failed to load Slack channels:', error);
     } finally {
@@ -42,7 +42,7 @@ export default function SlackChannelsConfig() {
       const userSettings = await window.electronAPI.getUserSettings();
       await window.electronAPI.saveUserSettings({
         ...userSettings,
-        slackChannels: selectedChannels,
+        slackMonitoredChannels: selectedChannels,
       });
     } catch (error) {
       console.error('Failed to save Slack channels:', error);
@@ -69,10 +69,10 @@ export default function SlackChannelsConfig() {
   );
 
   return (
-    <div className="pt-6 border-t border-dark-border">
-      <h3 className="text-base font-semibold text-dark-text-primary mb-4">
+    <div className="pt-4 border-t border-dark-border">
+      <h4 className="text-sm font-medium text-dark-text-primary mb-3">
         Slack Channels for Chats Tab
-      </h3>
+      </h4>
       <p className="text-sm text-dark-text-secondary mb-4">
         Select which Slack channels you want to monitor in the Chats tab. Direct messages are always included.
       </p>

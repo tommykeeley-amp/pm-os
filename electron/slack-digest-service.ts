@@ -113,7 +113,7 @@ export class SlackDigestService {
   /**
    * Schedule a digest for a specific time
    */
-  private scheduleDigest(time: string, timezone: string) {
+  private scheduleDigest(time: string, _timezone: string) {
     const [hours, minutes] = time.split(':').map(Number);
 
     const scheduleNext = () => {
@@ -297,7 +297,7 @@ export class SlackDigestService {
   private async analyzeMessage(
     message: SlackMessage,
     vipContacts: string[],
-    userEmail?: string
+    _userEmail?: string
   ): Promise<ActionableItem | null> {
     if (!this.openai) return null;
 

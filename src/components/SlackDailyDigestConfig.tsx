@@ -27,9 +27,9 @@ export default function SlackDailyDigestConfig() {
       setVipContacts(userSettings.slackVipContacts || []);
       setDigestEnabled(userSettings.slackDailyDigestEnabled || false);
 
-      // TODO: Load Slack users from API
-      // For now, we'll load users when they're needed
-      // await loadSlackUsers();
+      // Load Slack users
+      const slackUsers = await window.electronAPI.getSlackUsers();
+      setUsers(slackUsers);
     } catch (error) {
       console.error('Failed to load digest settings:', error);
     } finally {
@@ -80,11 +80,11 @@ export default function SlackDailyDigestConfig() {
   );
 
   return (
-    <div className="pt-6 border-t border-dark-border space-y-6">
+    <div className="pt-4 border-t border-dark-border space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-dark-text-primary mb-2">
+        <h4 className="text-sm font-medium text-dark-text-primary mb-2">
           📬 Smart Inbox Digest
-        </h3>
+        </h4>
         <p className="text-sm text-dark-text-secondary mb-4">
           Get Slack DMs 3x per day (9AM, 12PM, 5PM) with "Things you might have missed" - actionable items from your monitored channels that haven't been completed yet.
         </p>
@@ -142,7 +142,7 @@ export default function SlackDailyDigestConfig() {
       {/* VIP Contacts */}
       {digestEnabled && (
         <div>
-          <h4 className="text-sm font-semibold text-dark-text-primary mb-2">
+          <h4 className="text-sm font-medium text-dark-text-primary mb-2">
             ⭐ VIP Contacts
           </h4>
           <p className="text-sm text-dark-text-secondary mb-4">

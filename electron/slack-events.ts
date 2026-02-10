@@ -397,7 +397,7 @@ export class SlackEventsServer {
 
         // Call the task creation handler
         if (this.onTaskCreate) {
-          const createdTask = await this.onTaskCreate(task);
+          await this.onTaskCreate(task);
 
           // If this task came from Smart Inbox digest, mark the message as having a task created
           if (source === 'smart_inbox' && digestMessageId) {

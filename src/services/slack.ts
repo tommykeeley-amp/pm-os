@@ -582,18 +582,28 @@ export class SlackService {
     if (!this.client) throw new Error('Slack client not initialized');
 
     try {
-      const response = await this.client.conversations.list({
-        types: 'public_channel,private_channel',
-        limit: 200,
-        exclude_archived: true,
-      });
+      const allChannels: any[] = [];
+      let cursor: string | undefined = undefined;
 
-      if (!response.ok || !response.channels) {
-        return [];
-      }
+      // Paginate through all channels
+      do {
+        const response = await this.client.conversations.list({
+          types: 'public_channel,private_channel',
+          limit: 1000,
+          exclude_archived: true,
+          cursor,
+        });
+
+        if (!response.ok || !response.channels) {
+          break;
+        }
+
+        allChannels.push(...response.channels);
+        cursor = response.response_metadata?.next_cursor;
+      } while (cursor);
 
       // Filter to only channels the user is a member of
-      const memberChannels = response.channels.filter(channel =>
+      const memberChannels = allChannels.filter(channel =>
         (channel as any).is_member === true
       );
 
@@ -603,6 +613,45 @@ export class SlackService {
       }));
     } catch (error) {
       console.error('Failed to get Slack channels:', error);
+      return [];
+    }
+  }
+
+  async getUsers(): Promise<{ id: string; name: string; realName?: string; avatar?: string }[]> {
+    if (!this.client) throw new Error('Slack client not initialized');
+
+    try {
+      const allUsers: any[] = [];
+      let cursor: string | undefined = undefined;
+
+      // Paginate through all users
+      do {
+        const response = await this.client.users.list({
+          limit: 1000,
+          cursor,
+        });
+
+        if (!response.ok || !response.members) {
+          break;
+        }
+
+        allUsers.push(...response.members);
+        cursor = response.response_metadata?.next_cursor;
+      } while (cursor);
+
+      // Filter out bots and deleted users, return only active human users
+      const activeUsers = allUsers.filter(user =>
+        !user.deleted && !user.is_bot && user.id !== 'USLACKBOT'
+      );
+
+      return activeUsers.map(user => ({
+        id: user.id!,
+        name: user.name || 'Unknown',
+        realName: user.real_name || user.profile?.real_name || undefined,
+        avatar: user.profile?.image_48 || user.profile?.image_32 || undefined,
+      }));
+    } catch (error) {
+      console.error('Failed to get Slack users:', error);
       return [];
     }
   }

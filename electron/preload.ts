@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   jiraGetSprints: (projectKey: string) => ipcRenderer.invoke('jira-get-sprints', projectKey),
   jiraSearchUsers: (projectKey: string, query: string) => ipcRenderer.invoke('jira-search-users', projectKey, query),
   jiraGetCreateMetadata: (projectKey: string, issueType: string) => ipcRenderer.invoke('jira-get-create-metadata', projectKey, issueType),
+  jiraGetPillarPodOptions: (projectKey: string, issueType: string) => ipcRenderer.invoke('jira-get-pillar-pod-options', projectKey, issueType),
 
   // Confluence
   confluenceIsConfigured: () => ipcRenderer.invoke('confluence-is-configured'),
@@ -89,10 +90,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSlackUnreadMessages: () => ipcRenderer.invoke('get-slack-unread-messages'),
   getStarredEmails: () => ipcRenderer.invoke('get-starred-emails'),
   getSlackChannels: () => ipcRenderer.invoke('get-slack-channels'),
+  getSlackUsers: () => ipcRenderer.invoke('get-slack-users'),
   slackGetThreadReplies: (channelId: string, threadTs: string) =>
     ipcRenderer.invoke('slack-get-thread-replies', channelId, threadTs),
   slackSendReply: (channelId: string, threadTs: string, text: string) =>
     ipcRenderer.invoke('slack-send-reply', channelId, threadTs, text),
+
+  // Claude Code
+  claudeCodeStart: (folderPath: string) =>
+    ipcRenderer.invoke('claude-code-start', folderPath),
+  claudeCodeSend: (message: string) =>
+    ipcRenderer.invoke('claude-code-send', message),
+  claudeCodeStop: () =>
+    ipcRenderer.invoke('claude-code-stop'),
+  claudeCodeGetHistory: () =>
+    ipcRenderer.invoke('claude-code-get-history'),
+  onClaudeOutput: (callback: (output: string) => void) => {
+    const handler = (_event: any, output: string) => callback(output);
+    ipcRenderer.on('claude-output', handler);
+    return () => ipcRenderer.removeListener('claude-output', handler);
+  },
+  onClaudeDisconnected: (callback: (data: { code: number | null; signal: string | null }) => void) => {
+    const handler = (_event: any, data: { code: number | null; signal: string | null }) => callback(data);
+    ipcRenderer.on('claude-disconnected', handler);
+    return () => ipcRenderer.removeListener('claude-disconnected', handler);
+  },
 
   // Events
   onFocusTaskInput: (callback: () => void) => {
@@ -107,8 +129,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('oauth-error', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('oauth-error');
   },
-  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => {
-    const handler = (_event: any, tab: 'tasks' | 'meetings' | 'docs' | 'chats') => callback(tab);
+  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'strategize' | 'chats') => void) => {
+    const handler = (_event: any, tab: 'tasks' | 'meetings' | 'strategize' | 'chats') => callback(tab);
     ipcRenderer.on('switch-tab', handler);
     return () => ipcRenderer.removeListener('switch-tab', handler);
   },
@@ -156,6 +178,7 @@ export interface ElectronAPI {
   jiraGetSprints: (projectKey: string) => Promise<Array<{ id: number; name: string; state: string }>>;
   jiraSearchUsers: (projectKey: string, query: string) => Promise<Array<{ accountId: string; displayName: string; emailAddress: string }>>;
   jiraGetCreateMetadata: (projectKey: string, issueType: string) => Promise<any>;
+  jiraGetPillarPodOptions: (projectKey: string, issueType: string) => Promise<{ pillars: Array<{ id: string; value: string }>; pods: Array<{ id: string; value: string }> }>;
   confluenceIsConfigured: () => Promise<boolean>;
   confluenceTestConnection: () => Promise<{ success: boolean; error?: string }>;
   confluenceGetSpaces: () => Promise<any[]>;
@@ -174,12 +197,19 @@ export interface ElectronAPI {
   getSlackUnreadMessages: () => Promise<any[]>;
   getStarredEmails: () => Promise<any[]>;
   getSlackChannels: () => Promise<any[]>;
+  getSlackUsers: () => Promise<Array<{ id: string; name: string; realName?: string; avatar?: string }>>;
   slackGetThreadReplies: (channelId: string, threadTs: string) => Promise<Array<{text: string; user: string; userName: string; timestamp: string}>>;
   slackSendReply: (channelId: string, threadTs: string, text: string) => Promise<{success: boolean}>;
+  claudeCodeStart: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
+  claudeCodeSend: (message: string) => Promise<{ success: boolean; error?: string }>;
+  claudeCodeStop: () => Promise<{ success: boolean }>;
+  claudeCodeGetHistory: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
+  onClaudeOutput: (callback: (output: string) => void) => () => void;
+  onClaudeDisconnected: (callback: (data: { code: number | null; signal: string | null }) => void) => () => void;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
   onOAuthError: (callback: (data: { error: string }) => void) => () => void;
-  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => void) => () => void;
+  onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'strategize' | 'chats') => void) => () => void;
   onTaskCreated: (callback: (task: any) => void) => () => void;
 }
 

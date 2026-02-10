@@ -79,11 +79,11 @@ function decodeHtmlEntities(text: string): string {
   });
 
   // Replace numeric entities (e.g., &#39;, &#x27;)
-  decoded = decoded.replace(/&#(\d+);/g, (match, dec) => {
+  decoded = decoded.replace(/&#(\d+);/g, (_match, dec) => {
     return String.fromCharCode(dec);
   });
 
-  decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+  decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (_match, hex) => {
     return String.fromCharCode(parseInt(hex, 16));
   });
 

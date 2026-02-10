@@ -7,6 +7,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as http from 'http';
+import { spawn, ChildProcess } from 'child_process';
 import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
@@ -61,6 +62,10 @@ const store = new Store();
 let mainWindow: BrowserWindow | null = null;
 const WINDOW_WIDTH = 400;
 const WINDOW_HEIGHT = 600;
+
+// Claude Code session management
+let claudeCodeProcess: ChildProcess | null = null;
+const chatHistory: Array<{ role: string; content: string; timestamp: string }> = [];
 
 // Initialize integration manager
 const integrationManager = new IntegrationManager(
@@ -213,7 +218,7 @@ function registerHotkey() {
   }
 
   // Helper function to show window and switch tab
-  const showWindowAndSwitchTab = (tab: 'tasks' | 'meetings' | 'docs' | 'chats', focusInput = false) => {
+  const showWindowAndSwitchTab = (tab: 'tasks' | 'meetings' | 'strategize' | 'chats', focusInput = false) => {
     if (!mainWindow) {
       createWindow();
       // Wait for window to be ready before sending event
@@ -289,17 +294,17 @@ function registerHotkey() {
     console.log('Successfully registered cmd+shift+m shortcut');
   }
 
-  // Register cmd+shift+d to show window and switch to docs tab
-  globalShortcut.unregister('CommandOrControl+Shift+D');
-  const docsSuccess = globalShortcut.register('CommandOrControl+Shift+D', () => {
-    console.log('Docs hotkey triggered!');
-    showWindowAndSwitchTab('docs');
+  // Register cmd+shift+s to show window and switch to strategize tab
+  globalShortcut.unregister('CommandOrControl+Shift+S');
+  const strategizeSuccess = globalShortcut.register('CommandOrControl+Shift+S', () => {
+    console.log('Strategize hotkey triggered!');
+    showWindowAndSwitchTab('strategize');
   });
 
-  if (!docsSuccess) {
-    console.error('Failed to register docs shortcut: CommandOrControl+Shift+D');
+  if (!strategizeSuccess) {
+    console.error('Failed to register strategize shortcut: CommandOrControl+Shift+S');
   } else {
-    console.log('Successfully registered cmd+shift+d shortcut');
+    console.log('Successfully registered cmd+shift+s shortcut');
   }
 
   // Register cmd+shift+c to show window and switch to chats tab
@@ -506,6 +511,197 @@ async function handleProtocolUrl(url: string) {
     console.error(`[Protocol] END - Failed`);
     console.error(`========================================\n`);
   }
+}
+
+// Claude Code session management functions
+function startClaudeCodeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    try {
+      // Validate folder path
+      if (!folderPath || !fs.existsSync(folderPath)) {
+        resolve({ success: false, error: 'Invalid folder path' });
+        return;
+      }
+
+      // Stop existing session if any
+      if (claudeCodeProcess) {
+        stopClaudeCodeSession();
+      }
+
+      console.log('[Claude Code] Starting session for folder:', folderPath);
+
+      // Write MCP configuration if any MCPs are enabled
+      const userSettings = store.get('userSettings', {}) as any;
+      if (userSettings.mcpServers) {
+        try {
+          const mcpConfigPath = path.join(os.homedir(), '.config', 'claude', 'mcp_config.json');
+          const mcpConfigDir = path.dirname(mcpConfigPath);
+
+          // Ensure config directory exists
+          if (!fs.existsSync(mcpConfigDir)) {
+            fs.mkdirSync(mcpConfigDir, { recursive: true });
+          }
+
+          // Build MCP config object with only enabled servers
+          const mcpConfig: any = { mcpServers: {} };
+
+          Object.keys(userSettings.mcpServers).forEach(serverName => {
+            const server = userSettings.mcpServers[serverName];
+            if (server.enabled) {
+              mcpConfig.mcpServers[serverName] = {
+                command: server.command,
+                args: server.args || [],
+                env: server.env || {},
+              };
+            }
+          });
+
+          // Write config file
+          fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+          console.log('[Claude Code] MCP config written:', Object.keys(mcpConfig.mcpServers));
+        } catch (error) {
+          console.error('[Claude Code] Failed to write MCP config:', error);
+          // Continue anyway - don't fail the session start
+        }
+      }
+
+      // Spawn Claude Code CLI
+      const claudePath = '/Users/tommykeeley/.local/bin/claude';
+      claudeCodeProcess = spawn(claudePath, ['--dangerously-skip-chrome'], {
+        cwd: folderPath,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      // Clear chat history
+      chatHistory.length = 0;
+
+      let startupOutput = '';
+      let resolved = false;
+
+      // Handle stdout - this is where Claude's responses come
+      claudeCodeProcess.stdout?.on('data', (data: Buffer) => {
+        const output = data.toString();
+        startupOutput += output;
+
+        // Send output to renderer
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('claude-output', output);
+        }
+
+        console.log('[Claude Code] stdout:', output.substring(0, 200));
+
+        // Detect successful startup (look for prompt or welcome message)
+        if (!resolved && (output.includes('>>>') || output.includes('Welcome') || startupOutput.length > 100)) {
+          resolved = true;
+          console.log('[Claude Code] Session started successfully');
+          resolve({ success: true });
+        }
+      });
+
+      // Handle stderr - errors and warnings
+      claudeCodeProcess.stderr?.on('data', (data: Buffer) => {
+        const error = data.toString();
+        console.error('[Claude Code] stderr:', error);
+
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('claude-output', `[Error] ${error}`);
+        }
+      });
+
+      // Handle process exit
+      claudeCodeProcess.on('exit', (code, signal) => {
+        console.log('[Claude Code] Process exited with code:', code, 'signal:', signal);
+        claudeCodeProcess = null;
+
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('claude-disconnected', { code, signal });
+        }
+
+        if (!resolved) {
+          resolved = true;
+          resolve({ success: false, error: `Process exited with code ${code}` });
+        }
+      });
+
+      // Handle process error
+      claudeCodeProcess.on('error', (error) => {
+        console.error('[Claude Code] Process error:', error);
+        claudeCodeProcess = null;
+
+        if (!resolved) {
+          resolved = true;
+          resolve({ success: false, error: error.message });
+        }
+      });
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          console.log('[Claude Code] Startup timeout, but treating as success');
+          resolve({ success: true });
+        }
+      }, 10000);
+
+    } catch (error: any) {
+      console.error('[Claude Code] Failed to start session:', error);
+      resolve({ success: false, error: error.message });
+    }
+  });
+}
+
+function sendClaudeCodeMessage(message: string): { success: boolean; error?: string } {
+  try {
+    if (!claudeCodeProcess || !claudeCodeProcess.stdin) {
+      return { success: false, error: 'No active Claude Code session' };
+    }
+
+    console.log('[Claude Code] Sending message:', message.substring(0, 100));
+
+    // Add to chat history
+    chatHistory.push({
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Send to Claude process
+    claudeCodeProcess.stdin.write(message + '\n');
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Claude Code] Failed to send message:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function stopClaudeCodeSession(): { success: boolean } {
+  try {
+    if (claudeCodeProcess) {
+      console.log('[Claude Code] Stopping session');
+
+      // Try graceful shutdown first
+      claudeCodeProcess.kill('SIGTERM');
+
+      // Force kill after 2 seconds if still running
+      setTimeout(() => {
+        if (claudeCodeProcess) {
+          console.log('[Claude Code] Force killing process');
+          claudeCodeProcess.kill('SIGKILL');
+          claudeCodeProcess = null;
+        }
+      }, 2000);
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Claude Code] Failed to stop session:', error);
+    return { success: false };
+  }
+}
+
+function getClaudeCodeHistory() {
+  return [...chatHistory];
 }
 
 // Start local HTTP server for Chrome extension sync
@@ -1654,6 +1850,16 @@ ipcMain.handle('get-slack-channels', async () => {
   }
 });
 
+// Slack users list
+ipcMain.handle('get-slack-users', async () => {
+  try {
+    return await integrationManager.getSlackUsers();
+  } catch (error: any) {
+    console.error('Failed to get Slack users:', error);
+    return [];
+  }
+});
+
 // Slack thread replies
 ipcMain.handle('slack-get-thread-replies', async (_event, channelId: string, threadTs: string) => {
   try {
@@ -1835,9 +2041,9 @@ ipcMain.handle('jira-get-create-metadata', async (_event, projectKey: string, is
   return await jiraService.getCreateMetadata(projectKey, issueType);
 });
 
-ipcMain.handle('jira-get-pillar-pod-options', async (_event, projectKey: string) => {
+ipcMain.handle('jira-get-pillar-pod-options', async (_event, projectKey: string, issueType: string) => {
   if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getPillarAndPodOptions(projectKey);
+  return await jiraService.getPillarAndPodOptions(projectKey, issueType);
 });
 
 ipcMain.handle('jira-is-configured', () => {
@@ -1887,4 +2093,25 @@ ipcMain.handle('confluence-search-pages', async (_event, query: string, spaceKey
 ipcMain.handle('confluence-get-page', async (_event, pageId: string) => {
   if (!confluenceService) throw new Error('Confluence not configured');
   return await confluenceService.getPage(pageId);
+});
+
+// Claude Code IPC Handlers
+ipcMain.handle('claude-code-start', async (_event, folderPath: string) => {
+  console.log('[IPC] claude-code-start called with folder:', folderPath);
+  return await startClaudeCodeSession(folderPath);
+});
+
+ipcMain.handle('claude-code-send', (_event, message: string) => {
+  console.log('[IPC] claude-code-send called');
+  return sendClaudeCodeMessage(message);
+});
+
+ipcMain.handle('claude-code-stop', () => {
+  console.log('[IPC] claude-code-stop called');
+  return stopClaudeCodeSession();
+});
+
+ipcMain.handle('claude-code-get-history', () => {
+  console.log('[IPC] claude-code-get-history called');
+  return getClaudeCodeHistory();
 });

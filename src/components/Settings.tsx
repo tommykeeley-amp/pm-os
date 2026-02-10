@@ -44,6 +44,17 @@ interface UserSettings {
   showDeclinedMeetings?: boolean;
   primaryTimezone?: string;
   secondaryTimezone?: string;
+
+  // Strategize Settings
+  strategizeFolderPath?: string;
+  mcpServers?: {
+    [key: string]: {
+      enabled: boolean;
+      command: string;
+      args?: string[];
+      env?: { [key: string]: string };
+    };
+  };
 }
 
 // Default Confluence system prompt
@@ -195,7 +206,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
-  const handleChange = async (field: keyof UserSettings, value: string | boolean) => {
+  const handleChange = async (field: keyof UserSettings, value: any) => {
     const updatedSettings = { ...settings, [field]: value };
     setSettings(updatedSettings);
 
@@ -1087,6 +1098,236 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                   <p className="text-xs text-dark-text-muted mt-1">
                     Timezone shown on hover in the Meetings tab
                   </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-dark-border">
+                <h3 className="text-base font-semibold text-dark-text-primary">Strategize Configuration</h3>
+                <div className="bg-dark-bg border border-dark-border rounded-lg p-4">
+                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                    Project Folder Path
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.strategizeFolderPath || ''}
+                    onChange={(e) => handleChange('strategizeFolderPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                    placeholder="/Users/yourname/Documents/ProjectFolder"
+                  />
+                  <p className="text-xs text-dark-text-muted mt-1">
+                    Full path to the folder where Claude Code will provide strategic context and analysis
+                  </p>
+                </div>
+
+                {/* MCP Servers Configuration */}
+                <div className="bg-dark-bg border border-dark-border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-medium text-dark-text-primary">MCP Servers</h4>
+                      <p className="text-xs text-dark-text-muted mt-1">
+                        Enable Model Context Protocol servers for enhanced capabilities
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Amplitude MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-dark-text-primary">Amplitude</div>
+                          <div className="text-xs text-dark-text-muted">Analytics and product insights</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const mcpServers = settings.mcpServers || {};
+                          const amplitude = mcpServers.amplitude || {
+                            command: 'npx',
+                            args: ['-y', '@modelcontextprotocol/server-amplitude'],
+                            env: { AMPLITUDE_API_KEY: '' },
+                            enabled: false,
+                          };
+                          amplitude.enabled = !amplitude.enabled;
+                          handleChange('mcpServers', { ...mcpServers, amplitude });
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.amplitude?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.amplitude?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {settings.mcpServers?.amplitude?.enabled && (
+                      <div>
+                        <label className="block text-xs font-medium text-dark-text-secondary mb-1">
+                          API Key
+                        </label>
+                        <input
+                          type="password"
+                          value={settings.mcpServers?.amplitude?.env?.AMPLITUDE_API_KEY || ''}
+                          onChange={(e) => {
+                            const mcpServers = settings.mcpServers || {};
+                            const amplitude = mcpServers.amplitude || {
+                              command: 'npx',
+                              args: ['-y', '@modelcontextprotocol/server-amplitude'],
+                              env: {},
+                              enabled: true,
+                            };
+                            amplitude.env = { ...amplitude.env, AMPLITUDE_API_KEY: e.target.value };
+                            handleChange('mcpServers', { ...mcpServers, amplitude });
+                          }}
+                          className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded
+                                   text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
+                          placeholder="Enter your Amplitude API key"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Granola MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-dark-text-primary">Granola</div>
+                          <div className="text-xs text-dark-text-muted">Meeting notes and transcripts</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const mcpServers = settings.mcpServers || {};
+                          const granola = mcpServers.granola || {
+                            command: 'npx',
+                            args: ['-y', '@granola/mcp-server'],
+                            env: { GRANOLA_API_KEY: '' },
+                            enabled: false,
+                          };
+                          granola.enabled = !granola.enabled;
+                          handleChange('mcpServers', { ...mcpServers, granola });
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.granola?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.granola?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {settings.mcpServers?.granola?.enabled && (
+                      <div>
+                        <label className="block text-xs font-medium text-dark-text-secondary mb-1">
+                          API Key
+                        </label>
+                        <input
+                          type="password"
+                          value={settings.mcpServers?.granola?.env?.GRANOLA_API_KEY || ''}
+                          onChange={(e) => {
+                            const mcpServers = settings.mcpServers || {};
+                            const granola = mcpServers.granola || {
+                              command: 'npx',
+                              args: ['-y', '@granola/mcp-server'],
+                              env: {},
+                              enabled: true,
+                            };
+                            granola.env = { ...granola.env, GRANOLA_API_KEY: e.target.value };
+                            handleChange('mcpServers', { ...mcpServers, granola });
+                          }}
+                          className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded
+                                   text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
+                          placeholder="Enter your Granola API key"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Clockwise MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-green-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-dark-text-primary">Clockwise</div>
+                          <div className="text-xs text-dark-text-muted">Calendar and scheduling optimization</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const mcpServers = settings.mcpServers || {};
+                          const clockwise = mcpServers.clockwise || {
+                            command: 'npx',
+                            args: ['-y', '@clockwise/mcp-server'],
+                            env: { CLOCKWISE_API_KEY: '' },
+                            enabled: false,
+                          };
+                          clockwise.enabled = !clockwise.enabled;
+                          handleChange('mcpServers', { ...mcpServers, clockwise });
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.clockwise?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.clockwise?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {settings.mcpServers?.clockwise?.enabled && (
+                      <div>
+                        <label className="block text-xs font-medium text-dark-text-secondary mb-1">
+                          API Key
+                        </label>
+                        <input
+                          type="password"
+                          value={settings.mcpServers?.clockwise?.env?.CLOCKWISE_API_KEY || ''}
+                          onChange={(e) => {
+                            const mcpServers = settings.mcpServers || {};
+                            const clockwise = mcpServers.clockwise || {
+                              command: 'npx',
+                              args: ['-y', '@clockwise/mcp-server'],
+                              env: {},
+                              enabled: true,
+                            };
+                            clockwise.env = { ...clockwise.env, CLOCKWISE_API_KEY: e.target.value };
+                            handleChange('mcpServers', { ...mcpServers, clockwise });
+                          }}
+                          className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded
+                                   text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
+                          placeholder="Enter your Clockwise API key"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

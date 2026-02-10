@@ -9,11 +9,11 @@ import TaskDetailModal from './components/TaskDetailModal';
 import Settings from './components/Settings';
 import Meetings from './components/Meetings';
 import Chats from './components/Chats';
-import Docs from './components/Docs';
+import Strategize from './components/Strategize';
 import TabPanel from './components/TabPanel';
 import type { Task } from './types/task';
 
-type Tab = 'tasks' | 'meetings' | 'docs' | 'chats';
+type Tab = 'tasks' | 'meetings' | 'strategize' | 'chats';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
@@ -61,7 +61,7 @@ function App() {
     window.electronAPI.onOAuthSuccess?.(handleOAuthSuccess);
 
     // Listen for tab switch hotkeys
-    const handleSwitchTab = (tab: 'tasks' | 'meetings' | 'docs' | 'chats') => {
+    const handleSwitchTab = (tab: 'tasks' | 'meetings' | 'strategize' | 'chats') => {
       console.log('[App] Switching to tab:', tab);
       setActiveTab(tab);
     };
@@ -616,13 +616,18 @@ function App() {
           </span>
         </button>
         <button
-          onClick={() => setActiveTab('docs')}
+          onClick={() => setActiveTab('strategize')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
-                   ${activeTab === 'docs'
+                   ${activeTab === 'strategize'
                      ? 'text-dark-text-primary'
                      : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
         >
-          Docs
+          <span className="flex items-center justify-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Strategize
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('meetings')}
@@ -663,7 +668,7 @@ function App() {
             width: '25%',
             transform: `translateX(${
               activeTab === 'tasks' ? '0%' :
-              activeTab === 'docs' ? '100%' :
+              activeTab === 'strategize' ? '100%' :
               activeTab === 'meetings' ? '200%' :
               '300%'
             })`
@@ -883,9 +888,9 @@ function App() {
             )}
             </TabPanel>
 
-            {/* Docs Tab */}
-            <TabPanel isActive={activeTab === 'docs'}>
-              <Docs isActive={activeTab === 'docs'} />
+            {/* Strategize Tab */}
+            <TabPanel isActive={activeTab === 'strategize'}>
+              <Strategize isActive={activeTab === 'strategize'} />
             </TabPanel>
 
             {/* Meetings Tab */}
