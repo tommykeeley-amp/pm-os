@@ -50,9 +50,11 @@ interface UserSettings {
   mcpServers?: {
     [key: string]: {
       enabled: boolean;
-      command: string;
+      command?: string;
       args?: string[];
       env?: { [key: string]: string };
+      url?: string;
+      transport?: 'stdio' | 'sse';
     };
   };
 }
@@ -963,7 +965,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
           {/* Customizations Tab */}
           <TabPanel isActive={activeTab === 'customizations'}>
-            <div className="space-y-4">
+            <div className="space-y-4 pb-8">
               <p className="text-sm text-dark-text-secondary">
                 Customize how PM-OS displays information.
               </p>
@@ -1149,9 +1151,8 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         onClick={() => {
                           const mcpServers = settings.mcpServers || {};
                           const amplitude = mcpServers.amplitude || {
-                            command: 'npx',
-                            args: ['-y', '@modelcontextprotocol/server-amplitude'],
-                            env: { AMPLITUDE_API_KEY: '' },
+                            url: 'https://mcp.amplitude.com/mcp',
+                            transport: 'sse' as const,
                             enabled: false,
                           };
                           amplitude.enabled = !amplitude.enabled;
@@ -1171,28 +1172,13 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                       </button>
                     </div>
                     {settings.mcpServers?.amplitude?.enabled && (
-                      <div>
-                        <label className="block text-xs font-medium text-dark-text-secondary mb-1">
-                          API Key
-                        </label>
-                        <input
-                          type="password"
-                          value={settings.mcpServers?.amplitude?.env?.AMPLITUDE_API_KEY || ''}
-                          onChange={(e) => {
-                            const mcpServers = settings.mcpServers || {};
-                            const amplitude = mcpServers.amplitude || {
-                              command: 'npx',
-                              args: ['-y', '@modelcontextprotocol/server-amplitude'],
-                              env: {},
-                              enabled: true,
-                            };
-                            amplitude.env = { ...amplitude.env, AMPLITUDE_API_KEY: e.target.value };
-                            handleChange('mcpServers', { ...mcpServers, amplitude });
-                          }}
-                          className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded
-                                   text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                          placeholder="Enter your Amplitude API key"
-                        />
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>OAuth authentication will be prompted when you connect to Claude Code</span>
+                        </div>
                       </div>
                     )}
                   </div>

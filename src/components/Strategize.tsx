@@ -75,29 +75,39 @@ export default function Strategize({ isActive }: StrategizeProps) {
     const handleClaudeOutput = (output: string) => {
       console.log('[Strategize] Received output:', output.substring(0, 100));
 
-      // Check if we have a streaming message
-      if (streamingMessageId) {
-        // Append to existing streaming message
-        setMessages(prev => prev.map(msg =>
-          msg.id === streamingMessageId
-            ? { ...msg, content: msg.content + output }
-            : msg
-        ));
-      } else {
-        // Create a new streaming message
-        const newMessageId = `msg-${Date.now()}`;
-        setStreamingMessageId(newMessageId);
+      setMessages(prev => {
+        // Check if we have a streaming message (typing indicator or existing response)
+        if (streamingMessageId) {
+          return prev.map(msg => {
+            if (msg.id === streamingMessageId) {
+              // If it's a typing indicator, replace it with real content
+              if (msg.content.startsWith('🤔') || msg.content.startsWith('🔍') ||
+                  msg.content.startsWith('✨') || msg.content.startsWith('🧠') ||
+                  msg.content.startsWith('⚡') || msg.content.startsWith('🎯') ||
+                  msg.content.startsWith('💭')) {
+                return { ...msg, content: output, isStreaming: true };
+              }
+              // Otherwise append to existing content
+              return { ...msg, content: msg.content + output, isStreaming: true };
+            }
+            return msg;
+          });
+        } else {
+          // Create a new streaming message
+          const newMessageId = `msg-${Date.now()}`;
+          setStreamingMessageId(newMessageId);
 
-        const newMessage: Message = {
-          id: newMessageId,
-          role: 'assistant',
-          content: output,
-          timestamp: new Date().toISOString(),
-          isStreaming: true,
-        };
+          const newMessage: Message = {
+            id: newMessageId,
+            role: 'assistant',
+            content: output,
+            timestamp: new Date().toISOString(),
+            isStreaming: true,
+          };
 
-        setMessages(prev => [...prev, newMessage]);
-      }
+          return [...prev, newMessage];
+        }
+      });
     };
 
     const handleClaudeDisconnected = (data: { code: number | null; signal: string | null }) => {
@@ -225,10 +235,37 @@ export default function Strategize({ isActive }: StrategizeProps) {
     setInputValue('');
     setStreamingMessageId(null); // Reset streaming for new response
 
+    // Add fun typing indicator
+    const typingMessages = [
+      "🤔 Claude is thinking...",
+      "🔍 Analyzing your codebase...",
+      "✨ Cooking up a response...",
+      "🧠 Processing your question...",
+      "⚡ Gathering insights...",
+      "🎯 Strategizing...",
+      "💭 Hmm, let me see...",
+    ];
+    const randomTyping = typingMessages[Math.floor(Math.random() * typingMessages.length)];
+
+    const typingMessage: Message = {
+      id: `typing-${Date.now()}`,
+      role: 'assistant',
+      content: randomTyping,
+      timestamp: new Date().toISOString(),
+      isStreaming: true,
+    };
+
+    setMessages(prev => [...prev, typingMessage]);
+    setStreamingMessageId(typingMessage.id);
+
     try {
       const result = await window.electronAPI.claudeCodeSend(inputValue);
 
       if (!result.success) {
+        // Remove typing indicator
+        setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
+        setStreamingMessageId(null);
+
         const errorMessage: Message = {
           id: `sys-${Date.now()}`,
           role: 'system',
@@ -239,6 +276,11 @@ export default function Strategize({ isActive }: StrategizeProps) {
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
+
+      // Remove typing indicator
+      setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
+      setStreamingMessageId(null);
+
       const errorMessage: Message = {
         id: `sys-${Date.now()}`,
         role: 'system',
@@ -356,6 +398,16 @@ export default function Strategize({ isActive }: StrategizeProps) {
             >
               <div className="text-sm whitespace-pre-wrap break-words">
                 {message.content}
+                {message.isStreaming && (message.content.startsWith('🤔') || message.content.startsWith('🔍') ||
+                  message.content.startsWith('✨') || message.content.startsWith('🧠') ||
+                  message.content.startsWith('⚡') || message.content.startsWith('🎯') ||
+                  message.content.startsWith('💭')) && (
+                  <span className="inline-flex ml-1">
+                    <span className="animate-bounce mx-0.5" style={{ animationDelay: '0ms' }}>.</span>
+                    <span className="animate-bounce mx-0.5" style={{ animationDelay: '150ms' }}>.</span>
+                    <span className="animate-bounce mx-0.5" style={{ animationDelay: '300ms' }}>.</span>
+                  </span>
+                )}
               </div>
               <div
                 className={`text-xs mt-1 ${

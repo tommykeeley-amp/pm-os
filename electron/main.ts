@@ -20,23 +20,39 @@ import OpenAI from 'openai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Set up file logging
+// Set up file logging with safe error handling
 const logFile = '/tmp/pm-os-oauth-debug.log';
 const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 
-console.log = (...args: any[]) => {
-  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
-  logStream.write(`${message}\n`);
-  originalConsoleLog(...args);
+// Safe logging that won't crash on EPIPE
+const safeLog = (...args: any[]) => {
+  try {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
+    logStream.write(`${message}\n`);
+    if (process.env.NODE_ENV === 'development') {
+      originalConsoleLog(...args);
+    }
+  } catch (error) {
+    // Silently ignore logging errors to prevent EPIPE crashes
+  }
 };
 
-console.error = (...args: any[]) => {
-  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
-  logStream.write(`ERROR: ${message}\n`);
-  originalConsoleError(...args);
+const safeError = (...args: any[]) => {
+  try {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
+    logStream.write(`ERROR: ${message}\n`);
+    if (process.env.NODE_ENV === 'development') {
+      originalConsoleError(...args);
+    }
+  } catch (error) {
+    // Silently ignore logging errors to prevent EPIPE crashes
+  }
 };
+
+console.log = safeLog;
+console.error = safeError;
 
 // Load environment variables - handle both dev and production paths
 const envPath = app.isPackaged
@@ -548,11 +564,19 @@ function startClaudeCodeSession(folderPath: string): Promise<{ success: boolean;
           Object.keys(userSettings.mcpServers).forEach(serverName => {
             const server = userSettings.mcpServers[serverName];
             if (server.enabled) {
-              mcpConfig.mcpServers[serverName] = {
-                command: server.command,
-                args: server.args || [],
-                env: server.env || {},
-              };
+              if (server.transport === 'sse') {
+                // SSE transport (web service like Amplitude)
+                mcpConfig.mcpServers[serverName] = {
+                  url: server.url,
+                };
+              } else {
+                // Stdio transport (local command)
+                mcpConfig.mcpServers[serverName] = {
+                  command: server.command,
+                  args: server.args || [],
+                  env: server.env || {},
+                };
+              }
             }
           });
 
@@ -567,7 +591,7 @@ function startClaudeCodeSession(folderPath: string): Promise<{ success: boolean;
 
       // Spawn Claude Code CLI
       const claudePath = '/Users/tommykeeley/.local/bin/claude';
-      claudeCodeProcess = spawn(claudePath, ['--dangerously-skip-chrome'], {
+      claudeCodeProcess = spawn(claudePath, ['--no-chrome', '--dangerously-skip-permissions'], {
         cwd: folderPath,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
