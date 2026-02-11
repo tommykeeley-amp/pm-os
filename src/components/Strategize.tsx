@@ -437,7 +437,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
                       >
                         {msg.role === 'user' ? (
                           // User messages: Simple display with MCP pills
-                          <div className="bg-dark-accent-primary text-white rounded-2xl rounded-br-sm px-3 py-2">
+                          <div className="bg-blue-500 text-white rounded-2xl rounded-br-sm px-3 py-2">
                             <div className="text-xs leading-relaxed">
                               {msg.content}
                             </div>
