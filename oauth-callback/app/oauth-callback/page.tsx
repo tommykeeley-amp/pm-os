@@ -13,9 +13,11 @@ function OAuthCallbackContent() {
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const errorParam = searchParams.get('error');
+    const mcpProvider = searchParams.get('mcp'); // MCP OAuth (amplitude, clockwise, granola)
 
     if (errorParam) {
-      setError(`OAuth error: ${errorParam}`);
+      const errorDesc = searchParams.get('error_description') || errorParam;
+      setError(`OAuth error: ${errorDesc}`);
       setStatus('error');
       return;
     }
@@ -26,7 +28,32 @@ function OAuthCallbackContent() {
       return;
     }
 
-    // Determine provider from state
+    // Handle MCP OAuth (skip token exchange, redirect directly to custom protocol)
+    if (mcpProvider) {
+      const params = new URLSearchParams();
+      params.set('code', code);
+      if (state) params.set('state', state);
+
+      const url = `pmos://oauth/callback/${mcpProvider}?${params.toString()}`;
+      setCallbackUrl(url);
+
+      console.log(`[MCP OAuth] Redirecting to: ${url}`);
+
+      // Try to redirect to custom protocol
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = url;
+      document.body.appendChild(iframe);
+
+      setTimeout(() => {
+        window.location.href = url;
+      }, 100);
+
+      setStatus('success');
+      return;
+    }
+
+    // Determine provider from state (for Google/Slack OAuth)
     let provider = 'google';
     if (state) {
       try {
@@ -37,7 +64,7 @@ function OAuthCallbackContent() {
       }
     }
 
-    // Exchange code for tokens on the server
+    // Exchange code for tokens on the server (Google/Slack OAuth)
     async function exchangeToken() {
       try {
         const response = await fetch('/api/exchange-token', {

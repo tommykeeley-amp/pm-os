@@ -97,8 +97,8 @@ class MCPOAuthProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string {
-    // Use Vercel URL that redirects to custom protocol
-    return `https://pm-os.vercel.app/oauth-callback/${this.serverName}`;
+    // Use existing whitelisted Vercel URL with MCP provider as query param
+    return `https://pm-os.vercel.app/oauth-callback?mcp=${this.serverName}`;
   }
 
   get clientMetadata(): OAuthClientMetadata {
