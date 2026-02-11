@@ -22,6 +22,8 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -220,6 +222,16 @@ export default function Strategize({ isActive }: StrategizeProps) {
     e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
   };
 
+  const handleCopyMessage = async (content: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-dark-bg">
       {/* Header */}
@@ -334,24 +346,53 @@ export default function Strategize({ isActive }: StrategizeProps) {
                       </div>
                     ) : (
                       <div
-                        className={`px-3 py-2 rounded-2xl transition-all ${
-                          msg.role === 'user'
-                            ? 'bg-dark-accent-primary text-white rounded-br-sm'
-                            : 'bg-dark-surface text-white rounded-bl-sm border border-dark-border'
-                        }`}
+                        className="relative group"
+                        onMouseEnter={() => setHoveredMessageId(msg.id)}
+                        onMouseLeave={() => setHoveredMessageId(null)}
                       >
-                        <div className={`text-xs leading-relaxed ${shouldExpand ? '' : 'truncate'} markdown-content`}>
-                          {shouldExpand ? (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {msg.content}
-                            </ReactMarkdown>
-                          ) : (
-                            msg.content
-                          )}
+                        <div
+                          className={`px-3 py-2 rounded-2xl transition-all ${
+                            msg.role === 'user'
+                              ? 'bg-dark-accent-primary text-white rounded-br-sm'
+                              : 'bg-dark-surface text-white rounded-bl-sm border border-dark-border'
+                          }`}
+                        >
+                          <div className={`text-xs leading-relaxed ${shouldExpand ? '' : 'truncate'} markdown-content`}>
+                            {shouldExpand ? (
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.content}
+                              </ReactMarkdown>
+                            ) : (
+                              msg.content
+                            )}
+                          </div>
+                          <div className={`text-[9px] mt-1 opacity-60`}>
+                            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
                         </div>
-                        <div className={`text-[9px] mt-1 opacity-60`}>
-                          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+
+                        {/* Copy button - only show for assistant messages */}
+                        {msg.role === 'assistant' && (
+                          <button
+                            onClick={() => handleCopyMessage(msg.content, msg.id)}
+                            className={`absolute -top-2 -right-2 p-1.5 bg-dark-surface border border-dark-border rounded-md
+                                      hover:bg-dark-bg transition-all ${
+                                        hoveredMessageId === msg.id ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                                      }`}
+                            title="Copy message"
+                          >
+                            {copiedMessageId === msg.id ? (
+                              <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3 h-3 text-dark-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -363,12 +404,39 @@ export default function Strategize({ isActive }: StrategizeProps) {
             {isTyping && streamingContent && (
               <div className="flex justify-start">
                 <div className="max-w-[75%]">
-                  <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-dark-surface border border-dark-border">
-                    <div className="text-xs leading-relaxed text-white markdown-content">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {streamingContent}
-                      </ReactMarkdown>
+                  <div
+                    className="relative group"
+                    onMouseEnter={() => setHoveredMessageId('streaming')}
+                    onMouseLeave={() => setHoveredMessageId(null)}
+                  >
+                    <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-dark-surface border border-dark-border">
+                      <div className="text-xs leading-relaxed text-white markdown-content">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {streamingContent}
+                        </ReactMarkdown>
+                      </div>
                     </div>
+
+                    {/* Copy button for streaming message */}
+                    <button
+                      onClick={() => handleCopyMessage(streamingContent, 'streaming')}
+                      className={`absolute -top-2 -right-2 p-1.5 bg-dark-surface border border-dark-border rounded-md
+                                hover:bg-dark-bg transition-all ${
+                                  hoveredMessageId === 'streaming' ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                                }`}
+                      title="Copy message"
+                    >
+                      {copiedMessageId === 'streaming' ? (
+                        <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3 h-3 text-dark-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>

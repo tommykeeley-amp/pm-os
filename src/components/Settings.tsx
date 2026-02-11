@@ -360,6 +360,25 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       // Update settings immediately
       await handleChange('mcpServers', updatedMCPServers);
       console.log(`[Settings] MCP ${mcpProvider} ${enable ? 'enabled' : 'disabled'} in settings`);
+
+      // If enabling, register with Claude Code CLI
+      if (enable) {
+        const urlOrCommand = config.url || config.command || '';
+        const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand);
+
+        if (!result.success) {
+          console.error(`[Settings] Failed to register MCP with Claude CLI:`, result.error);
+          setConnectionError({
+            provider: mcpProvider,
+            error: result.error || 'Failed to register with Claude Code CLI'
+          });
+          // Revert settings
+          await handleChange('mcpServers', mcpServers);
+          return;
+        }
+
+        console.log(`[Settings] Successfully registered ${config.name} with Claude Code CLI`);
+      }
     } catch (error: any) {
       console.error(`[Settings] Exception ${enable ? 'enabling' : 'disabling'} MCP ${mcpProvider}:`, error);
       if (enable) {

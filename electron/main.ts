@@ -2748,10 +2748,15 @@ ipcMain.handle('strategize-send', async (_event, message: string) => {
     // Handle stdout - stream character by character for typewriter effect
     let charQueue: string[] = [];
     let isStreaming = false;
+    let processCompleted = false;
 
     const streamNextChar = () => {
       if (charQueue.length === 0) {
         isStreaming = false;
+        // If process is done and queue is empty, NOW send complete event
+        if (processCompleted && mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('strategize-complete');
+        }
         return;
       }
 
@@ -2789,9 +2794,13 @@ ipcMain.handle('strategize-send', async (_event, message: string) => {
     proc.on('exit', (code: number) => {
       console.log('[Claude] Process exited with code:', code);
       logStream.write(`[Claude] Process exited with code: ${code}\n`);
-      if (mainWindow && mainWindow.webContents) {
+      processCompleted = true;
+
+      // Only send complete if queue is already empty and not streaming
+      if (charQueue.length === 0 && !isStreaming && mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send('strategize-complete');
       }
+      // Otherwise, streamNextChar will send it when queue empties
     });
 
     // Handle spawn errors
@@ -2941,11 +2950,11 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
     // Build command based on transport type
     let args: string[];
     if (type === 'http') {
-      // For HTTP/SSE: claude mcp add --transport http <name> <url>
-      args = ['mcp', 'add', '--transport', 'http', name, urlOrCommand];
+      // For HTTP/SSE: claude mcp add --transport http --scope user <name> <url>
+      args = ['mcp', 'add', '--transport', 'http', '--scope', 'user', name, urlOrCommand];
     } else {
-      // For stdio: claude mcp add --transport stdio --command <command> <name>
-      args = ['mcp', 'add', '--transport', 'stdio', '--command', urlOrCommand, name];
+      // For stdio: claude mcp add --transport stdio --scope user --command <command> <name>
+      args = ['mcp', 'add', '--transport', 'stdio', '--scope', 'user', '--command', urlOrCommand, name];
     }
 
     console.log('[MCP] Running command:', claudePath, args.join(' '));
