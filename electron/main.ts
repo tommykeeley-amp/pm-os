@@ -15,12 +15,6 @@ import { JiraService } from '../src/services/jira';
 import { ConfluenceService } from '../src/services/confluence';
 import { SlackEventsServer } from './slack-events';
 import { SlackDigestService } from './slack-digest-service';
-import OpenAI from 'openai';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { OAuthClientProvider, OAuthTokens, OAuthClientMetadata, OAuthClientInformationMixed } from '@modelcontextprotocol/sdk/client/auth.js';
-
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +81,75 @@ const WINDOW_HEIGHT = 600;
 // Claude Code session management
 let claudeProcess: any = null;
 
+// MCP OAuth callback server
+let oauthCallbackServer: http.Server | null = null;
+const OAUTH_CALLBACK_PORT = 3000; // Standard OAuth redirect port
+
+function startOAuthCallbackServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (oauthCallbackServer) {
+      resolve();
+      return;
+    }
+
+    oauthCallbackServer = http.createServer((req, res) => {
+      const url = new URL(req.url || '', `http://localhost:${OAUTH_CALLBACK_PORT}`);
+
+      if (url.pathname.startsWith('/oauth/callback/')) {
+        const serverName = url.pathname.split('/')[3];
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+
+        console.log(`[OAuth Server] Received callback for ${serverName}`);
+
+        // Send success page
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Authorization Successful</title></head>
+          <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+            <h1 style="color: #4CAF50;">✓ Authorization Successful!</h1>
+            <p>You can close this window and return to PM-OS.</p>
+            <script>window.close();</script>
+          </body>
+          </html>
+        `);
+
+        // Notify main process
+        if (code && mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('mcp-oauth-callback', { serverName, code, state });
+        }
+
+        // Store for later use
+        store.set(`mcpOAuth.${serverName}.authCode`, code);
+        store.set(`mcpOAuth.${serverName}.authState`, state);
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+
+    oauthCallbackServer.listen(OAUTH_CALLBACK_PORT, 'localhost', () => {
+      console.log(`[OAuth Server] Listening on http://localhost:${OAUTH_CALLBACK_PORT}`);
+      resolve();
+    });
+
+    oauthCallbackServer.on('error', (err) => {
+      console.error('[OAuth Server] Failed to start:', err);
+      reject(err);
+    });
+  });
+}
+
+function stopOAuthCallbackServer(): void {
+  if (oauthCallbackServer) {
+    oauthCallbackServer.close();
+    oauthCallbackServer = null;
+    console.log('[OAuth Server] Stopped');
+  }
+}
+
 // MCP OAuth Provider Implementation
 class MCPOAuthProvider implements OAuthClientProvider {
   private serverName: string;
@@ -97,19 +160,13 @@ class MCPOAuthProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string {
-    // Use existing whitelisted Vercel URL with MCP provider as query param
-    return `https://pm-os.vercel.app/oauth-callback?mcp=${this.serverName}`;
+    // Use localhost for Amplitude's default OAuth app
+    return `http://localhost:${OAUTH_CALLBACK_PORT}/oauth/callback/${this.serverName}`;
   }
 
-  get clientMetadata(): OAuthClientMetadata {
-    return {
-      client_name: 'PM-OS',
-      client_uri: 'https://github.com/tommykeeley-amp/pm-os',
-      redirect_uris: [this.redirectUrl],
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'none', // PKCE only
-    };
+  get clientMetadata(): OAuthClientMetadata | undefined {
+    // Return undefined - let MCP server provide its own OAuth configuration
+    return undefined;
   }
 
   clientInformation(): OAuthClientInformationMixed | undefined {
@@ -682,6 +739,13 @@ Be concise and helpful. When answering, prioritize information from the document
     }];
 
     console.log('[Strategize] Session started with OpenAI and local file context');
+
+    // Start OAuth callback server for MCP authentication
+    try {
+      await startOAuthCallbackServer();
+    } catch (error) {
+      console.error('[Strategize] Failed to start OAuth server:', error);
+    }
 
     // Load enabled MCP servers (userSettings already loaded above)
     if (userSettings.mcpServers) {
@@ -2614,34 +2678,125 @@ ipcMain.handle('confluence-get-page', async (_event, pageId: string) => {
   return await confluenceService.getPage(pageId);
 });
 
-// Strategize (OpenAI) IPC Handlers
+// Strategize (Claude Code CLI) IPC Handlers
 ipcMain.handle('strategize-start', async (_event, folderPath: string) => {
   console.log('[IPC] strategize-start called with folder:', folderPath);
-  return await startStrategizeSession(folderPath);
+
+  if (claudeProcess) {
+    claudeProcess.kill();
+    claudeProcess = null;
+  }
+
+  try {
+    // Just store the folder path - we'll spawn a process for each message
+    store.set('strategizeFolderPath', folderPath);
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to start:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('strategize-send', async (_event, message: string) => {
-  console.log('[IPC] strategize-send called');
-  return await sendStrategizeMessage(message);
+  console.log('[IPC] strategize-send called with message:', message);
+
+  try {
+    const folderPath = store.get('strategizeFolderPath') as string;
+    if (!folderPath) {
+      return { success: false, error: 'No folder path set' };
+    }
+
+    // Build Claude CLI args
+    const args = [
+      '--print',                           // Non-interactive mode
+      '--dangerously-skip-permissions',    // Auto-accept permissions
+      message                              // The actual prompt
+    ];
+
+    // Spawn Claude process
+    console.log('[Claude] Spawning with args:', args);
+    const proc = spawn('/Users/tommykeeley/.local/bin/claude', args, {
+      cwd: folderPath,
+      env: { ...process.env }
+    });
+
+    // Close stdin immediately - we're not sending more input
+    proc.stdin.end();
+
+    // Handle stdout - plain text response
+    proc.stdout.on('data', (data: Buffer) => {
+      const text = data.toString();
+      console.log('[Claude] Output:', text.substring(0, 200));
+
+      // Send text directly to UI
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('strategize-stream', text);
+      }
+    });
+
+    // Handle stderr
+    proc.stderr.on('data', (data: Buffer) => {
+      const errMsg = data.toString();
+      console.error('[Claude] Stderr:', errMsg);
+      logStream.write(`ERROR: [Claude] Stderr: ${errMsg}\n`);
+    });
+
+    // Handle process exit
+    proc.on('exit', (code: number) => {
+      console.log('[Claude] Process exited with code:', code);
+      logStream.write(`[Claude] Process exited with code: ${code}\n`);
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('strategize-complete');
+      }
+    });
+
+    // Handle spawn errors
+    proc.on('error', (err: Error) => {
+      console.error('[Claude] Spawn error:', err);
+      logStream.write(`ERROR: [Claude] Spawn error: ${err.message}\n`);
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to send:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('strategize-stop', async () => {
   console.log('[IPC] strategize-stop called');
-  strategizeChatHistory = [];
-  await disconnectMCPServers();
+  // Nothing to stop - processes are one-shot
   return { success: true };
 });
 
 ipcMain.handle('strategize-reset', async () => {
   console.log('[IPC] strategize-reset called - starting new chat');
-  // Keep the system prompt (first message) but clear the rest
-  if (strategizeChatHistory.length > 0) {
-    const systemPrompt = strategizeChatHistory[0];
-    strategizeChatHistory = [systemPrompt];
-  } else {
-    strategizeChatHistory = [];
+
+  try {
+    const folderPath = store.get('strategizeFolderPath') as string;
+    if (!folderPath) {
+      return { success: false, error: 'No folder path set' };
+    }
+
+    // Run Claude with /clear command to reset conversation
+    const proc = spawn('/Users/tommykeeley/.local/bin/claude', [
+      '--print',
+      '--dangerously-skip-permissions',
+      '/clear'
+    ], {
+      cwd: folderPath,
+      env: { ...process.env }
+    });
+
+    proc.on('exit', () => {
+      console.log('[Claude] Conversation cleared');
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to reset:', error);
+    return { success: false, error: error.message };
   }
-  return { success: true };
 });
 
 // MCP OAuth completion handler

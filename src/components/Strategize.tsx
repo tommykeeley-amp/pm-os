@@ -137,11 +137,11 @@ export default function Strategize({ isActive }: StrategizeProps) {
         setChatMessages([{
           id: `sys-${Date.now()}`,
           role: 'system',
-          content: `Connected • Using OpenAI to chat about ${folderPath.split('/').pop()}`,
+          content: `Connected • Using Claude Code to chat about ${folderPath.split('/').pop()}`,
           timestamp: new Date(),
         }]);
       } else {
-        alert(`Failed to start chat:\\n\\n${result.error}\\n\\nMake sure you have OPENAI_API_KEY in your .env file`);
+        alert(`Failed to start chat:\\n\\n${result.error}\\n\\nMake sure Claude Code is installed`);
       }
     } catch (error: any) {
       alert(`Error starting chat:\\n\\n${error.message}`);
@@ -308,12 +308,12 @@ export default function Strategize({ isActive }: StrategizeProps) {
             </div>
             <h3 className="text-lg font-semibold text-dark-text-primary mb-2">AI Chat Workspace</h3>
             <p className="text-sm text-dark-text-muted max-w-md mb-4">
-              Connect to start a conversation powered by OpenAI
+              Connect to start a conversation powered by Claude Code
             </p>
             <div className="text-xs text-dark-text-muted/70 space-y-1">
               <p>💬 Real conversational AI</p>
               <p>⚡ Streaming responses</p>
-              <p>🔑 Uses your OpenAI API key</p>
+              <p>🔧 MCP tool support</p>
             </div>
           </div>
         ) : (
