@@ -87,6 +87,75 @@ const WINDOW_HEIGHT = 600;
 // Claude Code session management
 let claudeProcess: any = null;
 
+// Temporary OAuth callback server
+let oauthCallbackServer: http.Server | null = null;
+const OAUTH_CALLBACK_PORT = 3939;
+
+function startOAuthCallbackServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (oauthCallbackServer) {
+      resolve();
+      return;
+    }
+
+    oauthCallbackServer = http.createServer((req, res) => {
+      const url = new URL(req.url || '', `http://localhost:${OAUTH_CALLBACK_PORT}`);
+
+      if (url.pathname.startsWith('/oauth/callback/')) {
+        const serverName = url.pathname.split('/')[3];
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+
+        console.log(`[OAuth Server] Received callback for ${serverName}`);
+
+        // Send success page
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Authorization Successful</title></head>
+          <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+            <h1 style="color: #4CAF50;">✓ Authorization Successful!</h1>
+            <p>You can close this window and return to PM-OS.</p>
+            <script>window.close();</script>
+          </body>
+          </html>
+        `);
+
+        // Notify main process
+        if (code && mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('mcp-oauth-callback', { serverName, code, state });
+        }
+
+        // Store for later use
+        store.set(`mcpOAuth.${serverName}.authCode`, code);
+        store.set(`mcpOAuth.${serverName}.authState`, state);
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+
+    oauthCallbackServer.listen(OAUTH_CALLBACK_PORT, 'localhost', () => {
+      console.log(`[OAuth Server] Listening on http://localhost:${OAUTH_CALLBACK_PORT}`);
+      resolve();
+    });
+
+    oauthCallbackServer.on('error', (err) => {
+      console.error('[OAuth Server] Failed to start:', err);
+      reject(err);
+    });
+  });
+}
+
+function stopOAuthCallbackServer(): void {
+  if (oauthCallbackServer) {
+    oauthCallbackServer.close();
+    oauthCallbackServer = null;
+    console.log('[OAuth Server] Stopped');
+  }
+}
+
 // MCP OAuth Provider Implementation
 class MCPOAuthProvider implements OAuthClientProvider {
   private serverName: string;
@@ -97,7 +166,7 @@ class MCPOAuthProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string {
-    return `pmos://oauth/callback/${this.serverName}`;
+    return `http://localhost:${OAUTH_CALLBACK_PORT}/oauth/callback/${this.serverName}`;
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -681,6 +750,13 @@ Be concise and helpful. When answering, prioritize information from the document
     }];
 
     console.log('[Strategize] Session started with OpenAI and local file context');
+
+    // Start OAuth callback server for MCP authentication
+    try {
+      await startOAuthCallbackServer();
+    } catch (error) {
+      console.error('[Strategize] Failed to start OAuth server:', error);
+    }
 
     // Load enabled MCP servers (userSettings already loaded above)
     if (userSettings.mcpServers) {
@@ -2628,6 +2704,7 @@ ipcMain.handle('strategize-stop', async () => {
   console.log('[IPC] strategize-stop called');
   strategizeChatHistory = [];
   await disconnectMCPServers();
+  stopOAuthCallbackServer();
   return { success: true };
 });
 
