@@ -2991,38 +2991,8 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
         if (errorOutput) console.error(`[MCP] stderr: ${errorOutput}`);
 
         if (code === 0) {
-          console.log(`[MCP] Successfully added ${name}, now triggering auth flow...`);
-
-          // Trigger OAuth authentication for HTTP MCP servers
-          if (type === 'http') {
-            const authProcess = spawn(claudePath, ['mcp', 'auth', name], {
-              cwd: strategizeFolderPath,
-              env: { ...process.env }
-            });
-
-            let authOutput = '';
-            let authError = '';
-
-            authProcess.stdout?.on('data', (data: Buffer) => {
-              authOutput += data.toString();
-              console.log(`[MCP Auth] ${data.toString()}`);
-            });
-
-            authProcess.stderr?.on('data', (data: Buffer) => {
-              authError += data.toString();
-              console.error(`[MCP Auth] ${data.toString()}`);
-            });
-
-            authProcess.on('exit', (authCode: number | null) => {
-              console.log(`[MCP] claude mcp auth exited with code ${authCode}`);
-              if (authCode === 0) {
-                console.log(`[MCP] ${name} authentication flow started successfully`);
-              } else {
-                console.warn(`[MCP] ${name} auth may have failed: ${authError || authOutput}`);
-              }
-            });
-          }
-
+          console.log(`[MCP] Successfully added ${name}`);
+          console.log(`[MCP] Note: HTTP MCPs will prompt for OAuth when first used`);
           resolve({ success: true });
         } else {
           resolve({
