@@ -2846,8 +2846,60 @@ ipcMain.handle('strategize-send', async (_event, message: string, conversationHi
       }
     }
 
-    // Note: MCP servers are loaded from Claude Code's global configuration
-    // No need to inject MCP context - Claude will automatically have access to authenticated MCPs
+    // Build MCP context to guide Claude on available data sources
+    let mcpGuidance = '\n\n## Available Data Sources\n\nYou have access to the following data sources through MCP (Model Context Protocol) servers:\n\n';
+
+    // Check which MCPs are enabled and authenticated
+    if (userSettings.mcpServers) {
+      const mcpList: string[] = [];
+
+      if (userSettings.mcpServers.amplitude?.enabled) {
+        mcpList.push('- **Amplitude MCP**: Query analytics data, WAU/MAU/DAU metrics, user events, charts, cohorts, and experiments');
+      }
+      if (userSettings.mcpServers.granola?.enabled) {
+        mcpList.push('- **Granola MCP**: Access meeting notes, transcripts, action items, and meeting summaries');
+      }
+      if (userSettings.mcpServers.clockwise?.enabled) {
+        mcpList.push('- **Clockwise MCP**: Check calendar, schedule meetings, find availability, and manage calendar events');
+      }
+      if (userSettings.mcpServers.atlassian?.enabled) {
+        mcpList.push('- **Atlassian MCP**: Access Jira issues/tickets, Confluence pages, and Compass service components');
+      }
+
+      if (mcpList.length > 0) {
+        mcpGuidance += mcpList.join('\n') + '\n\n';
+        mcpGuidance += '**IMPORTANT**: When the user asks questions about:\n';
+        mcpGuidance += '- Analytics, metrics, events, or users → Use Amplitude MCP tools\n';
+        mcpGuidance += '- Meetings, notes, or action items → Use Granola MCP tools\n';
+        mcpGuidance += '- Calendar, schedule, or availability → Use Clockwise MCP tools\n';
+        mcpGuidance += '- Jira tickets, Confluence docs, or Compass services → Use Atlassian MCP tools\n';
+        mcpGuidance += '\nProactively search and use these tools when relevant to the user\'s question.\n';
+
+        systemPrompt += mcpGuidance;
+      }
+    }
+
+    // Add PM-OS Tasks context
+    try {
+      const tasks = store.get('tasks', []) as any[];
+      if (tasks && tasks.length > 0) {
+        const incompleteTasks = tasks.filter(t => !t.completed);
+        if (incompleteTasks.length > 0) {
+          systemPrompt += '\n\n## PM-OS Tasks\n\nThe user has the following tasks in their PM-OS task list:\n\n';
+          incompleteTasks.forEach((task: any) => {
+            const priority = task.priority || 'medium';
+            const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date';
+            systemPrompt += `- [${priority}] ${task.title}`;
+            if (task.dueDate) systemPrompt += ` (Due: ${dueDate})`;
+            if (task.description) systemPrompt += `\n  ${task.description}`;
+            systemPrompt += '\n';
+          });
+          systemPrompt += '\n**When asked about priorities or what to focus on, consider these tasks.**\n';
+        }
+      }
+    } catch (error) {
+      console.error('[Claude] Could not load tasks:', error);
+    }
 
     // Build Claude CLI args
     const args = [

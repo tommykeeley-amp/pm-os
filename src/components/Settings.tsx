@@ -353,7 +353,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
-  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise', enable: boolean) => {
+  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'atlassian', enable: boolean) => {
     console.log(`[Settings] ${enable ? 'Enabling' : 'Disabling'} MCP provider: ${mcpProvider}`);
 
     // Different MCPs have different setup methods
@@ -373,6 +373,11 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         name: 'Clockwise',
         type: 'http',
         url: 'https://mcp.getclockwise.com/mcp',
+      },
+      atlassian: {
+        name: 'Atlassian',
+        type: 'http',
+        url: 'https://mcp.atlassian.com/v1/mcp',
       },
     };
 
@@ -1511,6 +1516,72 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                           </svg>
                           <span>Enabled - Will connect when you start Strategize (HTTP transport not yet supported)</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Atlassian MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V9h7V2.99c3.72 1.15 6.47 4.82 7 8.94h-7v1.06z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-dark-text-primary">Atlassian</div>
+                          <div className="text-xs text-dark-text-muted">Jira, Confluence, and Compass</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const isCurrentlyEnabled = settings.mcpServers?.atlassian?.enabled;
+                          handleMCPToggle('atlassian', !isCurrentlyEnabled);
+                        }}
+                        disabled={connectingMCP === 'atlassian'}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.atlassian?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        } ${connectingMCP === 'atlassian' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.atlassian?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {connectingMCP === 'atlassian' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                          <svg className="animate-spin h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Enabling MCP server...</span>
+                        </div>
+                      </div>
+                    )}
+                    {settings.mcpServers?.atlassian?.enabled && connectingMCP !== 'atlassian' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span>Enabled - Will connect when you start Strategize</span>
+                        </div>
+                      </div>
+                    )}
+                    {connectionError?.provider === 'atlassian' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded">
+                          <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span>{connectionError.error}</span>
                         </div>
                       </div>
                     )}
