@@ -173,6 +173,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('task-created', handler);
     return () => ipcRenderer.removeListener('task-created', handler);
   },
+  onMCPOAuthCallback: (callback: (data: { serverName: string; code: string; state?: string }) => void) => {
+    const handler = (_event: any, data: { serverName: string; code: string; state?: string }) => callback(data);
+    ipcRenderer.on('mcp-oauth-callback', handler);
+    return () => ipcRenderer.removeListener('mcp-oauth-callback', handler);
+  },
+  mcpOAuthComplete: (serverName: string) =>
+    ipcRenderer.invoke('mcp-oauth-complete', serverName),
 });
 
 // Type definitions for TypeScript
@@ -255,6 +262,8 @@ export interface ElectronAPI {
   onOAuthError: (callback: (data: { error: string }) => void) => () => void;
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'strategize' | 'chats') => void) => () => void;
   onTaskCreated: (callback: (task: any) => void) => () => void;
+  onMCPOAuthCallback: (callback: (data: { serverName: string; code: string; state?: string }) => void) => () => void;
+  mcpOAuthComplete: (serverName: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

@@ -19,6 +19,7 @@ import OpenAI from 'openai';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { OAuthClientProvider, OAuthTokens, OAuthClientMetadata, OAuthClientInformationMixed } from '@modelcontextprotocol/sdk/client/auth.js';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -85,6 +86,69 @@ const WINDOW_HEIGHT = 600;
 
 // Claude Code session management
 let claudeProcess: any = null;
+
+// MCP OAuth Provider Implementation
+class MCPOAuthProvider implements OAuthClientProvider {
+  private serverName: string;
+  private _codeVerifier?: string;
+
+  constructor(serverName: string) {
+    this.serverName = serverName;
+  }
+
+  get redirectUrl(): string {
+    return `pmos://oauth/callback/${this.serverName}`;
+  }
+
+  get clientMetadata(): OAuthClientMetadata {
+    return {
+      client_name: 'PM-OS',
+      client_uri: 'https://github.com/tommykeeley-amp/pm-os',
+      redirect_uris: [this.redirectUrl],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none', // PKCE only
+    };
+  }
+
+  clientInformation(): OAuthClientInformationMixed | undefined {
+    const stored = store.get(`mcpOAuth.${this.serverName}.clientInfo`) as OAuthClientInformationMixed | undefined;
+    return stored;
+  }
+
+  saveClientInformation(clientInfo: OAuthClientInformationMixed): void {
+    store.set(`mcpOAuth.${this.serverName}.clientInfo`, clientInfo);
+    console.log(`[MCP OAuth] Saved client info for ${this.serverName}`);
+  }
+
+  tokens(): OAuthTokens | undefined {
+    const stored = store.get(`mcpOAuth.${this.serverName}.tokens`) as OAuthTokens | undefined;
+    return stored;
+  }
+
+  saveTokens(tokens: OAuthTokens): void {
+    store.set(`mcpOAuth.${this.serverName}.tokens`, tokens);
+    console.log(`[MCP OAuth] Saved tokens for ${this.serverName}`);
+  }
+
+  redirectToAuthorization(authUrl: URL): void {
+    console.log(`[MCP OAuth] Opening authorization URL for ${this.serverName}:`, authUrl.toString());
+    shell.openExternal(authUrl.toString());
+  }
+
+  saveCodeVerifier(verifier: string): void {
+    this._codeVerifier = verifier;
+    store.set(`mcpOAuth.${this.serverName}.codeVerifier`, verifier);
+  }
+
+  codeVerifier(): string {
+    if (this._codeVerifier) return this._codeVerifier;
+    const stored = store.get(`mcpOAuth.${this.serverName}.codeVerifier`) as string;
+    if (!stored) throw new Error('Code verifier not found');
+    this._codeVerifier = stored;
+    return stored;
+  }
+}
 
 // Initialize integration manager
 const integrationManager = new IntegrationManager(
@@ -684,29 +748,44 @@ async function connectMCPServerStdio(name: string, command: string, args: string
 async function connectMCPServerSSE(name: string, url: string): Promise<void> {
   console.log(`[MCP] Connecting to ${name} (SSE) at: ${url}`);
 
-  const transport = new SSEClientTransport(new URL(url));
+  try {
+    // Create OAuth provider for this server
+    const authProvider = new MCPOAuthProvider(name);
 
-  const client = new Client({
-    name: 'pm-os-strategize',
-    version: '1.0.0',
-  }, {
-    capabilities: {},
-  });
+    // Create transport with OAuth support
+    const transport = new SSEClientTransport(new URL(url), {
+      authProvider,
+    });
 
-  await client.connect(transport);
+    const client = new Client({
+      name: 'pm-os-strategize',
+      version: '1.0.0',
+    }, {
+      capabilities: {},
+    });
 
-  // List available tools
-  const toolsResult = await client.listTools();
-  const tools = toolsResult.tools;
+    // Connect - this will trigger OAuth if needed
+    await client.connect(transport);
 
-  console.log(`[MCP] ${name} provides ${tools.length} tools:`, tools.map(t => t.name).join(', '));
+    // List available tools
+    const toolsResult = await client.listTools();
+    const tools = toolsResult.tools;
 
-  mcpClients.set(name, {
-    name,
-    client,
-    transport,
-    tools,
-  });
+    console.log(`[MCP] ${name} provides ${tools.length} tools:`, tools.map(t => t.name).join(', '));
+
+    mcpClients.set(name, {
+      name,
+      client,
+      transport,
+      tools,
+    });
+  } catch (error: any) {
+    if (error.message?.includes('Unauthorized') || error.code === 'UNAUTHORIZED') {
+      console.log(`[MCP] ${name} requires OAuth - user should complete authentication in browser`);
+      throw new Error(`OAuth required for ${name}. Please complete authentication in your browser.`);
+    }
+    throw error;
+  }
 }
 
 async function disconnectMCPServers(): Promise<void> {
@@ -1325,6 +1404,42 @@ function startExtensionSyncServer() {
 
   return server;
 }
+
+// Register custom protocol for MCP OAuth redirects
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('pmos', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('pmos');
+}
+
+// Handle MCP OAuth redirects
+app.on('open-url', async (event, url) => {
+  event.preventDefault();
+  console.log('[MCP OAuth] Received redirect:', url);
+
+  // Parse the OAuth callback URL
+  const urlObj = new URL(url);
+  if (urlObj.protocol === 'pmos:' && urlObj.pathname.startsWith('//oauth/callback/')) {
+    const serverName = urlObj.pathname.split('/')[3];
+    const code = urlObj.searchParams.get('code');
+    const state = urlObj.searchParams.get('state');
+
+    console.log(`[MCP OAuth] Callback for ${serverName}, code: ${code?.substring(0, 10)}...`);
+
+    if (code && serverName) {
+      // Notify renderer about OAuth completion
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('mcp-oauth-callback', { serverName, code, state });
+      }
+
+      // Store for later use when finishing auth
+      store.set(`mcpOAuth.${serverName}.authCode`, code);
+      store.set(`mcpOAuth.${serverName}.authState`, state);
+    }
+  }
+});
 
 app.whenReady().then(async () => {
   app.setName('PM OS');
@@ -2526,6 +2641,27 @@ ipcMain.handle('strategize-reset', async () => {
     strategizeChatHistory = [];
   }
   return { success: true };
+});
+
+// MCP OAuth completion handler
+ipcMain.handle('mcp-oauth-complete', async (_event, serverName: string) => {
+  console.log(`[IPC] mcp-oauth-complete called for ${serverName}`);
+
+  try {
+    const authCode = store.get(`mcpOAuth.${serverName}.authCode`) as string;
+    if (!authCode) {
+      return { success: false, error: 'No authorization code found' };
+    }
+
+    // The SSEClientTransport will handle the token exchange automatically
+    // when we try to reconnect. Just notify the frontend that OAuth is ready.
+    console.log(`[MCP OAuth] Authorization code received for ${serverName}`);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[MCP OAuth] Failed to complete OAuth for ${serverName}:`, error);
+    return { success: false, error: error.message };
+  }
 });
 
 // Claude Code IPC Handlers (keep for backward compatibility)

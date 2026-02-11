@@ -89,6 +89,39 @@ export default function Strategize({ isActive }: StrategizeProps) {
     };
   }, [streamingContent]);
 
+  // Listen for MCP OAuth callbacks
+  useEffect(() => {
+    const cleanup = window.electronAPI.onMCPOAuthCallback(async (data) => {
+      console.log(`[Strategize] Received OAuth callback for ${data.serverName}`);
+
+      // Add system message
+      setChatMessages(prev => [...prev, {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        content: `OAuth completed for ${data.serverName}. Reconnecting...`,
+        timestamp: new Date(),
+      }]);
+
+      // Complete OAuth and reconnect
+      await window.electronAPI.mcpOAuthComplete(data.serverName);
+
+      // Reconnect to strategize
+      if (isConnected && folderPath) {
+        await window.electronAPI.strategizeStop();
+        await window.electronAPI.strategizeStart(folderPath);
+
+        setChatMessages(prev => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: 'system',
+          content: `${data.serverName} connected successfully!`,
+          timestamp: new Date(),
+        }]);
+      }
+    });
+
+    return cleanup;
+  }, [isConnected, folderPath]);
+
   const handleConnect = async () => {
     if (!folderPath) {
       alert('Please set a folder path first!\\n\\nGo to Settings → Customizations → Strategize Configuration');
