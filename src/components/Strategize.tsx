@@ -24,15 +24,18 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const [streamingContent, setStreamingContent] = useState('');
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const hasAutoConnected = useRef(false);
 
   // Load folder path and MCP settings
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const settings = await window.electronAPI.getUserSettings();
-        setFolderPath(settings?.strategizeFolderPath || '');
+        const path = settings?.strategizeFolderPath || '';
+        setFolderPath(path);
 
         const enabled: string[] = [];
         if (settings?.mcpServers) {
@@ -49,6 +52,15 @@ export default function Strategize({ isActive }: StrategizeProps) {
     };
     loadSettings();
   }, []);
+
+  // Auto-connect when tab becomes active
+  useEffect(() => {
+    if (isActive && folderPath && !isConnected && !hasAutoConnected.current) {
+      console.log('[Strategize] Auto-connecting on tab activation...');
+      hasAutoConnected.current = true;
+      handleConnect();
+    }
+  }, [isActive, folderPath, isConnected]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -74,12 +86,15 @@ export default function Strategize({ isActive }: StrategizeProps) {
     const cleanupComplete = window.electronAPI.onStrategizeComplete(() => {
       // Add completed message to chat
       if (streamingContent) {
+        const newMessageId = `msg-${Date.now()}`;
         setChatMessages(prev => [...prev, {
-          id: `msg-${Date.now()}`,
+          id: newMessageId,
           role: 'assistant',
           content: streamingContent,
           timestamp: new Date(),
         }]);
+        // Auto-expand new assistant message
+        setExpandedMessages(prev => new Set(prev).add(newMessageId));
       }
       setStreamingContent('');
       setIsTyping(false);
@@ -236,10 +251,17 @@ export default function Strategize({ isActive }: StrategizeProps) {
       inputRef.current.style.height = 'auto';
     }
 
-    // Send to OpenAI
+    // Send to Claude with conversation history
     setIsTyping(true);
     setStreamingContent('');
-    await window.electronAPI.strategizeSend(message);
+
+    // Convert chat messages to history format
+    const conversationHistory = chatMessages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
+    await window.electronAPI.strategizeSend(message, conversationHistory);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -264,6 +286,18 @@ export default function Strategize({ isActive }: StrategizeProps) {
     } catch (error) {
       console.error('Failed to copy:', error);
     }
+  };
+
+  const toggleMessageExpansion = (messageId: string) => {
+    setExpandedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
   };
 
   return (
@@ -364,9 +398,8 @@ export default function Strategize({ isActive }: StrategizeProps) {
           </div>
         ) : (
           <>
-            {chatMessages.map((msg, index) => {
-              const isLastMessage = index === chatMessages.length - 1;
-              const shouldExpand = isLastMessage;
+            {chatMessages.map((msg) => {
+              const isExpanded = expandedMessages.has(msg.id);
 
               return (
                 <div
@@ -385,22 +418,60 @@ export default function Strategize({ isActive }: StrategizeProps) {
                         onMouseLeave={() => setHoveredMessageId(null)}
                       >
                         <div
-                          className={`px-3 py-2 rounded-2xl transition-all ${
+                          className={`px-3 py-2 rounded-2xl transition-all cursor-pointer ${
                             msg.role === 'user'
                               ? 'bg-dark-accent-primary text-white rounded-br-sm'
                               : 'bg-dark-surface text-white rounded-bl-sm border border-dark-border'
                           }`}
+                          onClick={() => toggleMessageExpansion(msg.id)}
                         >
-                          <div className={`text-xs leading-relaxed ${shouldExpand ? '' : 'truncate'} markdown-content`}>
-                            {shouldExpand ? (
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {msg.content}
-                              </ReactMarkdown>
-                            ) : (
-                              msg.content
-                            )}
+                          <div className="flex items-start gap-2">
+                            {/* Expand/Collapse chevron */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleMessageExpansion(msg.id);
+                              }}
+                              className="flex-shrink-0 mt-0.5 hover:opacity-70 transition-opacity"
+                            >
+                              <svg
+                                className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-xs leading-relaxed ${isExpanded ? '' : 'line-clamp-2'} markdown-content`}>
+                                {isExpanded ? (
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      a: ({ node, ...props }) => (
+                                        <a
+                                          {...props}
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            if (props.href) {
+                                              window.electronAPI.openExternal(props.href);
+                                            }
+                                          }}
+                                          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                                        />
+                                      ),
+                                    }}
+                                  >
+                                    {msg.content}
+                                  </ReactMarkdown>
+                                ) : (
+                                  msg.content
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className={`text-[9px] mt-1 opacity-60`}>
+                          <div className={`text-[9px] mt-1 opacity-60 ml-5`}>
                             {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </div>
@@ -445,7 +516,23 @@ export default function Strategize({ isActive }: StrategizeProps) {
                   >
                     <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-dark-surface border border-dark-border">
                       <div className="text-xs leading-relaxed text-white markdown-content">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ node, ...props }) => (
+                              <a
+                                {...props}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (props.href) {
+                                    window.electronAPI.openExternal(props.href);
+                                  }
+                                }}
+                                className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                              />
+                            ),
+                          }}
+                        >
                           {streamingContent}
                         </ReactMarkdown>
                       </div>

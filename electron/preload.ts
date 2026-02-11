@@ -97,10 +97,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('slack-send-reply', channelId, threadTs, text),
 
   // Strategize (OpenAI Chat)
+  strategizeAuthenticateMCP: () =>
+    ipcRenderer.invoke('strategize-authenticate-mcp'),
   strategizeStart: (folderPath: string) =>
     ipcRenderer.invoke('strategize-start', folderPath),
-  strategizeSend: (message: string) =>
-    ipcRenderer.invoke('strategize-send', message),
+  strategizeSend: (message: string, conversationHistory?: Array<{role: string, content: string}>) =>
+    ipcRenderer.invoke('strategize-send', message, conversationHistory),
   strategizeStop: () =>
     ipcRenderer.invoke('strategize-stop'),
   strategizeReset: () =>
@@ -131,6 +133,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('add-mcp-server', name, type, urlOrCommand),
   removeMCPServer: (name: string) =>
     ipcRenderer.invoke('remove-mcp-server', name),
+
+  // MCP Manager
+  startMCPOAuth: (serverName: string) =>
+    ipcRenderer.invoke('start-mcp-oauth', serverName),
+  getMCPAuthStatus: (serverName: string) =>
+    ipcRenderer.invoke('get-mcp-auth-status', serverName),
+  getMCPContext: () =>
+    ipcRenderer.invoke('get-mcp-context'),
+
   strategizeRestart: () =>
     ipcRenderer.invoke('strategize-restart'),
   onClaudeOutput: (callback: (output: string) => void) => {
@@ -188,6 +199,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = () => callback();
     ipcRenderer.on('strategize-restart-required', handler);
     return () => ipcRenderer.removeListener('strategize-restart-required', handler);
+  },
+  onMCPAuthStarted: (callback: (data: { serverName: string; message: string }) => void) => {
+    const handler = (_event: any, data: { serverName: string; message: string }) => callback(data);
+    ipcRenderer.on('mcp-auth-started', handler);
+    return () => ipcRenderer.removeListener('mcp-auth-started', handler);
+  },
+  onMCPAuthProgress: (callback: (data: { serverName: string; status: string; message: string }) => void) => {
+    const handler = (_event: any, data: { serverName: string; status: string; message: string }) => callback(data);
+    ipcRenderer.on('mcp-auth-progress', handler);
+    return () => ipcRenderer.removeListener('mcp-auth-progress', handler);
+  },
+  onMCPAuthComplete: (callback: (data: { serverName: string; success: boolean; message: string }) => void) => {
+    const handler = (_event: any, data: { serverName: string; success: boolean; message: string }) => callback(data);
+    ipcRenderer.on('mcp-auth-complete', handler);
+    return () => ipcRenderer.removeListener('mcp-auth-complete', handler);
   },
 });
 
@@ -250,8 +276,9 @@ export interface ElectronAPI {
   getSlackUsers: () => Promise<Array<{ id: string; name: string; realName?: string; avatar?: string }>>;
   slackGetThreadReplies: (channelId: string, threadTs: string) => Promise<Array<{text: string; user: string; userName: string; timestamp: string}>>;
   slackSendReply: (channelId: string, threadTs: string, text: string) => Promise<{success: boolean}>;
+  strategizeAuthenticateMCP: () => Promise<{ success: boolean; error?: string }>;
   strategizeStart: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
-  strategizeSend: (message: string) => Promise<{ success: boolean; error?: string }>;
+  strategizeSend: (message: string, conversationHistory?: Array<{role: string, content: string}>) => Promise<{ success: boolean; error?: string }>;
   strategizeStop: () => Promise<{ success: boolean }>;
   strategizeReset: () => Promise<{ success: boolean }>;
   onStrategizeStream: (callback: (chunk: string) => void) => () => void;
@@ -263,6 +290,9 @@ export interface ElectronAPI {
   claudeCodeResize: (cols: number, rows: number) => Promise<{ success: boolean; error?: string }>;
   addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) => Promise<{ success: boolean; error?: string }>;
   removeMCPServer: (name: string) => Promise<{ success: boolean; error?: string }>;
+  startMCPOAuth: (serverName: string) => Promise<{ success: boolean; tokens?: any; error?: string }>;
+  getMCPAuthStatus: (serverName: string) => Promise<{ success: boolean; isAuthenticated: boolean; error?: string }>;
+  getMCPContext: () => Promise<{ success: boolean; context?: string; error?: string }>;
   strategizeRestart: () => Promise<{ success: boolean; error?: string }>;
   onClaudeOutput: (callback: (output: string) => void) => () => void;
   onClaudeDisconnected: (callback: (data: { code: number | null; signal: string | null }) => void) => () => void;
@@ -276,6 +306,9 @@ export interface ElectronAPI {
   onMCPOAuthCallback: (callback: (data: { serverName: string; code: string; state?: string }) => void) => () => void;
   mcpOAuthComplete: (serverName: string) => Promise<{ success: boolean; error?: string }>;
   onStrategizeRestartRequired: (callback: () => void) => () => void;
+  onMCPAuthStarted: (callback: (data: { serverName: string; message: string }) => void) => () => void;
+  onMCPAuthProgress: (callback: (data: { serverName: string; status: string; message: string }) => void) => () => void;
+  onMCPAuthComplete: (callback: (data: { serverName: string; success: boolean; message: string }) => void) => () => void;
 }
 
 declare global {

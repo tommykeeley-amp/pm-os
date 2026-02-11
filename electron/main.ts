@@ -15,12 +15,15 @@ import { JiraService } from '../src/services/jira';
 import { ConfluenceService } from '../src/services/confluence';
 import { SlackEventsServer } from './slack-events';
 import { SlackDigestService } from './slack-digest-service';
+import { MCPManager } from './mcp-manager';
+import OpenAI from 'openai';
+
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Set up file logging with safe error handling
-const logFile = '/tmp/pm-os-oauth-debug.log';
+const logFile = '/tmp/pm-os-mcp-debug.log';
 const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
@@ -28,11 +31,19 @@ const originalConsoleError = console.error;
 // Safe logging that won't crash on EPIPE
 const safeLog = (...args: any[]) => {
   try {
-    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
-    logStream.write(`${message}\n`);
-    if (process.env.NODE_ENV === 'development') {
-      originalConsoleLog(...args);
-    }
+    const timestamp = new Date().toISOString();
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch {
+          return String(arg);
+        }
+      }
+      return arg;
+    }).join(' ');
+    logStream.write(`[${timestamp}] ${message}\n`);
+    originalConsoleLog(...args);
   } catch (error) {
     // Silently ignore logging errors to prevent EPIPE crashes
   }
@@ -40,11 +51,19 @@ const safeLog = (...args: any[]) => {
 
 const safeError = (...args: any[]) => {
   try {
-    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
-    logStream.write(`ERROR: ${message}\n`);
-    if (process.env.NODE_ENV === 'development') {
-      originalConsoleError(...args);
-    }
+    const timestamp = new Date().toISOString();
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch {
+          return String(arg);
+        }
+      }
+      return arg;
+    }).join(' ');
+    logStream.write(`[${timestamp}] ERROR: ${message}\n`);
+    originalConsoleError(...args);
   } catch (error) {
     // Silently ignore logging errors to prevent EPIPE crashes
   }
@@ -52,6 +71,12 @@ const safeError = (...args: any[]) => {
 
 console.log = safeLog;
 console.error = safeError;
+
+// Log startup
+console.log('\n\n========== PM-OS STARTING ==========');
+console.log(`Log file: ${logFile}`);
+console.log(`Timestamp: ${new Date().toISOString()}`);
+console.log('=====================================\n');
 
 // Load environment variables - handle both dev and production paths
 const envPath = app.isPackaged
@@ -95,6 +120,7 @@ function startOAuthCallbackServer(): Promise<void> {
     oauthCallbackServer = http.createServer((req, res) => {
       const url = new URL(req.url || '', `http://localhost:${OAUTH_CALLBACK_PORT}`);
 
+      // Handle both old-style (/oauth/callback/) and new MCP Manager style (/mcp/<name>/callback)
       if (url.pathname.startsWith('/oauth/callback/')) {
         const serverName = url.pathname.split('/')[3];
         const code = url.searchParams.get('code');
@@ -124,6 +150,28 @@ function startOAuthCallbackServer(): Promise<void> {
         // Store for later use
         store.set(`mcpOAuth.${serverName}.authCode`, code);
         store.set(`mcpOAuth.${serverName}.authState`, state);
+      } else if (url.pathname.match(/^\/mcp\/[^/]+\/callback$/)) {
+        // Handle MCP Manager OAuth callback (/mcp/<name>/callback)
+        // Note: The actual OAuth window and token exchange is handled by the MCPManager
+        // This just provides a success page for the browser to show
+        console.log(`[OAuth Server] Received MCP Manager callback: ${url.pathname}`);
+
+        // Send success page
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Authorization Successful</title></head>
+          <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+            <h1 style="color: #4CAF50;">✓ Authorization Successful!</h1>
+            <p>Authentication complete! This window will close automatically.</p>
+            <script>
+              // Close window after a short delay
+              setTimeout(() => window.close(), 1000);
+            </script>
+          </body>
+          </html>
+        `);
       } else {
         res.writeHead(404);
         res.end('Not found');
@@ -142,15 +190,21 @@ function startOAuthCallbackServer(): Promise<void> {
   });
 }
 
-function stopOAuthCallbackServer(): void {
+// Disabled: Old OAuth callback server stop function
+// Now using MCPManager for custom OAuth flow
+/*
+function _stopOAuthCallbackServer(): void {
   if (oauthCallbackServer) {
     oauthCallbackServer.close();
     oauthCallbackServer = null;
     console.log('[OAuth Server] Stopped');
   }
 }
+*/
 
-// MCP OAuth Provider Implementation
+// Disabled: Old MCP SDK OAuth Provider
+// Now using custom HTTPMCPClient with MCPManager
+/*
 class MCPOAuthProvider implements OAuthClientProvider {
   private serverName: string;
   private _codeVerifier?: string;
@@ -207,6 +261,7 @@ class MCPOAuthProvider implements OAuthClientProvider {
     return stored;
   }
 }
+*/
 
 // Initialize integration manager
 const integrationManager = new IntegrationManager(
@@ -218,6 +273,9 @@ const integrationManager = new IntegrationManager(
   process.env.ZOOM_CLIENT_SECRET || '',
   process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'
 );
+
+// Initialize MCP manager (will set parent window after mainWindow is created)
+let mcpManager: MCPManager;
 
 // Helper function to get Jira/Confluence credentials from settings or env
 function getJiraCredentials() {
@@ -285,6 +343,9 @@ function createWindow() {
       contextIsolation: true,
     },
   });
+
+  // Initialize MCP manager with mainWindow as parent
+  mcpManager = new MCPManager(store, mainWindow);
 
   // Handle external links - open in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -656,18 +717,23 @@ async function handleProtocolUrl(url: string) {
 
 // Claude Code session management functions
 // OpenAI chat session for Strategize tab
+// Disabled: Old strategize/MCP SDK code
+// Now using custom HTTPMCPClient with MCPManager
+/*
 let strategizeChatHistory: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
 
-// MCP client management for Strategize
 interface MCPClientInfo {
   name: string;
-  client: Client;
-  transport: StdioClientTransport | SSEClientTransport;
+  client: any;
+  transport: any;
   tools: Array<{ name: string; description?: string; inputSchema: any }>;
 }
 let mcpClients: Map<string, MCPClientInfo> = new Map();
+*/
 
-async function startStrategizeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
+// Disabled: Old startStrategizeSession using MCP SDK
+/*
+async function _startStrategizeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
   try {
     const openaiApiKey = process.env.OPENAI_API_KEY;
     if (!openaiApiKey) {
@@ -777,7 +843,11 @@ Be concise and helpful. When answering, prioritize information from the document
     return { success: false, error: error.message };
   }
 }
+*/
 
+// Disabled: Old MCP SDK helper functions
+// Now using custom HTTPMCPClient with MCPManager
+/*
 // MCP Helper Functions
 async function connectMCPServerStdio(name: string, command: string, args: string[]): Promise<void> {
   console.log(`[MCP] Connecting to ${name} (stdio) with command: ${command} ${args.join(' ')}`);
@@ -853,7 +923,7 @@ async function connectMCPServerSSE(name: string, url: string): Promise<void> {
   }
 }
 
-async function disconnectMCPServers(): Promise<void> {
+async function _disconnectMCPServers(): Promise<void> {
   for (const [name, clientInfo] of mcpClients.entries()) {
     try {
       await clientInfo.client.close();
@@ -864,7 +934,10 @@ async function disconnectMCPServers(): Promise<void> {
   }
   mcpClients.clear();
 }
+*/
 
+// Disabled: Old MCP tool functions (were used by _sendStrategizeMessage)
+/*
 function getMCPToolsForOpenAI(): Array<{ type: 'function'; function: { name: string; description?: string; parameters: any } }> {
   const tools: Array<{ type: 'function'; function: { name: string; description?: string; parameters: any } }> = [];
 
@@ -902,6 +975,7 @@ async function callMCPTool(toolName: string, args: any): Promise<any> {
 
   return result;
 }
+*/
 
 async function startClaudeCodeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1043,7 +1117,9 @@ async function startClaudeCodeSession(folderPath: string): Promise<{ success: bo
   }
 }
 
-async function sendStrategizeMessage(message: string): Promise<{ success: boolean; error?: string }> {
+// Disabled: Old sendStrategizeMessage using MCP SDK
+/*
+async function _sendStrategizeMessage(message: string): Promise<{ success: boolean; error?: string }> {
   try {
     const openaiApiKey = process.env.OPENAI_API_KEY;
     if (!openaiApiKey) {
@@ -1196,6 +1272,7 @@ async function sendStrategizeMessage(message: string): Promise<{ success: boolea
     return { success: false, error: error.message };
   }
 }
+*/
 
 async function sendClaudeCodeMessage(message: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1519,6 +1596,14 @@ app.whenReady().then(async () => {
   // Start extension sync server
   startExtensionSyncServer();
 
+  // Start OAuth callback server for MCP authentication
+  try {
+    await startOAuthCallbackServer();
+    console.log('[Main] OAuth callback server started');
+  } catch (error) {
+    console.error('[Main] Failed to start OAuth callback server:', error);
+  }
+
   // Start Slack events server
   const slackEventsServer = new SlackEventsServer();
   slackEventsServer.setTaskCreateHandler(async (taskData) => {
@@ -1839,6 +1924,27 @@ ipcMain.handle('save-user-settings', (_event, settings: any) => {
   if (settings.slackBotToken) {
     store.set('slack_bot_token', settings.slackBotToken);
     console.log('[Settings] Slack bot token saved');
+  }
+
+  // If MCP server settings changed, sync to MCPManager
+  if (settings.mcpServers) {
+    console.log('[Settings] Syncing MCP server configs to MCPManager');
+    for (const [serverName, serverConfig] of Object.entries(settings.mcpServers)) {
+      const config = serverConfig as any;
+
+      // Only sync HTTP MCP servers (stdio ones use Claude CLI)
+      if (config.transport === 'sse' && config.url) {
+        // Use config.name (capitalized) as the key to match what startMCPOAuth uses
+        const configName = config.name || serverName;
+        mcpManager.saveConfig(configName, {
+          name: configName,
+          url: config.url,
+          clientId: config.clientId,
+          enabled: config.enabled || false,
+        });
+        console.log(`[Settings] Synced MCP config for ${configName} (key: ${serverName})`);
+      }
+    }
   }
 
   // If Jira/Confluence credentials or enabled state changed, reinitialize services
@@ -2679,6 +2785,24 @@ ipcMain.handle('confluence-get-page', async (_event, pageId: string) => {
 });
 
 // Strategize (Claude Code CLI) IPC Handlers
+ipcMain.handle('strategize-authenticate-mcp', async () => {
+  console.log('[IPC] strategize-authenticate-mcp called');
+
+  try {
+    // Open Terminal with Claude Code for interactive MCP authentication
+    const script = `tell application "Terminal"
+  activate
+  do script "echo 'Amplitude MCP Authentication' && echo '===========================' && echo '' && echo 'To authenticate Amplitude MCP, type: /mcp' && echo 'Then follow the OAuth flow.' && echo '' && /Users/tommykeeley/.local/bin/claude"
+end tell`;
+
+    spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore' });
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to open Claude for MCP auth:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('strategize-start', async (_event, folderPath: string) => {
   console.log('[IPC] strategize-start called with folder:', folderPath);
 
@@ -2697,8 +2821,9 @@ ipcMain.handle('strategize-start', async (_event, folderPath: string) => {
   }
 });
 
-ipcMain.handle('strategize-send', async (_event, message: string) => {
+ipcMain.handle('strategize-send', async (_event, message: string, conversationHistory?: Array<{role: string, content: string}>) => {
   console.log('[IPC] strategize-send called with message:', message);
+  console.log('[IPC] Conversation history length:', conversationHistory?.length || 0);
 
   try {
     const folderPath = store.get('strategizeFolderPath') as string;
@@ -2721,10 +2846,14 @@ ipcMain.handle('strategize-send', async (_event, message: string) => {
       }
     }
 
+    // Note: MCP servers are loaded from Claude Code's global configuration
+    // No need to inject MCP context - Claude will automatically have access to authenticated MCPs
+
     // Build Claude CLI args
     const args = [
       '--print',                           // Non-interactive mode
       '--dangerously-skip-permissions',    // Auto-accept permissions
+      '--debug',                           // Enable debug logging to see MCP issues
     ];
 
     // Add system prompt if exists
@@ -2732,14 +2861,30 @@ ipcMain.handle('strategize-send', async (_event, message: string) => {
       args.push('--append-system-prompt', systemPrompt);
     }
 
-    // Add the user message
-    args.push(message);
+    // Build the full message with conversation history
+    let fullMessage = message;
+    if (conversationHistory && conversationHistory.length > 0) {
+      const historyContext = conversationHistory.map(msg =>
+        `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+      ).join('\n\n');
 
-    // Spawn Claude process
+      fullMessage = `Previous conversation:\n\n${historyContext}\n\n---\n\nCurrent message: ${message}`;
+      console.log('[Claude] Including', conversationHistory.length, 'previous messages in context');
+    }
+
+    // Add the user message (with history if available)
+    args.push(fullMessage);
+
+    // Spawn Claude process with explicit environment
     console.log('[Claude] Spawning with args:', args);
     const proc = spawn('/Users/tommykeeley/.local/bin/claude', args, {
       cwd: folderPath,
-      env: { ...process.env }
+      env: {
+        ...process.env,
+        HOME: '/Users/tommykeeley',
+        USER: 'tommykeeley',
+        SHELL: '/bin/zsh',
+      }
     });
 
     // Close stdin immediately - we're not sending more input
@@ -2873,6 +3018,90 @@ ipcMain.handle('mcp-oauth-complete', async (_event, serverName: string) => {
   }
 });
 
+// MCP Manager IPC Handlers
+ipcMain.handle('start-mcp-oauth', async (_event, serverName: string) => {
+  console.log(`\n========== [IPC] START-MCP-OAUTH ==========`);
+  console.log(`[IPC] Server: ${serverName}`);
+  console.log(`[IPC] Timestamp: ${new Date().toISOString()}`);
+
+  try {
+    console.log(`[IPC] Checking if mcpManager exists:`, !!mcpManager);
+
+    // Send progress update to frontend
+    if (mainWindow && mainWindow.webContents) {
+      console.log(`[IPC] Sending mcp-auth-progress event to frontend`);
+      mainWindow.webContents.send('mcp-auth-progress', {
+        serverName,
+        status: 'starting',
+        message: 'Connecting to MCP server...'
+      });
+    }
+
+    console.log(`[IPC] Calling mcpManager.connect('${serverName}')`);
+
+    // Connect to MCP server (will trigger OAuth if needed)
+    await mcpManager.connect(serverName);
+
+    console.log(`[MCP Manager] ✅ Connected successfully to ${serverName}`);
+
+    // Send completion event to frontend
+    if (mainWindow && mainWindow.webContents) {
+      console.log(`[IPC] Sending mcp-auth-complete (success) to frontend`);
+      mainWindow.webContents.send('mcp-auth-complete', {
+        serverName,
+        success: true,
+        message: 'Authentication successful!'
+      });
+    }
+
+    console.log(`[IPC] Returning success`);
+    console.log(`========== [IPC] END START-MCP-OAUTH ==========\n`);
+    return { success: true };
+  } catch (error: any) {
+    console.error(`\n❌ [MCP Manager] Connection failed for ${serverName}`);
+    console.error(`[MCP Manager] Error message: ${error.message}`);
+    console.error(`[MCP Manager] Error stack:`, error.stack);
+
+    // Send error to frontend
+    if (mainWindow && mainWindow.webContents) {
+      console.log(`[IPC] Sending mcp-auth-complete (error) to frontend`);
+      mainWindow.webContents.send('mcp-auth-complete', {
+        serverName,
+        success: false,
+        message: error.message || 'Connection failed'
+      });
+    }
+
+    console.log(`[IPC] Returning error`);
+    console.log(`========== [IPC] END START-MCP-OAUTH (ERROR) ==========\n`);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-mcp-auth-status', async (_event, serverName: string) => {
+  console.log(`[IPC] get-mcp-auth-status called for ${serverName}`);
+
+  try {
+    const isAuthenticated = mcpManager.isAuthenticated(serverName);
+    return { success: true, isAuthenticated };
+  } catch (error: any) {
+    console.error(`[MCP Manager] Failed to check auth status for ${serverName}:`, error);
+    return { success: false, error: error.message, isAuthenticated: false };
+  }
+});
+
+ipcMain.handle('get-mcp-context', async () => {
+  console.log('[IPC] get-mcp-context called');
+
+  try {
+    const context = await mcpManager.getAllContextData();
+    return { success: true, context };
+  } catch (error: any) {
+    console.error('[MCP Manager] Failed to get context:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Claude Code IPC Handlers (keep for backward compatibility)
 ipcMain.handle('claude-code-start', async (_event, folderPath: string) => {
   console.log('[IPC] claude-code-start called with folder:', folderPath);
@@ -2993,7 +3222,20 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
 
         if (code === 0) {
           console.log(`[MCP] Successfully added ${name}`);
-          console.log(`[MCP] Note: HTTP MCPs will prompt for OAuth when first used`);
+
+          // For HTTP MCPs, notify user to complete OAuth in Strategize
+          if (type === 'http') {
+            console.log(`[MCP] ${name} configured - OAuth will happen in Strategize`);
+
+            if (mainWindow && mainWindow.webContents) {
+              mainWindow.webContents.send('mcp-auth-complete', {
+                serverName: name,
+                success: true,
+                message: 'MCP configured! OAuth will happen automatically when you send a Strategize message.'
+              });
+            }
+          }
+
           resolve({ success: true });
         } else {
           resolve({

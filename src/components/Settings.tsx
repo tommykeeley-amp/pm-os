@@ -125,10 +125,45 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   const [jiraTestResult, setJiraTestResult] = useState<{ success: boolean; error?: string; details?: string } | null>(null);
   const [testingJira, setTestingJira] = useState(false);
   const [connectingMCP, setConnectingMCP] = useState<string | null>(null);
+  const [mcpAuthProgress, setMcpAuthProgress] = useState<{ serverName: string; status: string; message: string } | null>(null);
 
   useEffect(() => {
     loadSettings();
     checkConnections();
+
+    // Listen for MCP auth progress events
+    const handleMCPAuthProgress = (data: { serverName: string; status: string; message: string }) => {
+      console.log(`[Settings] MCP auth progress for ${data.serverName}: ${data.status} - ${data.message}`);
+      setMcpAuthProgress(data);
+    };
+
+    const handleMCPAuthComplete = (data: { serverName: string; success: boolean; message: string }) => {
+      console.log(`[Settings] MCP auth complete for ${data.serverName}: ${data.success ? 'SUCCESS' : 'FAILED'}`);
+
+      if (data.success) {
+        setMcpAuthProgress({
+          serverName: data.serverName,
+          status: 'complete',
+          message: data.message
+        });
+
+        // Clear progress after 3 seconds
+        setTimeout(() => {
+          setMcpAuthProgress(null);
+          setConnectingMCP(null);
+        }, 3000);
+      } else {
+        setConnectionError({
+          provider: data.serverName.toLowerCase(),
+          error: data.message
+        });
+        setMcpAuthProgress(null);
+        setConnectingMCP(null);
+      }
+    };
+
+    const cleanupMCPAuthProgress = window.electronAPI.onMCPAuthProgress?.(handleMCPAuthProgress);
+    const cleanupMCPAuthComplete = window.electronAPI.onMCPAuthComplete?.(handleMCPAuthComplete);
 
     // Listen for OAuth success events
     const handleOAuthSuccess = async (data?: any) => {
@@ -167,7 +202,9 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     window.electronAPI.onOAuthError?.(handleOAuthError);
 
     return () => {
-      // Cleanup listener if needed
+      // Cleanup MCP listeners
+      if (cleanupMCPAuthProgress) cleanupMCPAuthProgress();
+      if (cleanupMCPAuthComplete) cleanupMCPAuthComplete();
     };
   }, []);
 
@@ -320,16 +357,17 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     console.log(`[Settings] ${enable ? 'Enabling' : 'Disabling'} MCP provider: ${mcpProvider}`);
 
     // Different MCPs have different setup methods
-    const mcpConfig: Record<string, { name: string; type: 'http' | 'stdio'; url?: string; command?: string }> = {
+    const mcpConfig: Record<string, { name: string; type: 'http' | 'stdio'; url?: string; command?: string; clientId?: string }> = {
       amplitude: {
         name: 'Amplitude',
         type: 'http',
         url: 'https://mcp.amplitude.com/mcp',
+        clientId: 'amplitude-mcp',
       },
       granola: {
         name: 'Granola',
-        type: 'stdio',
-        command: 'npx @granola-ai/mcp',
+        type: 'http',
+        url: 'https://mcp.granola.ai/mcp',
       },
       clockwise: {
         name: 'Clockwise',
@@ -343,10 +381,12 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     // Update settings immediately for instant UI feedback
     const mcpServers = settings.mcpServers || {};
     const mcpConfigSettings = {
+      name: config.name, // Include name for MCPManager
       transport: config.type === 'stdio' ? 'stdio' : 'sse',
       enabled: enable,
       ...(config.url ? { url: config.url } : {}),
       ...(config.command ? { command: config.command } : {}),
+      ...(config.clientId ? { clientId: config.clientId } : {}),
     };
 
     const updatedMCPServers = { ...mcpServers, [mcpProvider]: mcpConfigSettings };
@@ -362,34 +402,78 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       console.log(`[Settings] MCP ${mcpProvider} ${enable ? 'enabled' : 'disabled'} in settings`);
 
       if (enable) {
-        // Enabling: register with Claude Code CLI
-        const urlOrCommand = config.url || config.command || '';
-        const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand);
+        // For HTTP MCPs with OAuth: first register with Claude Code, then open for authentication
+        if (config.type === 'http') {
+          console.log(`[Settings] Registering ${config.name} MCP with Claude Code...`);
 
-        if (!result.success) {
-          console.error(`[Settings] Failed to register MCP with Claude CLI:`, result.error);
-          setConnectionError({
-            provider: mcpProvider,
-            error: result.error || 'Failed to register with Claude Code CLI'
-          });
-          // Revert settings
-          await handleChange('mcpServers', mcpServers);
-          setConnectingMCP(null);
-          return;
+          // First, register the MCP server with Claude Code
+          const registerResult = await window.electronAPI.addMCPServer(
+            config.name,
+            'http',
+            config.url || ''
+          );
+
+          if (!registerResult.success) {
+            console.error(`[Settings] Failed to register ${config.name}:`, registerResult.error);
+            setConnectionError({
+              provider: mcpProvider,
+              error: registerResult.error || 'Failed to register MCP server'
+            });
+            setConnectingMCP(null);
+            return;
+          }
+
+          console.log(`[Settings] ${config.name} registered successfully`);
+          console.log(`[Settings] Opening interactive Claude for ${config.name} authentication...`);
+
+          // Open Terminal with Claude for interactive MCP authentication
+          const authResult = await window.electronAPI.strategizeAuthenticateMCP();
+
+          if (!authResult.success) {
+            console.error(`[Settings] Failed to open Claude for MCP auth:`, authResult.error);
+            setConnectionError({
+              provider: mcpProvider,
+              error: authResult.error || 'Failed to open authentication terminal'
+            });
+            setConnectingMCP(null);
+            return;
+          }
+
+          // Show success message - user will complete OAuth in Terminal
+          console.log(`[Settings] Opened Terminal for ${config.name} authentication - waiting for user to complete OAuth`);
+        } else {
+          // For stdio MCPs: use Claude CLI as before
+          const urlOrCommand = config.url || config.command || '';
+          const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand);
+
+          if (!result.success) {
+            console.error(`[Settings] Failed to register MCP with Claude CLI:`, result.error);
+            setConnectionError({
+              provider: mcpProvider,
+              error: result.error || 'Failed to register with Claude Code CLI'
+            });
+            // Revert settings
+            await handleChange('mcpServers', mcpServers);
+            setConnectingMCP(null);
+            return;
+          }
+
+          console.log(`[Settings] Successfully registered ${config.name} with Claude Code CLI`);
         }
-
-        console.log(`[Settings] Successfully registered ${config.name} with Claude Code CLI`);
 
         // Auto-restart Strategize session to pick up new MCP
         console.log(`[Settings] Auto-restarting Strategize to activate ${config.name}...`);
         await window.electronAPI.strategizeRestart();
       } else {
-        // Disabling: remove from Claude Code CLI
-        console.log(`[Settings] Removing ${config.name} from Claude Code CLI...`);
-        const result = await window.electronAPI.removeMCPServer(config.name);
+        // Disabling: for HTTP MCPs, we just disable in settings
+        // For stdio MCPs, remove from Claude Code CLI
+        if (config.type === 'stdio') {
+          console.log(`[Settings] Removing ${config.name} from Claude Code CLI...`);
+          const result = await window.electronAPI.removeMCPServer(config.name);
 
-        if (!result.success) {
-          console.warn(`[Settings] Failed to remove MCP:`, result.error);
+          if (!result.success) {
+            console.warn(`[Settings] Failed to remove MCP:`, result.error);
+          }
         }
 
         // Auto-restart Strategize session to apply removal
@@ -1279,24 +1363,37 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         />
                       </button>
                     </div>
-                    {connectingMCP === 'amplitude' && (
+                    {(connectingMCP === 'amplitude' || (mcpAuthProgress?.serverName.toLowerCase() === 'amplitude')) && (
                       <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
-                          <svg className="animate-spin h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <span>Enabling MCP server...</span>
+                        <div className={`flex items-center gap-2 p-2 rounded border ${
+                          mcpAuthProgress?.status === 'complete' || mcpAuthProgress?.status === 'ready'
+                            ? 'bg-green-500/10 border-green-500/30'
+                            : 'bg-blue-500/10 border-blue-500/30'
+                        }`}>
+                          {(mcpAuthProgress?.status === 'complete' || mcpAuthProgress?.status === 'ready') ? (
+                            <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            <svg className="animate-spin h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          )}
+                          <span>{mcpAuthProgress?.message || 'Configuring MCP server...'}</span>
                         </div>
                       </div>
                     )}
-                    {settings.mcpServers?.amplitude?.enabled && connectingMCP !== 'amplitude' && (
+                    {settings.mcpServers?.amplitude?.enabled && connectingMCP !== 'amplitude' && !mcpAuthProgress && (
                       <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                          <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                           </svg>
-                          <span>Enabled - Will connect when you start Strategize (HTTP transport not yet supported)</span>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-blue-400">Enabled - OAuth required</span>
+                            <span className="text-dark-text-muted mt-0.5">Go to Strategize and send a message. Claude will show the OAuth link in the chat.</span>
+                          </div>
                         </div>
                       </div>
                     )}
