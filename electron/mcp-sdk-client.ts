@@ -255,7 +255,7 @@ export class MCPSDKClient {
 
       // Create client
       this.client = new Client({
-        name: 'pm-os',
+        name: 'PM-OS',
         version: '1.0.0',
       }, {
         capabilities: {},
