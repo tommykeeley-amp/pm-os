@@ -2911,6 +2911,15 @@ ipcMain.handle('claude-code-resize', async (_event, cols: number, rows: number) 
 ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'stdio', urlOrCommand: string) => {
   console.log(`[IPC] add-mcp-server called: ${name} (${type}) -> ${urlOrCommand}`);
   try {
+    // Get strategize folder path to add MCP to that project
+    const strategizeFolderPath = store.get('strategizeFolderPath') as string;
+    if (!strategizeFolderPath) {
+      return {
+        success: false,
+        error: 'No strategize folder path configured. Please set it in Settings first.'
+      };
+    }
+
     // Get user settings for Claude CLI path
     const userSettings = store.get('userSettings', {}) as any;
 
@@ -2947,20 +2956,23 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       };
     }
 
-    // Build command based on transport type
+    // Build command based on transport type (no --scope flag = adds to project)
     let args: string[];
     if (type === 'http') {
-      // For HTTP/SSE: claude mcp add --transport http --scope user <name> <url>
-      args = ['mcp', 'add', '--transport', 'http', '--scope', 'user', name, urlOrCommand];
+      // For HTTP/SSE: claude mcp add --transport http <name> <url>
+      args = ['mcp', 'add', '--transport', 'http', name, urlOrCommand];
     } else {
-      // For stdio: claude mcp add --transport stdio --scope user --command <command> <name>
-      args = ['mcp', 'add', '--transport', 'stdio', '--scope', 'user', '--command', urlOrCommand, name];
+      // For stdio: claude mcp add --transport stdio --command <command> <name>
+      args = ['mcp', 'add', '--transport', 'stdio', '--command', urlOrCommand, name];
     }
 
-    console.log('[MCP] Running command:', claudePath, args.join(' '));
+    console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));
 
     return new Promise((resolve) => {
-      const addProcess = spawn(claudePath, args);
+      const addProcess = spawn(claudePath, args, {
+        cwd: strategizeFolderPath, // Run in project directory
+        env: { ...process.env }
+      });
 
       let output = '';
       let errorOutput = '';
@@ -2995,6 +3007,120 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
     });
   } catch (error: any) {
     console.error('[MCP] Exception adding MCP server:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Remove MCP server from Claude Code CLI
+ipcMain.handle('remove-mcp-server', async (_event, name: string) => {
+  console.log(`[IPC] remove-mcp-server called: ${name}`);
+  try {
+    // Get strategize folder path
+    const strategizeFolderPath = store.get('strategizeFolderPath') as string;
+    if (!strategizeFolderPath) {
+      return { success: false, error: 'No strategize folder path configured' };
+    }
+
+    // Get user settings for Claude CLI path
+    const userSettings = store.get('userSettings', {}) as any;
+
+    // Detect Claude CLI path
+    let claudePath = '/Users/tommykeeley/.local/bin/claude';
+    const possiblePaths = [
+      path.join(os.homedir(), '.local', 'bin', 'claude'),
+      '/usr/local/bin/claude',
+      '/opt/homebrew/bin/claude',
+    ];
+
+    if (userSettings.claudeCodePath) {
+      possiblePaths.unshift(userSettings.claudeCodePath);
+    }
+
+    let foundClaude = false;
+    for (const checkPath of possiblePaths) {
+      try {
+        if (fs.existsSync(checkPath)) {
+          claudePath = checkPath;
+          foundClaude = true;
+          break;
+        }
+      } catch (e) {
+        // Continue checking
+      }
+    }
+
+    if (!foundClaude) {
+      return { success: false, error: 'Claude Code CLI not found' };
+    }
+
+    // Run: claude mcp remove <name>
+    const args = ['mcp', 'remove', name];
+    console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));
+
+    return new Promise((resolve) => {
+      const removeProcess = spawn(claudePath, args, {
+        cwd: strategizeFolderPath,
+        env: { ...process.env }
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      removeProcess.stdout?.on('data', (data: Buffer) => {
+        output += data.toString();
+      });
+
+      removeProcess.stderr?.on('data', (data: Buffer) => {
+        errorOutput += data.toString();
+      });
+
+      removeProcess.on('exit', (code: number | null) => {
+        console.log(`[MCP] claude mcp remove exited with code ${code}`);
+        if (output) console.log(`[MCP] stdout: ${output}`);
+        if (errorOutput) console.error(`[MCP] stderr: ${errorOutput}`);
+
+        if (code === 0) {
+          resolve({ success: true });
+        } else {
+          resolve({
+            success: false,
+            error: `Failed to remove MCP server (exit code ${code}): ${errorOutput || output}`
+          });
+        }
+      });
+
+      removeProcess.on('error', (error: any) => {
+        console.error('[MCP] Failed to spawn claude mcp remove:', error);
+        resolve({ success: false, error: error.message });
+      });
+    });
+  } catch (error: any) {
+    console.error('[MCP] Exception removing MCP server:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Restart Strategize session (stop then notify frontend)
+ipcMain.handle('strategize-restart', async () => {
+  console.log('[IPC] strategize-restart called');
+  try {
+    const strategizeFolderPath = store.get('strategizeFolderPath') as string;
+    if (!strategizeFolderPath) {
+      console.log('[Strategize] No folder path set, nothing to restart');
+      return { success: true };
+    }
+
+    console.log('[Strategize] Stopping current session...');
+
+    // Send disconnect event to frontend to trigger UI reconnection
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('strategize-restart-required');
+    }
+
+    console.log('[Strategize] Restart notification sent to frontend');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to restart:', error);
     return { success: false, error: error.message };
   }
 });

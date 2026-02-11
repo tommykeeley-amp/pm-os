@@ -361,8 +361,8 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       await handleChange('mcpServers', updatedMCPServers);
       console.log(`[Settings] MCP ${mcpProvider} ${enable ? 'enabled' : 'disabled'} in settings`);
 
-      // If enabling, register with Claude Code CLI
       if (enable) {
+        // Enabling: register with Claude Code CLI
         const urlOrCommand = config.url || config.command || '';
         const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand);
 
@@ -374,10 +374,27 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
           });
           // Revert settings
           await handleChange('mcpServers', mcpServers);
+          setConnectingMCP(null);
           return;
         }
 
         console.log(`[Settings] Successfully registered ${config.name} with Claude Code CLI`);
+
+        // Auto-restart Strategize session to pick up new MCP
+        console.log(`[Settings] Auto-restarting Strategize to activate ${config.name}...`);
+        await window.electronAPI.strategizeRestart();
+      } else {
+        // Disabling: remove from Claude Code CLI
+        console.log(`[Settings] Removing ${config.name} from Claude Code CLI...`);
+        const result = await window.electronAPI.removeMCPServer(config.name);
+
+        if (!result.success) {
+          console.warn(`[Settings] Failed to remove MCP:`, result.error);
+        }
+
+        // Auto-restart Strategize session to apply removal
+        console.log(`[Settings] Auto-restarting Strategize to deactivate ${config.name}...`);
+        await window.electronAPI.strategizeRestart();
       }
     } catch (error: any) {
       console.error(`[Settings] Exception ${enable ? 'enabling' : 'disabling'} MCP ${mcpProvider}:`, error);

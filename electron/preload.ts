@@ -129,6 +129,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('claude-code-resize', cols, rows),
   addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) =>
     ipcRenderer.invoke('add-mcp-server', name, type, urlOrCommand),
+  removeMCPServer: (name: string) =>
+    ipcRenderer.invoke('remove-mcp-server', name),
+  strategizeRestart: () =>
+    ipcRenderer.invoke('strategize-restart'),
   onClaudeOutput: (callback: (output: string) => void) => {
     const handler = (_event: any, output: string) => callback(output);
     ipcRenderer.on('claude-output', handler);
@@ -180,6 +184,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   mcpOAuthComplete: (serverName: string) =>
     ipcRenderer.invoke('mcp-oauth-complete', serverName),
+  onStrategizeRestartRequired: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('strategize-restart-required', handler);
+    return () => ipcRenderer.removeListener('strategize-restart-required', handler);
+  },
 });
 
 // Type definitions for TypeScript
@@ -253,6 +262,8 @@ export interface ElectronAPI {
   claudeCodeGetHistory: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
   claudeCodeResize: (cols: number, rows: number) => Promise<{ success: boolean; error?: string }>;
   addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) => Promise<{ success: boolean; error?: string }>;
+  removeMCPServer: (name: string) => Promise<{ success: boolean; error?: string }>;
+  strategizeRestart: () => Promise<{ success: boolean; error?: string }>;
   onClaudeOutput: (callback: (output: string) => void) => () => void;
   onClaudeDisconnected: (callback: (data: { code: number | null; signal: string | null }) => void) => () => void;
   onClaudeTerminalData: (callback: (data: string) => void) => () => void;
@@ -264,6 +275,7 @@ export interface ElectronAPI {
   onTaskCreated: (callback: (task: any) => void) => () => void;
   onMCPOAuthCallback: (callback: (data: { serverName: string; code: string; state?: string }) => void) => () => void;
   mcpOAuthComplete: (serverName: string) => Promise<{ success: boolean; error?: string }>;
+  onStrategizeRestartRequired: (callback: () => void) => () => void;
 }
 
 declare global {

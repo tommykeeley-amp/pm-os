@@ -124,6 +124,40 @@ export default function Strategize({ isActive }: StrategizeProps) {
     return cleanup;
   }, [isConnected, folderPath]);
 
+  // Listen for restart requests (e.g., when MCP config changes)
+  useEffect(() => {
+    const cleanup = window.electronAPI.onStrategizeRestartRequired(async () => {
+      console.log('[Strategize] Restart required, reconnecting...');
+
+      if (isConnected && folderPath) {
+        // Add system message
+        setChatMessages(prev => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: 'system',
+          content: 'MCP configuration updated. Reconnecting...',
+          timestamp: new Date(),
+        }]);
+
+        // Stop and restart
+        await window.electronAPI.strategizeStop();
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait for cleanup
+
+        const result = await window.electronAPI.strategizeStart(folderPath);
+
+        if (result.success) {
+          setChatMessages(prev => [...prev, {
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            content: 'Reconnected with updated MCP servers',
+            timestamp: new Date(),
+          }]);
+        }
+      }
+    });
+
+    return cleanup;
+  }, [isConnected, folderPath]);
+
   const handleConnect = async () => {
     if (!folderPath) {
       alert('Please set a folder path first!\\n\\nGo to Settings → Customizations → Strategize Configuration');
