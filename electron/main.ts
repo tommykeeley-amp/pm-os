@@ -2834,12 +2834,43 @@ ipcMain.handle('strategize-send', async (_event, message: string, conversationHi
 
     // Read custom system prompt if configured
     const userSettings = store.get('userSettings', {}) as any;
-    let systemPrompt = '';
+    let systemPrompt = `## Response Formatting Guidelines
+
+**CRITICAL**: Always format your responses for maximum readability and visual clarity:
+
+### Formatting Rules:
+1. **Use markdown extensively**: Bold headers, bullet points, numbered lists, code blocks
+2. **Structure information**: Break content into clear sections with headers (##, ###)
+3. **Highlight key information**: Use **bold** for important dates, times, names, and values
+4. **Use lists**: Bullet points for items, numbered lists for sequential steps
+5. **Add visual breaks**: Use horizontal rules (---) to separate major sections when appropriate
+6. **Keep paragraphs short**: 2-3 sentences max per paragraph for scannability
+7. **Use emojis sparingly**: Only when they add clarity (✓, ✗, ⚠️, 📅, 🔗) - never overuse
+
+### Example Format:
+\`\`\`
+**Meeting Title** (Time Range)
+- **Attendee 1** - Role/Context
+- **Attendee 2** - Role/Context
+
+**Key Topics:**
+1. First topic
+2. Second topic
+
+**Action Items:**
+- [ ] Task 1
+- [ ] Task 2
+\`\`\`
+
+Your goal is to make information **instantly scannable** and **easy to digest**.
+
+`;
+
     if (userSettings.strategizeSystemPromptPath) {
       try {
         const promptPath = userSettings.strategizeSystemPromptPath;
         if (fs.existsSync(promptPath)) {
-          systemPrompt = fs.readFileSync(promptPath, 'utf-8');
+          systemPrompt += '\n\n' + fs.readFileSync(promptPath, 'utf-8');
           console.log('[Claude] Loaded system prompt from:', promptPath);
         }
       } catch (error) {
