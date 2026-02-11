@@ -49,6 +49,21 @@ cp .env.example .env
 # Add your OAuth credentials to .env (see API Setup section below)
 ```
 
+### Plugin Setup (Recommended)
+
+PM-OS uses Claude Code plugins to enhance Strategize capabilities with document creation and analytics:
+
+```bash
+# Run the automated setup script
+./setup-plugins.sh
+```
+
+This installs:
+- **Document Skills**: Create Word, PDF, PowerPoint, and Excel files
+- **Amplitude Analysis**: Advanced product analytics capabilities
+
+See [PLUGINS.md](./PLUGINS.md) for detailed documentation.
+
 ### Development
 
 ```bash

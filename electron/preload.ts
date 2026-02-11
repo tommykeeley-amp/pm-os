@@ -215,6 +215,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('mcp-auth-complete', handler);
     return () => ipcRenderer.removeListener('mcp-auth-complete', handler);
   },
+
+  // Claude Plugins
+  checkPlugin: (pluginName: string) => ipcRenderer.invoke('check-plugin', pluginName),
+  enablePlugin: (pluginName: string) => ipcRenderer.invoke('enable-plugin', pluginName),
+  disablePlugin: (pluginName: string) => ipcRenderer.invoke('disable-plugin', pluginName),
 });
 
 // Type definitions for TypeScript
@@ -309,6 +314,9 @@ export interface ElectronAPI {
   onMCPAuthStarted: (callback: (data: { serverName: string; message: string }) => void) => () => void;
   onMCPAuthProgress: (callback: (data: { serverName: string; status: string; message: string }) => void) => () => void;
   onMCPAuthComplete: (callback: (data: { serverName: string; success: boolean; message: string }) => void) => () => void;
+  checkPlugin: (pluginName: string) => Promise<{ success: boolean; enabled: boolean; error?: string }>;
+  enablePlugin: (pluginName: string) => Promise<{ success: boolean; error?: string }>;
+  disablePlugin: (pluginName: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

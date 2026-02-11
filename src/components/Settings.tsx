@@ -126,10 +126,18 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   const [testingJira, setTestingJira] = useState(false);
   const [connectingMCP, setConnectingMCP] = useState<string | null>(null);
   const [mcpAuthProgress, setMcpAuthProgress] = useState<{ serverName: string; status: string; message: string } | null>(null);
+  const [pluginStatus, setPluginStatus] = useState<{
+    'document-skills': boolean;
+    'amplitude-analysis': boolean;
+  }>({
+    'document-skills': false,
+    'amplitude-analysis': false,
+  });
 
   useEffect(() => {
     loadSettings();
     checkConnections();
+    loadPluginStatus();
 
     // Listen for MCP auth progress events
     const handleMCPAuthProgress = (data: { serverName: string; status: string; message: string }) => {
@@ -249,6 +257,22 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
+  const loadPluginStatus = async () => {
+    try {
+      // Check document-skills plugin
+      const docSkillsResult = await window.electronAPI.checkPlugin('document-skills@anthropic-agent-skills');
+      // Check amplitude-analysis plugin
+      const amplitudeResult = await window.electronAPI.checkPlugin('amplitude-analysis@amplitude');
+
+      setPluginStatus({
+        'document-skills': docSkillsResult.success && docSkillsResult.enabled,
+        'amplitude-analysis': amplitudeResult.success && amplitudeResult.enabled,
+      });
+    } catch (error) {
+      console.error('Failed to load plugin status:', error);
+    }
+  };
+
   const handleChange = async (field: keyof UserSettings, value: any) => {
     const updatedSettings = { ...settings, [field]: value };
     setSettings(updatedSettings);
@@ -353,7 +377,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
-  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'atlassian' | 'gdrive' | 'slack', enable: boolean) => {
+  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'pmos', enable: boolean) => {
     console.log(`[Settings] ${enable ? 'Enabling' : 'Disabling'} MCP provider: ${mcpProvider}`);
 
     // Different MCPs have different setup methods
@@ -374,27 +398,13 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         type: 'http',
         url: 'https://mcp.getclockwise.com/mcp',
       },
-      atlassian: {
-        name: 'Atlassian',
-        type: 'http',
-        url: 'https://mcp.atlassian.com/v1/mcp',
-      },
-      gdrive: {
-        name: 'Google Drive',
+      pmos: {
+        name: 'PM-OS',
         type: 'stdio',
-        command: 'npx -y @modelcontextprotocol/server-gdrive',
+        command: 'node',
         env: {
-          GDRIVE_CREDENTIALS_PATH: `${process.env.HOME}/.gdrive-server-credentials.json`
-        }
-      },
-      slack: {
-        name: 'Slack',
-        type: 'stdio',
-        command: 'npx -y @modelcontextprotocol/server-slack',
-        env: {
-          SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN || '',
-          SLACK_TEAM_ID: process.env.SLACK_TEAM_ID || ''
-        }
+          PM_OS_MCP_SERVER: 'true',
+        },
       },
     };
 
@@ -512,6 +522,45 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       if (enable) {
         setConnectingMCP(null);
       }
+    }
+  };
+
+  const handlePluginToggle = async (pluginName: 'document-skills' | 'amplitude-analysis') => {
+    const pluginFullName = pluginName === 'document-skills'
+      ? 'document-skills@anthropic-agent-skills'
+      : 'amplitude-analysis@amplitude';
+
+    try {
+      // Check current plugin status
+      const checkResult = await window.electronAPI.checkPlugin(pluginFullName);
+      const isEnabled = checkResult.enabled;
+
+      if (isEnabled) {
+        // Disable the plugin
+        console.log(`[Settings] Disabling plugin: ${pluginFullName}`);
+        const result = await window.electronAPI.disablePlugin(pluginFullName);
+        if (result.success) {
+          alert(`${pluginName === 'document-skills' ? 'Document Skills' : 'Amplitude Analysis'} plugin disabled`);
+          // Refresh plugin status
+          await loadPluginStatus();
+        } else {
+          throw new Error(result.error || 'Failed to disable plugin');
+        }
+      } else {
+        // Enable the plugin (install if not installed)
+        console.log(`[Settings] Enabling plugin: ${pluginFullName}`);
+        const result = await window.electronAPI.enablePlugin(pluginFullName);
+        if (result.success) {
+          alert(`${pluginName === 'document-skills' ? 'Document Skills' : 'Amplitude Analysis'} plugin enabled`);
+          // Refresh plugin status
+          await loadPluginStatus();
+        } else {
+          throw new Error(result.error || 'Failed to enable plugin');
+        }
+      }
+    } catch (error: any) {
+      console.error(`[Settings] Error toggling plugin ${pluginName}:`, error);
+      alert(`Failed to toggle plugin: ${error.message}`);
     }
   };
 
@@ -1407,19 +1456,6 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </div>
                       </div>
                     )}
-                    {settings.mcpServers?.amplitude?.enabled && connectingMCP !== 'amplitude' && !mcpAuthProgress && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
-                          <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                          </svg>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-blue-400">Enabled - OAuth required</span>
-                            <span className="text-dark-text-muted mt-0.5">Go to Strategize and send a message. Claude will show the OAuth link in the chat.</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Granola MCP */}
@@ -1433,12 +1469,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </div>
                         <div>
                           <div className="text-sm font-medium text-dark-text-primary">Granola</div>
-                          <div className="text-xs text-dark-text-muted">
-                            Meeting notes and transcripts
-                            <div className="mt-1 text-xs text-orange-400">
-                              Requires: <code className="text-xs">npm install -g @granola-ai/mcp</code>
-                            </div>
-                          </div>
+                          <div className="text-xs text-dark-text-muted">Meeting notes and transcripts</div>
                         </div>
                       </div>
                       <button
@@ -1468,16 +1499,6 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
                           <span>Enabling MCP server...</span>
-                        </div>
-                      </div>
-                    )}
-                    {settings.mcpServers?.granola?.enabled && connectingMCP !== 'granola' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          <span>Enabled - Will connect when you start Strategize</span>
                         </div>
                       </div>
                     )}
@@ -1527,194 +1548,126 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </div>
                       </div>
                     )}
-                    {settings.mcpServers?.clockwise?.enabled && connectingMCP !== 'clockwise' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </div>
+
+                  {/* PM-OS MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                           </svg>
-                          <span>Enabled - Will connect when you start Strategize (HTTP transport not yet supported)</span>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-dark-text-primary">PM-OS</div>
+                          <div className="text-xs text-dark-text-muted">Create tasks and Jira tickets from chat</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const isCurrentlyEnabled = settings.mcpServers?.pmos?.enabled;
+                          handleMCPToggle('pmos', !isCurrentlyEnabled);
+                        }}
+                        disabled={connectingMCP === 'pmos'}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.pmos?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        } ${connectingMCP === 'pmos' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.pmos?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {connectingMCP === 'pmos' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-orange-500/10 border border-orange-500/30 rounded">
+                          <svg className="animate-spin h-4 w-4 text-orange-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Enabling MCP server...</span>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Atlassian MCP */}
+                </div>
+
+                {/* Claude Plugins Configuration */}
+                <div className="bg-dark-bg border border-dark-border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-medium text-dark-text-primary">Claude Plugins</h4>
+                      <p className="text-xs text-dark-text-muted mt-1">
+                        Enable Claude Code plugins for document creation and analytics
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Document Skills Plugin */}
                   <div className="border border-dark-border rounded-lg p-3 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V9h7V2.99c3.72 1.15 6.47 4.82 7 8.94h-7v1.06z"/>
+                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-dark-text-primary">Atlassian</div>
-                          <div className="text-xs text-dark-text-muted">Jira, Confluence, and Compass</div>
+                          <div className="text-sm font-medium text-dark-text-primary">Document Skills</div>
+                          <div className="text-xs text-dark-text-muted">Create Word, PDF, PowerPoint, and Excel files</div>
                         </div>
                       </div>
                       <button
-                        onClick={() => {
-                          const isCurrentlyEnabled = settings.mcpServers?.atlassian?.enabled;
-                          handleMCPToggle('atlassian', !isCurrentlyEnabled);
-                        }}
-                        disabled={connectingMCP === 'atlassian'}
+                        onClick={() => handlePluginToggle('document-skills')}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          settings.mcpServers?.atlassian?.enabled
-                            ? 'bg-dark-accent-primary'
-                            : 'bg-dark-border'
-                        } ${connectingMCP === 'atlassian' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          pluginStatus['document-skills'] ? 'bg-dark-accent-primary' : 'bg-gray-600'
+                        }`}
                       >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            settings.mcpServers?.atlassian?.enabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          pluginStatus['document-skills'] ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
                       </button>
                     </div>
-                    {connectingMCP === 'atlassian' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
-                          <svg className="animate-spin h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <span>Enabling MCP server...</span>
-                        </div>
-                      </div>
-                    )}
-                    {settings.mcpServers?.atlassian?.enabled && connectingMCP !== 'atlassian' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          <span>Enabled - Will connect when you start Strategize</span>
-                        </div>
-                      </div>
-                    )}
-                    {connectionError?.provider === 'atlassian' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded">
-                          <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                          <span>{connectionError.error}</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Google Drive MCP */}
-                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-yellow-500/20 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12.53 0.02L1.17 18.32c-.32.53.07 1.2.67 1.2h22.32c.6 0 .99-.67.67-1.2L13.47.02c-.32-.54-1.14-.54-1.47 0zm.94 5.98h3.45l-4.89 8.48h-3.45l4.89-8.48zm-5.71 8.48h3.45l-2.31 4h-3.45l2.31-4z"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-dark-text-primary">Google Drive</div>
-                          <div className="text-xs text-dark-text-muted">Docs, Sheets, Slides, and Drive files</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const isCurrentlyEnabled = settings.mcpServers?.gdrive?.enabled;
-                          handleMCPToggle('gdrive', !isCurrentlyEnabled);
-                        }}
-                        disabled={connectingMCP === 'gdrive'}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          settings.mcpServers?.gdrive?.enabled
-                            ? 'bg-dark-accent-primary'
-                            : 'bg-dark-border'
-                        } ${connectingMCP === 'gdrive' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            settings.mcpServers?.gdrive?.enabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    {connectingMCP === 'gdrive' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
-                          <svg className="animate-spin h-4 w-4 text-yellow-400" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <span>Enabling MCP server...</span>
-                        </div>
-                      </div>
-                    )}
-                    {settings.mcpServers?.gdrive?.enabled && connectingMCP !== 'gdrive' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          <span>Enabled - Requires OAuth credentials setup</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Slack MCP */}
+                  {/* Amplitude Analysis Plugin */}
                   <div className="border border-dark-border rounded-lg p-3 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-purple-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                          <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                           </svg>
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-dark-text-primary">Slack</div>
-                          <div className="text-xs text-dark-text-muted">Messages, channels, and workspace</div>
+                          <div className="text-sm font-medium text-dark-text-primary">Amplitude Analysis</div>
+                          <div className="text-xs text-dark-text-muted">Product analytics and insights tools</div>
                         </div>
                       </div>
                       <button
-                        onClick={() => {
-                          const isCurrentlyEnabled = settings.mcpServers?.slack?.enabled;
-                          handleMCPToggle('slack', !isCurrentlyEnabled);
-                        }}
-                        disabled={connectingMCP === 'slack'}
+                        onClick={() => handlePluginToggle('amplitude-analysis')}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          settings.mcpServers?.slack?.enabled
-                            ? 'bg-dark-accent-primary'
-                            : 'bg-dark-border'
-                        } ${connectingMCP === 'slack' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          pluginStatus['amplitude-analysis'] ? 'bg-dark-accent-primary' : 'bg-gray-600'
+                        }`}
                       >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            settings.mcpServers?.slack?.enabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          pluginStatus['amplitude-analysis'] ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
                       </button>
                     </div>
-                    {connectingMCP === 'slack' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-purple-500/10 border border-purple-500/30 rounded">
-                          <svg className="animate-spin h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <span>Enabling MCP server...</span>
-                        </div>
-                      </div>
-                    )}
-                    {settings.mcpServers?.slack?.enabled && connectingMCP !== 'slack' && (
-                      <div className="text-xs text-dark-text-muted">
-                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
-                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          <span>Enabled - Requires SLACK_BOT_TOKEN setup</span>
-                        </div>
-                      </div>
-                    )}
+                  </div>
+
+                  <div className="text-xs text-dark-text-muted bg-dark-surface/50 border border-dark-border rounded p-3">
+                    <p className="font-medium mb-1">📦 Plugin Installation</p>
+                    <p>Plugins are installed via Claude Code CLI. Run the setup script:</p>
+                    <code className="block mt-1 text-[10px] bg-dark-bg px-2 py-1 rounded">./setup-plugins.sh</code>
+                    <p className="mt-2">See <code className="text-[10px] bg-dark-bg px-1 py-0.5 rounded">PLUGINS.md</code> for details.</p>
                   </div>
                 </div>
               </div>

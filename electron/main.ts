@@ -2903,16 +2903,10 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
         mcpList.push('- **Granola MCP**: Access meeting notes, transcripts, action items, and meeting summaries');
       }
       if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
-        mcpList.push('- **Clockwise MCP**: Check calendar, schedule meetings, find availability, and manage calendar events');
+        mcpList.push('- **Clockwise MCP**: Check calendar, schedule meetings, find availability, and manage calendar events. IMPORTANT: Always use "confirm proposal" to actually book meetings, not just "create proposal"');
       }
-      if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
-        mcpList.push('- **Atlassian MCP**: Access Jira issues/tickets, Confluence pages, and Compass service components');
-      }
-      if (shouldInclude('gdrive') && userSettings.mcpServers.gdrive?.enabled) {
-        mcpList.push('- **Google Drive MCP**: Access Google Docs, Sheets, Slides, and Drive files');
-      }
-      if (shouldInclude('slack') && userSettings.mcpServers.slack?.enabled) {
-        mcpList.push('- **Slack MCP**: Send messages, manage channels, and access workspace history');
+      if (shouldInclude('pmos') && userSettings.mcpServers.pmos?.enabled) {
+        mcpList.push('- **PM-OS MCP**: Create and manage tasks in PM-OS, and create Jira tickets directly from conversation');
       }
 
       if (mcpList.length > 0) {
@@ -2925,16 +2919,11 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
           mcpGuidance += '- Meetings, notes, or action items → Use Granola MCP tools\n';
         }
         if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
-          mcpGuidance += '- Calendar, schedule, or availability → Use Clockwise MCP tools\n';
+          mcpGuidance += '- Calendar, schedule, or availability → Use Clockwise MCP tools. When scheduling meetings, always CONFIRM the proposal to book it\n';
         }
-        if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
-          mcpGuidance += '- Jira tickets, Confluence docs, or Compass services → Use Atlassian MCP tools\n';
-        }
-        if (shouldInclude('gdrive') && userSettings.mcpServers.gdrive?.enabled) {
-          mcpGuidance += '- Google Docs, Sheets, Slides, or Drive files → Use Google Drive MCP tools\n';
-        }
-        if (shouldInclude('slack') && userSettings.mcpServers.slack?.enabled) {
-          mcpGuidance += '- Slack messages, channels, or workspace data → Use Slack MCP tools\n';
+        if (shouldInclude('pmos') && userSettings.mcpServers.pmos?.enabled) {
+          mcpGuidance += '- Creating tasks or tracking work → Use PM-OS MCP tools (create_task, list_tasks, update_task)\n';
+          mcpGuidance += '- Creating Jira tickets → Use PM-OS MCP create_jira_ticket tool\n';
         }
         mcpGuidance += '\nProactively search and use these tools when relevant to the user\'s question.\n';
 
@@ -2966,9 +2955,11 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
 
     // Build Claude CLI args
     const args = [
-      '--print',                           // Non-interactive mode
-      '--dangerously-skip-permissions',    // Auto-accept permissions
-      '--debug',                           // Enable debug logging to see MCP issues
+      '--print',                            // Non-interactive mode
+      '--dangerously-skip-permissions',     // Auto-accept permissions
+      '--debug',                            // Enable debug logging to see MCP issues
+      '--setting-sources', 'user',          // Load user-level settings
+      '--mcp-config', os.homedir() + '/.claude.json',  // Explicitly load MCP config
     ];
 
     // Add system prompt if exists
@@ -3309,7 +3300,7 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       args = ['mcp', 'add', '-t', 'http', '-s', 'user', name, urlOrCommand];
     } else {
       // For stdio: claude mcp add -s user <name> -- <command> [args...]
-      // Example: claude mcp add -e KEY=value -s user "Google Drive" -- npx -y @modelcontextprotocol/server-gdrive
+      // Example: claude mcp add -e KEY=value -s user "ExampleMCP" -- npx -y @modelcontextprotocol/server-example
       args = ['mcp', 'add'];
 
       // Add environment variables if provided
@@ -3322,8 +3313,18 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       }
 
       args.push('-s', 'user', name, '--');
-      const commandParts = urlOrCommand.split(' ');
-      args.push(...commandParts);
+
+      // Special handling for PM-OS MCP server
+      if (name === 'PM-OS') {
+        // Use the compiled MCP server from dist-electron
+        const mcpServerPath = app.isPackaged
+          ? path.join(process.resourcesPath, 'dist-electron', 'pm-os-mcp-server.js')
+          : path.join(__dirname, 'pm-os-mcp-server.js');
+        args.push('node', mcpServerPath);
+      } else {
+        const commandParts = urlOrCommand.split(' ');
+        args.push(...commandParts);
+      }
     }
 
     console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));
@@ -3498,4 +3499,189 @@ ipcMain.handle('strategize-restart', async () => {
     console.error('[Strategize] Failed to restart:', error);
     return { success: false, error: error.message };
   }
+});
+
+// Check if a Claude plugin is enabled
+ipcMain.handle('check-plugin', async (_event, pluginName: string) => {
+  console.log('[Plugin] Checking plugin status:', pluginName);
+
+  return new Promise((resolve) => {
+    try {
+      const checkProcess = spawn('claude', ['plugin', 'list'], {
+        env: { ...process.env },
+        shell: true
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      checkProcess.stdout.on('data', (data: Buffer) => {
+        output += data.toString();
+      });
+
+      checkProcess.stderr.on('data', (data: Buffer) => {
+        errorOutput += data.toString();
+      });
+
+      checkProcess.on('close', (code: number | null) => {
+        console.log('[Plugin] claude plugin list exited with code:', code);
+        console.log('[Plugin] Output:', output);
+
+        if (code !== 0) {
+          console.error('[Plugin] Error output:', errorOutput);
+          resolve({ success: false, enabled: false, error: errorOutput || 'Failed to list plugins' });
+          return;
+        }
+
+        // Check if plugin is in the output and enabled
+        // Expected format: "✓ plugin-name@scope - enabled"
+        const pluginRegex = new RegExp(`✓\\s+${pluginName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+-\\s+enabled`, 'i');
+        const isEnabled = pluginRegex.test(output);
+
+        console.log('[Plugin] Is enabled:', isEnabled);
+        resolve({ success: true, enabled: isEnabled });
+      });
+
+      checkProcess.on('error', (error: any) => {
+        console.error('[Plugin] Failed to spawn claude plugin list:', error);
+        resolve({ success: false, enabled: false, error: error.message });
+      });
+    } catch (error: any) {
+      console.error('[Plugin] Exception checking plugin:', error);
+      resolve({ success: false, enabled: false, error: error.message });
+    }
+  });
+});
+
+// Enable a Claude plugin
+ipcMain.handle('enable-plugin', async (_event, pluginName: string) => {
+  console.log('[Plugin] Enabling plugin:', pluginName);
+
+  return new Promise((resolve) => {
+    try {
+      const enableProcess = spawn('claude', ['plugin', 'enable', pluginName], {
+        env: { ...process.env },
+        shell: true
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      enableProcess.stdout.on('data', (data: Buffer) => {
+        output += data.toString();
+      });
+
+      enableProcess.stderr.on('data', (data: Buffer) => {
+        errorOutput += data.toString();
+      });
+
+      enableProcess.on('close', (code: number | null) => {
+        console.log('[Plugin] claude plugin enable exited with code:', code);
+        console.log('[Plugin] Output:', output);
+
+        if (code !== 0) {
+          console.error('[Plugin] Error output:', errorOutput);
+
+          // If plugin is not installed, try to install it instead
+          if (errorOutput.includes('not found') || errorOutput.includes('not installed')) {
+            console.log('[Plugin] Plugin not installed, attempting to install...');
+            const installProcess = spawn('claude', ['plugin', 'install', pluginName], {
+              env: { ...process.env },
+              shell: true
+            });
+
+            let installOutput = '';
+            let installError = '';
+
+            installProcess.stdout.on('data', (data: Buffer) => {
+              installOutput += data.toString();
+            });
+
+            installProcess.stderr.on('data', (data: Buffer) => {
+              installError += data.toString();
+            });
+
+            installProcess.on('close', (installCode: number | null) => {
+              console.log('[Plugin] claude plugin install exited with code:', installCode);
+              console.log('[Plugin] Install output:', installOutput);
+
+              if (installCode !== 0) {
+                console.error('[Plugin] Install error:', installError);
+                resolve({ success: false, error: installError || 'Failed to install plugin' });
+                return;
+              }
+
+              resolve({ success: true });
+            });
+
+            installProcess.on('error', (error: any) => {
+              console.error('[Plugin] Failed to spawn claude plugin install:', error);
+              resolve({ success: false, error: error.message });
+            });
+
+            return;
+          }
+
+          resolve({ success: false, error: errorOutput || 'Failed to enable plugin' });
+          return;
+        }
+
+        resolve({ success: true });
+      });
+
+      enableProcess.on('error', (error: any) => {
+        console.error('[Plugin] Failed to spawn claude plugin enable:', error);
+        resolve({ success: false, error: error.message });
+      });
+    } catch (error: any) {
+      console.error('[Plugin] Exception enabling plugin:', error);
+      resolve({ success: false, error: error.message });
+    }
+  });
+});
+
+// Disable a Claude plugin
+ipcMain.handle('disable-plugin', async (_event, pluginName: string) => {
+  console.log('[Plugin] Disabling plugin:', pluginName);
+
+  return new Promise((resolve) => {
+    try {
+      const disableProcess = spawn('claude', ['plugin', 'disable', pluginName], {
+        env: { ...process.env },
+        shell: true
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      disableProcess.stdout.on('data', (data: Buffer) => {
+        output += data.toString();
+      });
+
+      disableProcess.stderr.on('data', (data: Buffer) => {
+        errorOutput += data.toString();
+      });
+
+      disableProcess.on('close', (code: number | null) => {
+        console.log('[Plugin] claude plugin disable exited with code:', code);
+        console.log('[Plugin] Output:', output);
+
+        if (code !== 0) {
+          console.error('[Plugin] Error output:', errorOutput);
+          resolve({ success: false, error: errorOutput || 'Failed to disable plugin' });
+          return;
+        }
+
+        resolve({ success: true });
+      });
+
+      disableProcess.on('error', (error: any) => {
+        console.error('[Plugin] Failed to spawn claude plugin disable:', error);
+        resolve({ success: false, error: error.message });
+      });
+    } catch (error: any) {
+      console.error('[Plugin] Exception disabling plugin:', error);
+      resolve({ success: false, error: error.message });
+    }
+  });
 });

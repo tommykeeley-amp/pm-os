@@ -16,7 +16,7 @@ import type { Task } from './types/task';
 type Tab = 'tasks' | 'meetings' | 'strategize' | 'chats';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('tasks');
+  const [activeTab, setActiveTab] = useState<Tab>('strategize');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isPinned, setIsPinned] = useState(false);
@@ -597,6 +597,15 @@ function App() {
       {/* Tabs */}
       <div className="bg-dark-surface border-b border-dark-border flex relative">
         <button
+          onClick={() => setActiveTab('strategize')}
+          className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
+                   ${activeTab === 'strategize'
+                     ? 'text-dark-text-primary'
+                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
+        >
+          Strategize
+        </button>
+        <button
           onClick={() => setActiveTab('tasks')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
                    ${activeTab === 'tasks'
@@ -613,20 +622,6 @@ function App() {
                 </span>
               );
             })()}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('strategize')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 relative
-                   ${activeTab === 'strategize'
-                     ? 'text-dark-text-primary'
-                     : 'text-dark-text-secondary hover:text-dark-text-primary'}`}
-        >
-          <span className="flex items-center justify-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            Strategize
           </span>
         </button>
         <button
@@ -667,8 +662,8 @@ function App() {
           style={{
             width: '25%',
             transform: `translateX(${
-              activeTab === 'tasks' ? '0%' :
-              activeTab === 'strategize' ? '100%' :
+              activeTab === 'strategize' ? '0%' :
+              activeTab === 'tasks' ? '100%' :
               activeTab === 'meetings' ? '200%' :
               '300%'
             })`
