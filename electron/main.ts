@@ -2956,14 +2956,15 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       };
     }
 
-    // Build command based on transport type (no --scope flag = adds to project)
+    // Build command based on transport type
+    // Following Amplitude docs: claude mcp add -t http -s user Amplitude "https://mcp.amplitude.com/mcp"
     let args: string[];
     if (type === 'http') {
-      // For HTTP/SSE: claude mcp add --transport http <name> <url>
-      args = ['mcp', 'add', '--transport', 'http', name, urlOrCommand];
+      // For HTTP/SSE: claude mcp add -t http -s user <name> <url>
+      args = ['mcp', 'add', '-t', 'http', '-s', 'user', name, urlOrCommand];
     } else {
-      // For stdio: claude mcp add --transport stdio --command <command> <name>
-      args = ['mcp', 'add', '--transport', 'stdio', '--command', urlOrCommand, name];
+      // For stdio: claude mcp add -t stdio -s user --command <command> <name>
+      args = ['mcp', 'add', '-t', 'stdio', '-s', 'user', '--command', urlOrCommand, name];
     }
 
     console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));
