@@ -2877,6 +2877,12 @@ ipcMain.handle('strategize-send', async (_event, message: string, conversationHi
       if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
         mcpList.push('- **Atlassian MCP**: Access Jira issues/tickets, Confluence pages, and Compass service components');
       }
+      if (shouldInclude('gdrive') && userSettings.mcpServers.gdrive?.enabled) {
+        mcpList.push('- **Google Drive MCP**: Access Google Docs, Sheets, Slides, and Drive files');
+      }
+      if (shouldInclude('slack') && userSettings.mcpServers.slack?.enabled) {
+        mcpList.push('- **Slack MCP**: Send messages, manage channels, and access workspace history');
+      }
 
       if (mcpList.length > 0) {
         mcpGuidance += mcpList.join('\n') + '\n\n';
@@ -2892,6 +2898,12 @@ ipcMain.handle('strategize-send', async (_event, message: string, conversationHi
         }
         if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
           mcpGuidance += '- Jira tickets, Confluence docs, or Compass services → Use Atlassian MCP tools\n';
+        }
+        if (shouldInclude('gdrive') && userSettings.mcpServers.gdrive?.enabled) {
+          mcpGuidance += '- Google Docs, Sheets, Slides, or Drive files → Use Google Drive MCP tools\n';
+        }
+        if (shouldInclude('slack') && userSettings.mcpServers.slack?.enabled) {
+          mcpGuidance += '- Slack messages, channels, or workspace data → Use Slack MCP tools\n';
         }
         mcpGuidance += '\nProactively search and use these tools when relevant to the user\'s question.\n';
 
