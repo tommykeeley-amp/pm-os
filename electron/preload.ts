@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteTask: (id: string) => ipcRenderer.invoke('delete-task', id),
 
   // OAuth
-  startOAuthFlow: (provider: string) => ipcRenderer.invoke('start-oauth', provider),
+  startOAuthFlow: (provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => ipcRenderer.invoke('start-oauth', provider),
   getOAuthTokens: (provider: string) => ipcRenderer.invoke('get-oauth-tokens', provider),
   saveOAuthTokens: (provider: string, tokens: any) => ipcRenderer.invoke('save-oauth-tokens', provider, tokens),
 
@@ -96,7 +96,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   slackSendReply: (channelId: string, threadTs: string, text: string) =>
     ipcRenderer.invoke('slack-send-reply', channelId, threadTs, text),
 
-  // Claude Code
+  // Strategize (OpenAI Chat)
+  strategizeStart: (folderPath: string) =>
+    ipcRenderer.invoke('strategize-start', folderPath),
+  strategizeSend: (message: string) =>
+    ipcRenderer.invoke('strategize-send', message),
+  strategizeStop: () =>
+    ipcRenderer.invoke('strategize-stop'),
+  strategizeReset: () =>
+    ipcRenderer.invoke('strategize-reset'),
+  onStrategizeStream: (callback: (chunk: string) => void) => {
+    const handler = (_event: any, chunk: string) => callback(chunk);
+    ipcRenderer.on('strategize-stream', handler);
+    return () => ipcRenderer.removeListener('strategize-stream', handler);
+  },
+  onStrategizeComplete: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('strategize-complete', handler);
+    return () => ipcRenderer.removeListener('strategize-complete', handler);
+  },
+
+  // Claude Code (legacy)
   claudeCodeStart: (folderPath: string) =>
     ipcRenderer.invoke('claude-code-start', folderPath),
   claudeCodeSend: (message: string) =>
@@ -105,6 +125,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('claude-code-stop'),
   claudeCodeGetHistory: () =>
     ipcRenderer.invoke('claude-code-get-history'),
+  claudeCodeResize: (cols: number, rows: number) =>
+    ipcRenderer.invoke('claude-code-resize', cols, rows),
+  addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) =>
+    ipcRenderer.invoke('add-mcp-server', name, type, urlOrCommand),
   onClaudeOutput: (callback: (output: string) => void) => {
     const handler = (_event: any, output: string) => callback(output);
     ipcRenderer.on('claude-output', handler);
@@ -114,6 +138,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: any, data: { code: number | null; signal: string | null }) => callback(data);
     ipcRenderer.on('claude-disconnected', handler);
     return () => ipcRenderer.removeListener('claude-disconnected', handler);
+  },
+  onClaudeTerminalData: (callback: (data: string) => void) => {
+    const handler = (_event: any, data: string) => callback(data);
+    ipcRenderer.on('claude-terminal-data', handler);
+    return () => ipcRenderer.removeListener('claude-terminal-data', handler);
+  },
+  onClaudeTerminalExit: (callback: (code: number | null) => void) => {
+    const handler = (_event: any, code: number | null) => callback(code);
+    ipcRenderer.on('claude-terminal-exit', handler);
+    return () => ipcRenderer.removeListener('claude-terminal-exit', handler);
   },
 
   // Events
@@ -153,7 +187,7 @@ export interface ElectronAPI {
   addTask: (task: any) => Promise<any>;
   updateTask: (id: string, updates: any) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  startOAuthFlow: (provider: string) => Promise<any>;
+  startOAuthFlow: (provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => Promise<any>;
   getOAuthTokens: (provider: string) => Promise<any>;
   saveOAuthTokens: (provider: string, tokens: any) => Promise<void>;
   syncCalendar: () => Promise<any>;
@@ -200,12 +234,22 @@ export interface ElectronAPI {
   getSlackUsers: () => Promise<Array<{ id: string; name: string; realName?: string; avatar?: string }>>;
   slackGetThreadReplies: (channelId: string, threadTs: string) => Promise<Array<{text: string; user: string; userName: string; timestamp: string}>>;
   slackSendReply: (channelId: string, threadTs: string, text: string) => Promise<{success: boolean}>;
+  strategizeStart: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
+  strategizeSend: (message: string) => Promise<{ success: boolean; error?: string }>;
+  strategizeStop: () => Promise<{ success: boolean }>;
+  strategizeReset: () => Promise<{ success: boolean }>;
+  onStrategizeStream: (callback: (chunk: string) => void) => () => void;
+  onStrategizeComplete: (callback: () => void) => () => void;
   claudeCodeStart: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
   claudeCodeSend: (message: string) => Promise<{ success: boolean; error?: string }>;
   claudeCodeStop: () => Promise<{ success: boolean }>;
   claudeCodeGetHistory: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
+  claudeCodeResize: (cols: number, rows: number) => Promise<{ success: boolean; error?: string }>;
+  addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) => Promise<{ success: boolean; error?: string }>;
   onClaudeOutput: (callback: (output: string) => void) => () => void;
   onClaudeDisconnected: (callback: (data: { code: number | null; signal: string | null }) => void) => () => void;
+  onClaudeTerminalData: (callback: (data: string) => void) => () => void;
+  onClaudeTerminalExit: (callback: (code: number | null) => void) => () => void;
   onFocusTaskInput: (callback: () => void) => () => void;
   onOAuthSuccess: (callback: (data: { provider: string }) => void) => () => void;
   onOAuthError: (callback: (data: { error: string }) => void) => () => void;

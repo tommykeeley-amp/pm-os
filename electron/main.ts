@@ -1,13 +1,14 @@
 import { app, BrowserWindow, globalShortcut, screen, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import Store from 'electron-store';
 import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as http from 'http';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import type { WindowPosition, Task } from '../src/types/task';
 import { IntegrationManager } from './integration-manager';
 import { JiraService } from '../src/services/jira';
@@ -15,6 +16,9 @@ import { ConfluenceService } from '../src/services/confluence';
 import { SlackEventsServer } from './slack-events';
 import { SlackDigestService } from './slack-digest-service';
 import OpenAI from 'openai';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -80,8 +84,7 @@ const WINDOW_WIDTH = 400;
 const WINDOW_HEIGHT = 600;
 
 // Claude Code session management
-let claudeCodeProcess: ChildProcess | null = null;
-const chatHistory: Array<{ role: string; content: string; timestamp: string }> = [];
+let claudeProcess: any = null;
 
 // Initialize integration manager
 const integrationManager = new IntegrationManager(
@@ -530,168 +533,534 @@ async function handleProtocolUrl(url: string) {
 }
 
 // Claude Code session management functions
-function startClaudeCodeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    try {
-      // Validate folder path
-      if (!folderPath || !fs.existsSync(folderPath)) {
-        resolve({ success: false, error: 'Invalid folder path' });
-        return;
-      }
+// OpenAI chat session for Strategize tab
+let strategizeChatHistory: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
 
-      // Stop existing session if any
-      if (claudeCodeProcess) {
-        stopClaudeCodeSession();
-      }
+// MCP client management for Strategize
+interface MCPClientInfo {
+  name: string;
+  client: Client;
+  transport: StdioClientTransport | SSEClientTransport;
+  tools: Array<{ name: string; description?: string; inputSchema: any }>;
+}
+let mcpClients: Map<string, MCPClientInfo> = new Map();
 
-      console.log('[Claude Code] Starting session for folder:', folderPath);
-
-      // Write MCP configuration if any MCPs are enabled
-      const userSettings = store.get('userSettings', {}) as any;
-      if (userSettings.mcpServers) {
-        try {
-          const mcpConfigPath = path.join(os.homedir(), '.config', 'claude', 'mcp_config.json');
-          const mcpConfigDir = path.dirname(mcpConfigPath);
-
-          // Ensure config directory exists
-          if (!fs.existsSync(mcpConfigDir)) {
-            fs.mkdirSync(mcpConfigDir, { recursive: true });
-          }
-
-          // Build MCP config object with only enabled servers
-          const mcpConfig: any = { mcpServers: {} };
-
-          Object.keys(userSettings.mcpServers).forEach(serverName => {
-            const server = userSettings.mcpServers[serverName];
-            if (server.enabled) {
-              if (server.transport === 'sse') {
-                // SSE transport (web service like Amplitude)
-                mcpConfig.mcpServers[serverName] = {
-                  url: server.url,
-                };
-              } else {
-                // Stdio transport (local command)
-                mcpConfig.mcpServers[serverName] = {
-                  command: server.command,
-                  args: server.args || [],
-                  env: server.env || {},
-                };
-              }
-            }
-          });
-
-          // Write config file
-          fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
-          console.log('[Claude Code] MCP config written:', Object.keys(mcpConfig.mcpServers));
-        } catch (error) {
-          console.error('[Claude Code] Failed to write MCP config:', error);
-          // Continue anyway - don't fail the session start
-        }
-      }
-
-      // Spawn Claude Code CLI
-      const claudePath = '/Users/tommykeeley/.local/bin/claude';
-      claudeCodeProcess = spawn(claudePath, ['--no-chrome', '--dangerously-skip-permissions'], {
-        cwd: folderPath,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      // Clear chat history
-      chatHistory.length = 0;
-
-      let startupOutput = '';
-      let resolved = false;
-
-      // Handle stdout - this is where Claude's responses come
-      claudeCodeProcess.stdout?.on('data', (data: Buffer) => {
-        const output = data.toString();
-        startupOutput += output;
-
-        // Send output to renderer
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('claude-output', output);
-        }
-
-        console.log('[Claude Code] stdout:', output.substring(0, 200));
-
-        // Detect successful startup (look for prompt or welcome message)
-        if (!resolved && (output.includes('>>>') || output.includes('Welcome') || startupOutput.length > 100)) {
-          resolved = true;
-          console.log('[Claude Code] Session started successfully');
-          resolve({ success: true });
-        }
-      });
-
-      // Handle stderr - errors and warnings
-      claudeCodeProcess.stderr?.on('data', (data: Buffer) => {
-        const error = data.toString();
-        console.error('[Claude Code] stderr:', error);
-
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('claude-output', `[Error] ${error}`);
-        }
-      });
-
-      // Handle process exit
-      claudeCodeProcess.on('exit', (code, signal) => {
-        console.log('[Claude Code] Process exited with code:', code, 'signal:', signal);
-        claudeCodeProcess = null;
-
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('claude-disconnected', { code, signal });
-        }
-
-        if (!resolved) {
-          resolved = true;
-          resolve({ success: false, error: `Process exited with code ${code}` });
-        }
-      });
-
-      // Handle process error
-      claudeCodeProcess.on('error', (error) => {
-        console.error('[Claude Code] Process error:', error);
-        claudeCodeProcess = null;
-
-        if (!resolved) {
-          resolved = true;
-          resolve({ success: false, error: error.message });
-        }
-      });
-
-      // Timeout after 10 seconds
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          console.log('[Claude Code] Startup timeout, but treating as success');
-          resolve({ success: true });
-        }
-      }, 10000);
-
-    } catch (error: any) {
-      console.error('[Claude Code] Failed to start session:', error);
-      resolve({ success: false, error: error.message });
+async function startStrategizeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      return { success: false, error: 'OpenAI API key not found. Please add it to your .env file.' };
     }
+
+    // Read local MD files for context
+    let fileContext = '';
+    try {
+      const files = fs.readdirSync(folderPath);
+      const mdFiles = files.filter(f => f.endsWith('.md'));
+
+      console.log(`[Strategize] Found ${mdFiles.length} MD files in ${folderPath}`);
+
+      // Read up to 10 MD files for context (to avoid token limits)
+      const filesToRead = mdFiles.slice(0, 10);
+      const fileContents = filesToRead.map(filename => {
+        const filePath = path.join(folderPath, filename);
+        try {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          return `## ${filename}\n${content}\n`;
+        } catch (e) {
+          return `## ${filename}\n[Could not read file]\n`;
+        }
+      }).join('\n---\n\n');
+
+      if (fileContents) {
+        fileContext = `\n\nProject Documentation:\n${fileContents}`;
+      }
+    } catch (error) {
+      console.log('[Strategize] Could not read folder files:', error);
+    }
+
+    // Read custom system prompt if configured
+    const userSettings = store.get('userSettings', {}) as any;
+    let customSystemPrompt = '';
+    if (userSettings.strategizeSystemPromptPath) {
+      try {
+        const promptPath = userSettings.strategizeSystemPromptPath;
+        if (fs.existsSync(promptPath)) {
+          customSystemPrompt = fs.readFileSync(promptPath, 'utf-8');
+          console.log(`[Strategize] Loaded custom system prompt from ${promptPath}`);
+        } else {
+          console.log(`[Strategize] Custom system prompt file not found: ${promptPath}`);
+        }
+      } catch (error) {
+        console.error('[Strategize] Could not read custom system prompt:', error);
+      }
+    }
+
+    // Initialize chat with system prompt including file context and custom instructions
+    const projectName = folderPath.split('/').pop();
+    let systemPromptContent = `You are a helpful AI assistant for the project "${projectName}".
+
+Location: ${folderPath}
+
+You have access to the project's documentation below. Use this context to answer questions about the project, its goals, features, and implementation details.${fileContext}
+
+Be concise and helpful. When answering, prioritize information from the documentation above.`;
+
+    // Add custom system prompt if provided
+    if (customSystemPrompt) {
+      systemPromptContent += `\n\n---\n\nADDITIONAL INSTRUCTIONS:\n${customSystemPrompt}`;
+    }
+
+    strategizeChatHistory = [{
+      role: 'system',
+      content: systemPromptContent
+    }];
+
+    console.log('[Strategize] Session started with OpenAI and local file context');
+
+    // Load enabled MCP servers (userSettings already loaded above)
+    if (userSettings.mcpServers) {
+      for (const [serverName, serverConfig] of Object.entries(userSettings.mcpServers)) {
+        const config = serverConfig as any;
+        if (config.enabled) {
+          try {
+            if (config.transport === 'stdio' && config.command) {
+              // Connect stdio MCP (e.g., Granola)
+              await connectMCPServerStdio(serverName, config.command, config.args || []);
+              console.log(`[MCP] Connected to ${serverName} (stdio)`);
+            } else if (config.transport === 'sse' && config.url) {
+              // Connect HTTP/SSE MCP (e.g., Amplitude, Clockwise)
+              await connectMCPServerSSE(serverName, config.url);
+              console.log(`[MCP] Connected to ${serverName} (SSE)`);
+            } else {
+              console.log(`[MCP] Skipping ${serverName} - missing configuration`);
+            }
+          } catch (error) {
+            console.error(`[MCP] Failed to connect to ${serverName}:`, error);
+          }
+        }
+      }
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to start session:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// MCP Helper Functions
+async function connectMCPServerStdio(name: string, command: string, args: string[]): Promise<void> {
+  console.log(`[MCP] Connecting to ${name} (stdio) with command: ${command} ${args.join(' ')}`);
+
+  const transport = new StdioClientTransport({
+    command,
+    args,
+  });
+
+  const client = new Client({
+    name: 'pm-os-strategize',
+    version: '1.0.0',
+  }, {
+    capabilities: {},
+  });
+
+  await client.connect(transport);
+
+  // List available tools
+  const toolsResult = await client.listTools();
+  const tools = toolsResult.tools;
+
+  console.log(`[MCP] ${name} provides ${tools.length} tools:`, tools.map(t => t.name).join(', '));
+
+  mcpClients.set(name, {
+    name,
+    client,
+    transport,
+    tools,
   });
 }
 
-function sendClaudeCodeMessage(message: string): { success: boolean; error?: string } {
+async function connectMCPServerSSE(name: string, url: string): Promise<void> {
+  console.log(`[MCP] Connecting to ${name} (SSE) at: ${url}`);
+
+  const transport = new SSEClientTransport(new URL(url));
+
+  const client = new Client({
+    name: 'pm-os-strategize',
+    version: '1.0.0',
+  }, {
+    capabilities: {},
+  });
+
+  await client.connect(transport);
+
+  // List available tools
+  const toolsResult = await client.listTools();
+  const tools = toolsResult.tools;
+
+  console.log(`[MCP] ${name} provides ${tools.length} tools:`, tools.map(t => t.name).join(', '));
+
+  mcpClients.set(name, {
+    name,
+    client,
+    transport,
+    tools,
+  });
+}
+
+async function disconnectMCPServers(): Promise<void> {
+  for (const [name, clientInfo] of mcpClients.entries()) {
+    try {
+      await clientInfo.client.close();
+      console.log(`[MCP] Disconnected ${name}`);
+    } catch (error) {
+      console.error(`[MCP] Error disconnecting ${name}:`, error);
+    }
+  }
+  mcpClients.clear();
+}
+
+function getMCPToolsForOpenAI(): Array<{ type: 'function'; function: { name: string; description?: string; parameters: any } }> {
+  const tools: Array<{ type: 'function'; function: { name: string; description?: string; parameters: any } }> = [];
+
+  for (const [serverName, clientInfo] of mcpClients.entries()) {
+    for (const tool of clientInfo.tools) {
+      tools.push({
+        type: 'function',
+        function: {
+          name: `${serverName}__${tool.name}`, // Prefix with server name to avoid conflicts
+          description: tool.description || '',
+          parameters: tool.inputSchema || { type: 'object', properties: {} },
+        },
+      });
+    }
+  }
+
+  return tools;
+}
+
+async function callMCPTool(toolName: string, args: any): Promise<any> {
+  // Extract server name from tool name (format: servername__toolname)
+  const [serverName, actualToolName] = toolName.split('__');
+
+  const clientInfo = mcpClients.get(serverName);
+  if (!clientInfo) {
+    throw new Error(`MCP server ${serverName} not connected`);
+  }
+
+  console.log(`[MCP] Calling tool ${actualToolName} on ${serverName} with args:`, args);
+
+  const result = await clientInfo.client.callTool({
+    name: actualToolName,
+    arguments: args,
+  });
+
+  return result;
+}
+
+async function startClaudeCodeSession(folderPath: string): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!claudeCodeProcess || !claudeCodeProcess.stdin) {
+    // Validate folder path
+    if (!folderPath || !fs.existsSync(folderPath)) {
+      return { success: false, error: 'Invalid folder path' };
+    }
+
+    console.log('[Claude Code] Starting Claude Code CLI for folder:', folderPath);
+
+    // Get user settings for Claude CLI path
+    const userSettings = store.get('userSettings', {}) as any;
+
+    // Detect Claude CLI path
+    let claudePath = '/Users/tommykeeley/.local/bin/claude';
+    const possiblePaths = [
+      path.join(os.homedir(), '.local', 'bin', 'claude'),
+      '/usr/local/bin/claude',
+      '/opt/homebrew/bin/claude',
+    ];
+
+    if (userSettings.claudeCodePath) {
+      possiblePaths.unshift(userSettings.claudeCodePath);
+    }
+
+    let foundClaude = false;
+    for (const checkPath of possiblePaths) {
+      try {
+        if (fs.existsSync(checkPath)) {
+          claudePath = checkPath;
+          foundClaude = true;
+          console.log('[Claude Code] Found Claude CLI at:', claudePath);
+          break;
+        }
+      } catch (e) {
+        // Continue checking
+      }
+    }
+
+    if (!foundClaude) {
+      return {
+        success: false,
+        error: 'Claude Code CLI not found. Please install it from https://docs.anthropic.com/en/docs/agents/claude-code'
+      };
+    }
+
+    // Stop existing process if any
+    if (claudeProcess) {
+      try {
+        claudeProcess.kill('SIGTERM');
+      } catch (e) {
+        console.error('[Claude Code] Error killing old process:', e);
+      }
+    }
+
+    console.log('[Claude Code] Starting Claude CLI with PTY...');
+    console.log('[Claude Code] Command:', claudePath);
+    console.log('[Claude Code] CWD:', folderPath);
+
+    // Use createRequire to load node-pty in ESM context
+    const require = createRequire(import.meta.url);
+    const pty = require('node-pty');
+
+    // Get terminal size for PTY
+    const cols = 120;
+    const rows = 30;
+
+    // Spawn Claude Code with PTY
+    claudeProcess = pty.spawn(claudePath, ['--no-chrome', '--dangerously-skip-permissions'], {
+      name: 'xterm-color',
+      cols,
+      rows,
+      cwd: folderPath,
+      env: process.env,
+    });
+
+    console.log('[Claude Code] PTY process spawned with PID:', claudeProcess.pid);
+
+    // Don't send startup messages - let Claude Code handle it
+    // Frontend will show ready message once startup completes
+
+    // Forward PTY output to terminal
+    let startupComplete = false;
+    let startupBuffer = '';
+    let startupTimer: NodeJS.Timeout | null = null;
+
+    claudeProcess.onData((data: string) => {
+      if (mainWindow && mainWindow.webContents) {
+        if (!startupComplete) {
+          // Buffer startup data to detect when ready
+          startupBuffer += data;
+
+          // Clear existing timer
+          if (startupTimer) {
+            clearTimeout(startupTimer);
+          }
+
+          // Check if we've seen key indicators that Claude is ready
+          const hasPrompt = startupBuffer.includes('bypass permissions') ||
+                           startupBuffer.includes('Recent activity') ||
+                           startupBuffer.match(/[❯›>]/);
+
+          if (hasPrompt && startupBuffer.length > 500) {
+            // Wait an extra second to ensure Claude is fully initialized
+            startupTimer = setTimeout(() => {
+              startupComplete = true;
+              console.log('[Claude Code] Startup complete, Claude is ready');
+
+              // Send ready message to frontend
+              if (mainWindow && mainWindow.webContents) {
+                mainWindow.webContents.send('claude-terminal-data',
+                  `\r\n✓ Ready - ask me anything about ${folderPath.split('/').pop()}\r\n\r\n`
+                );
+              }
+            }, 1000);
+          }
+        } else {
+          // After startup, pass all data through
+          // Frontend will handle filtering for chat display
+          mainWindow.webContents.send('claude-terminal-data', data);
+        }
+      }
+    });
+
+    // Handle PTY exit
+    claudeProcess.onExit(({ exitCode, signal }: { exitCode: number; signal?: number }) => {
+      console.log('[Claude Code] Process exited:', exitCode, signal);
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('claude-terminal-exit', exitCode);
+      }
+      claudeProcess = null;
+    });
+
+    console.log('[Claude Code] Started Claude Code CLI successfully');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Claude Code] Failed to start session:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendStrategizeMessage(message: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      return { success: false, error: 'OpenAI API key not configured' };
+    }
+
+    // Add user message to history
+    strategizeChatHistory.push({ role: 'user', content: message });
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    // Get MCP tools for OpenAI
+    const mcpTools = getMCPToolsForOpenAI();
+    const hasTools = mcpTools.length > 0;
+
+    console.log(`[Strategize] Sending message with ${mcpTools.length} MCP tools available`);
+
+    // Create completion with tools if available
+    const completionParams: any = {
+      model: 'gpt-4-turbo-preview',
+      messages: strategizeChatHistory,
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 2000,
+    };
+
+    if (hasTools) {
+      completionParams.tools = mcpTools;
+      completionParams.tool_choice = 'auto';
+    }
+
+    let fullResponse = '';
+    let toolCalls: any[] = [];
+    let currentToolCall: any = null;
+
+    // Stream response from OpenAI
+    const stream = await openai.chat.completions.create(completionParams);
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+
+      // Handle regular content
+      if (delta?.content) {
+        fullResponse += delta.content;
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('strategize-stream', delta.content);
+        }
+      }
+
+      // Handle tool calls
+      if (delta?.tool_calls) {
+        for (const toolCallDelta of delta.tool_calls) {
+          if (toolCallDelta.index !== undefined) {
+            if (!toolCalls[toolCallDelta.index]) {
+              toolCalls[toolCallDelta.index] = {
+                id: toolCallDelta.id || '',
+                type: 'function',
+                function: { name: '', arguments: '' },
+              };
+            }
+
+            currentToolCall = toolCalls[toolCallDelta.index];
+
+            if (toolCallDelta.function?.name) {
+              currentToolCall.function.name += toolCallDelta.function.name;
+            }
+            if (toolCallDelta.function?.arguments) {
+              currentToolCall.function.arguments += toolCallDelta.function.arguments;
+            }
+          }
+        }
+      }
+    }
+
+    // If there were tool calls, execute them
+    if (toolCalls.length > 0) {
+      console.log('[Strategize] OpenAI requested tool calls:', toolCalls.map(tc => tc.function.name));
+
+      // Add assistant message with tool calls to history
+      strategizeChatHistory.push({
+        role: 'assistant',
+        content: fullResponse || null,
+        tool_calls: toolCalls,
+      } as any);
+
+      // Execute each tool call
+      for (const toolCall of toolCalls) {
+        try {
+          const toolName = toolCall.function.name;
+          const toolArgs = JSON.parse(toolCall.function.arguments);
+
+          console.log(`[Strategize] Executing tool ${toolName}`);
+
+          const result = await callMCPTool(toolName, toolArgs);
+
+          // Add tool result to history
+          strategizeChatHistory.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result.content),
+          } as any);
+
+          // Send status to frontend
+          if (mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send('strategize-stream', `\n\n*[Used tool: ${toolName}]*\n\n`);
+          }
+        } catch (error: any) {
+          console.error(`[Strategize] Tool call failed:`, error);
+          strategizeChatHistory.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: error.message }),
+          } as any);
+        }
+      }
+
+      // Make another call to OpenAI with tool results
+      const followUpStream = await openai.chat.completions.create({
+        model: 'gpt-4-turbo-preview',
+        messages: strategizeChatHistory,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2000,
+      });
+
+      let followUpResponse = '';
+      for await (const chunk of followUpStream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content && mainWindow && mainWindow.webContents) {
+          followUpResponse += content;
+          mainWindow.webContents.send('strategize-stream', content);
+        }
+      }
+
+      strategizeChatHistory.push({ role: 'assistant', content: followUpResponse });
+    } else {
+      // No tool calls, just add the response
+      strategizeChatHistory.push({ role: 'assistant', content: fullResponse });
+    }
+
+    // Send completion signal
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('strategize-complete');
+    }
+
+    console.log('[Strategize] Message sent successfully');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Strategize] Failed to send message:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendClaudeCodeMessage(message: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!claudeProcess) {
       return { success: false, error: 'No active Claude Code session' };
     }
 
-    console.log('[Claude Code] Sending message:', message.substring(0, 100));
-
-    // Add to chat history
-    chatHistory.push({
-      role: 'user',
-      content: message,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Send to Claude process
-    claudeCodeProcess.stdin.write(message + '\n');
-
+    console.log('[Claude Code] Sending input to PTY:', message.substring(0, 50));
+    claudeProcess.write(message);
     return { success: true };
   } catch (error: any) {
     console.error('[Claude Code] Failed to send message:', error);
@@ -701,22 +1070,16 @@ function sendClaudeCodeMessage(message: string): { success: boolean; error?: str
 
 function stopClaudeCodeSession(): { success: boolean } {
   try {
-    if (claudeCodeProcess) {
-      console.log('[Claude Code] Stopping session');
-
-      // Try graceful shutdown first
-      claudeCodeProcess.kill('SIGTERM');
-
-      // Force kill after 2 seconds if still running
+    console.log('[Claude Code] Stopping PTY session');
+    if (claudeProcess) {
+      claudeProcess.kill('SIGTERM');
       setTimeout(() => {
-        if (claudeCodeProcess) {
-          console.log('[Claude Code] Force killing process');
-          claudeCodeProcess.kill('SIGKILL');
-          claudeCodeProcess = null;
+        if (claudeProcess) {
+          claudeProcess.kill('SIGKILL');
+          claudeProcess = null;
         }
       }, 2000);
     }
-
     return { success: true };
   } catch (error: any) {
     console.error('[Claude Code] Failed to stop session:', error);
@@ -725,7 +1088,7 @@ function stopClaudeCodeSession(): { success: boolean } {
 }
 
 function getClaudeCodeHistory() {
-  return [...chatHistory];
+  return [];
 }
 
 // Start local HTTP server for Chrome extension sync
@@ -1604,7 +1967,7 @@ ipcMain.handle('delete-task', (_event, id: string) => {
 });
 
 // OAuth Handlers
-ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom') => {
+ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => {
   const startTime = Date.now();
   console.log(`\n========================================`);
   console.log(`[OAuth] START - ${new Date().toISOString()}`);
@@ -1612,14 +1975,30 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
   console.log(`[OAuth] User initiated OAuth flow from Settings`);
 
   try {
-    // OAuth credentials are stored server-side on Vercel
-    // We simply open the Vercel authorization endpoint which handles everything
-    const authUrl = `https://pm-os.vercel.app/api/oauth/${provider}/authorize`;
+    let authUrl: string;
 
-    console.log('[OAuth] Step 1: Opening Vercel authorization endpoint...');
+    // MCP providers use their own OAuth endpoints
+    if (provider === 'amplitude' || provider === 'granola' || provider === 'clockwise') {
+      // MCP servers typically handle OAuth through their web interfaces
+      // These URLs will redirect users to authenticate and grant access
+      const mcpUrls: Record<string, string> = {
+        amplitude: 'https://pm-os.vercel.app/api/oauth/amplitude/authorize',
+        granola: 'https://pm-os.vercel.app/api/oauth/granola/authorize',
+        clockwise: 'https://pm-os.vercel.app/api/oauth/clockwise/authorize',
+      };
+      authUrl = mcpUrls[provider];
+      console.log(`[OAuth] MCP provider detected: ${provider}`);
+      console.log(`[OAuth] Using MCP OAuth endpoint: ${authUrl}`);
+    } else {
+      // Standard OAuth providers (Google, Slack, Zoom)
+      authUrl = `https://pm-os.vercel.app/api/oauth/${provider}/authorize`;
+      console.log('[OAuth] Standard OAuth provider');
+    }
+
+    console.log('[OAuth] Step 1: Opening authorization endpoint...');
     console.log(`[OAuth] URL: ${authUrl}`);
     console.log('[OAuth] Vercel will generate the OAuth URL with server-side credentials');
-    console.log('[OAuth] and redirect to the provider (Slack/Google)');
+    console.log('[OAuth] and redirect to the provider');
 
     // Open in system browser
     console.log('[OAuth] Step 2: Calling shell.openExternal()...');
@@ -2119,15 +2498,45 @@ ipcMain.handle('confluence-get-page', async (_event, pageId: string) => {
   return await confluenceService.getPage(pageId);
 });
 
-// Claude Code IPC Handlers
+// Strategize (OpenAI) IPC Handlers
+ipcMain.handle('strategize-start', async (_event, folderPath: string) => {
+  console.log('[IPC] strategize-start called with folder:', folderPath);
+  return await startStrategizeSession(folderPath);
+});
+
+ipcMain.handle('strategize-send', async (_event, message: string) => {
+  console.log('[IPC] strategize-send called');
+  return await sendStrategizeMessage(message);
+});
+
+ipcMain.handle('strategize-stop', async () => {
+  console.log('[IPC] strategize-stop called');
+  strategizeChatHistory = [];
+  await disconnectMCPServers();
+  return { success: true };
+});
+
+ipcMain.handle('strategize-reset', async () => {
+  console.log('[IPC] strategize-reset called - starting new chat');
+  // Keep the system prompt (first message) but clear the rest
+  if (strategizeChatHistory.length > 0) {
+    const systemPrompt = strategizeChatHistory[0];
+    strategizeChatHistory = [systemPrompt];
+  } else {
+    strategizeChatHistory = [];
+  }
+  return { success: true };
+});
+
+// Claude Code IPC Handlers (keep for backward compatibility)
 ipcMain.handle('claude-code-start', async (_event, folderPath: string) => {
   console.log('[IPC] claude-code-start called with folder:', folderPath);
   return await startClaudeCodeSession(folderPath);
 });
 
-ipcMain.handle('claude-code-send', (_event, message: string) => {
+ipcMain.handle('claude-code-send', async (_event, message: string) => {
   console.log('[IPC] claude-code-send called');
-  return sendClaudeCodeMessage(message);
+  return await sendClaudeCodeMessage(message);
 });
 
 ipcMain.handle('claude-code-stop', () => {
@@ -2138,4 +2547,109 @@ ipcMain.handle('claude-code-stop', () => {
 ipcMain.handle('claude-code-get-history', () => {
   console.log('[IPC] claude-code-get-history called');
   return getClaudeCodeHistory();
+});
+
+ipcMain.handle('claude-code-resize', async (_event, cols: number, rows: number) => {
+  try {
+    if (claudeProcess && claudeProcess.resize) {
+      claudeProcess.resize(cols, rows);
+      console.log(`[IPC] Terminal resized to ${cols}x${rows}`);
+      return { success: true };
+    }
+    return { success: false, error: 'No active process' };
+  } catch (error: any) {
+    console.error('[IPC] Failed to resize terminal:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'stdio', urlOrCommand: string) => {
+  console.log(`[IPC] add-mcp-server called: ${name} (${type}) -> ${urlOrCommand}`);
+  try {
+    // Get user settings for Claude CLI path
+    const userSettings = store.get('userSettings', {}) as any;
+
+    // Detect Claude CLI path
+    let claudePath = '/Users/tommykeeley/.local/bin/claude';
+    const possiblePaths = [
+      path.join(os.homedir(), '.local', 'bin', 'claude'),
+      '/usr/local/bin/claude',
+      '/opt/homebrew/bin/claude',
+    ];
+
+    if (userSettings.claudeCodePath) {
+      possiblePaths.unshift(userSettings.claudeCodePath);
+    }
+
+    let foundClaude = false;
+    for (const checkPath of possiblePaths) {
+      try {
+        if (fs.existsSync(checkPath)) {
+          claudePath = checkPath;
+          foundClaude = true;
+          console.log('[MCP] Found Claude CLI at:', claudePath);
+          break;
+        }
+      } catch (e) {
+        // Continue checking
+      }
+    }
+
+    if (!foundClaude) {
+      return {
+        success: false,
+        error: 'Claude Code CLI not found. Please install it from https://docs.anthropic.com/en/docs/agents/claude-code'
+      };
+    }
+
+    // Build command based on transport type
+    let args: string[];
+    if (type === 'http') {
+      // For HTTP/SSE: claude mcp add --transport http <name> <url>
+      args = ['mcp', 'add', '--transport', 'http', name, urlOrCommand];
+    } else {
+      // For stdio: claude mcp add --transport stdio --command <command> <name>
+      args = ['mcp', 'add', '--transport', 'stdio', '--command', urlOrCommand, name];
+    }
+
+    console.log('[MCP] Running command:', claudePath, args.join(' '));
+
+    return new Promise((resolve) => {
+      const addProcess = spawn(claudePath, args);
+
+      let output = '';
+      let errorOutput = '';
+
+      addProcess.stdout?.on('data', (data: Buffer) => {
+        output += data.toString();
+      });
+
+      addProcess.stderr?.on('data', (data: Buffer) => {
+        errorOutput += data.toString();
+      });
+
+      addProcess.on('exit', (code: number | null) => {
+        console.log(`[MCP] claude mcp add exited with code ${code}`);
+        console.log(`[MCP] stdout: ${output}`);
+        if (errorOutput) console.error(`[MCP] stderr: ${errorOutput}`);
+
+        if (code === 0) {
+          resolve({ success: true });
+        } else {
+          resolve({
+            success: false,
+            error: `Failed to add MCP server (exit code ${code}): ${errorOutput || output}`
+          });
+        }
+      });
+
+      addProcess.on('error', (error: any) => {
+        console.error('[MCP] Failed to spawn claude mcp add:', error);
+        resolve({ success: false, error: error.message });
+      });
+    });
+  } catch (error: any) {
+    console.error('[MCP] Exception adding MCP server:', error);
+    return { success: false, error: error.message };
+  }
 });

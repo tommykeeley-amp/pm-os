@@ -47,6 +47,9 @@ interface UserSettings {
 
   // Strategize Settings
   strategizeFolderPath?: string;
+  strategizeSystemPromptPath?: string; // Path to custom system prompt .md file
+  claudeCodePath?: string; // Path to Claude Code CLI executable
+  anthropicApiKey?: string; // Anthropic API key for Claude
   mcpServers?: {
     [key: string]: {
       enabled: boolean;
@@ -121,13 +124,14 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   const [obsidianExpanded, setObsidianExpanded] = useState(false);
   const [jiraTestResult, setJiraTestResult] = useState<{ success: boolean; error?: string; details?: string } | null>(null);
   const [testingJira, setTestingJira] = useState(false);
+  const [connectingMCP, setConnectingMCP] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings();
     checkConnections();
 
     // Listen for OAuth success events
-    const handleOAuthSuccess = (data?: any) => {
+    const handleOAuthSuccess = async (data?: any) => {
       console.log(`\n========== [Settings] OAuth Success Event ==========`);
       console.log(`[Settings] Time: ${new Date().toISOString()}`);
       console.log(`[Settings] Event data:`, data);
@@ -309,6 +313,62 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       setJiraTestResult({ success: false, error: 'Failed to test connection' });
     } finally {
       setTestingJira(false);
+    }
+  };
+
+  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise', enable: boolean) => {
+    console.log(`[Settings] ${enable ? 'Enabling' : 'Disabling'} MCP provider: ${mcpProvider}`);
+
+    // Different MCPs have different setup methods
+    const mcpConfig: Record<string, { name: string; type: 'http' | 'stdio'; url?: string; command?: string }> = {
+      amplitude: {
+        name: 'Amplitude',
+        type: 'http',
+        url: 'https://mcp.amplitude.com/mcp',
+      },
+      granola: {
+        name: 'Granola',
+        type: 'stdio',
+        command: 'npx @granola-ai/mcp',
+      },
+      clockwise: {
+        name: 'Clockwise',
+        type: 'http',
+        url: 'https://mcp.getclockwise.com/mcp',
+      },
+    };
+
+    const config = mcpConfig[mcpProvider];
+
+    // Update settings immediately for instant UI feedback
+    const mcpServers = settings.mcpServers || {};
+    const mcpConfigSettings = {
+      transport: config.type === 'stdio' ? 'stdio' : 'sse',
+      enabled: enable,
+      ...(config.url ? { url: config.url } : {}),
+      ...(config.command ? { command: config.command } : {}),
+    };
+
+    const updatedMCPServers = { ...mcpServers, [mcpProvider]: mcpConfigSettings };
+
+    if (enable) {
+      setConnectingMCP(mcpProvider);
+      setConnectionError(null);
+    }
+
+    try {
+      // Update settings immediately
+      await handleChange('mcpServers', updatedMCPServers);
+      console.log(`[Settings] MCP ${mcpProvider} ${enable ? 'enabled' : 'disabled'} in settings`);
+    } catch (error: any) {
+      console.error(`[Settings] Exception ${enable ? 'enabling' : 'disabling'} MCP ${mcpProvider}:`, error);
+      if (enable) {
+        setConnectionError({ provider: mcpProvider, error: error.message || 'Failed to enable MCP server' });
+      }
+    } finally {
+      if (enable) {
+        setConnectingMCP(null);
+      }
     }
   };
 
@@ -1122,6 +1182,23 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                   </p>
                 </div>
 
+                <div className="bg-dark-bg border border-dark-border rounded-lg p-4">
+                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                    System Prompt File (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.strategizeSystemPromptPath || ''}
+                    onChange={(e) => handleChange('strategizeSystemPromptPath', e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                    placeholder="/Users/yourname/Documents/strategize-prompt.md"
+                  />
+                  <p className="text-xs text-dark-text-muted mt-1">
+                    Path to a .md file with custom instructions for the AI (e.g., "Keep responses under 1000 characters")
+                  </p>
+                </div>
+
                 {/* MCP Servers Configuration */}
                 <div className="bg-dark-bg border border-dark-border rounded-lg p-4 space-y-4">
                   <div className="flex items-center justify-between">
@@ -1149,20 +1226,15 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                       </div>
                       <button
                         onClick={() => {
-                          const mcpServers = settings.mcpServers || {};
-                          const amplitude = mcpServers.amplitude || {
-                            url: 'https://mcp.amplitude.com/mcp',
-                            transport: 'sse' as const,
-                            enabled: false,
-                          };
-                          amplitude.enabled = !amplitude.enabled;
-                          handleChange('mcpServers', { ...mcpServers, amplitude });
+                          const isCurrentlyEnabled = settings.mcpServers?.amplitude?.enabled;
+                          handleMCPToggle('amplitude', !isCurrentlyEnabled);
                         }}
+                        disabled={connectingMCP === 'amplitude'}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                           settings.mcpServers?.amplitude?.enabled
                             ? 'bg-dark-accent-primary'
                             : 'bg-dark-border'
-                        }`}
+                        } ${connectingMCP === 'amplitude' ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -1171,13 +1243,24 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         />
                       </button>
                     </div>
-                    {settings.mcpServers?.amplitude?.enabled && (
+                    {connectingMCP === 'amplitude' && (
                       <div className="text-xs text-dark-text-muted">
                         <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
-                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <svg className="animate-spin h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          <span>OAuth authentication will be prompted when you connect to Claude Code</span>
+                          <span>Enabling MCP server...</span>
+                        </div>
+                      </div>
+                    )}
+                    {settings.mcpServers?.amplitude?.enabled && connectingMCP !== 'amplitude' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span>Enabled - Will connect when you start Strategize (HTTP transport not yet supported)</span>
                         </div>
                       </div>
                     )}
@@ -1194,26 +1277,25 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </div>
                         <div>
                           <div className="text-sm font-medium text-dark-text-primary">Granola</div>
-                          <div className="text-xs text-dark-text-muted">Meeting notes and transcripts</div>
+                          <div className="text-xs text-dark-text-muted">
+                            Meeting notes and transcripts
+                            <div className="mt-1 text-xs text-orange-400">
+                              Requires: <code className="text-xs">npm install -g @granola-ai/mcp</code>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <button
                         onClick={() => {
-                          const mcpServers = settings.mcpServers || {};
-                          const granola = mcpServers.granola || {
-                            command: 'npx',
-                            args: ['-y', '@granola/mcp-server'],
-                            env: { GRANOLA_API_KEY: '' },
-                            enabled: false,
-                          };
-                          granola.enabled = !granola.enabled;
-                          handleChange('mcpServers', { ...mcpServers, granola });
+                          const isCurrentlyEnabled = settings.mcpServers?.granola?.enabled;
+                          handleMCPToggle('granola', !isCurrentlyEnabled);
                         }}
+                        disabled={connectingMCP === 'granola'}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                           settings.mcpServers?.granola?.enabled
                             ? 'bg-dark-accent-primary'
                             : 'bg-dark-border'
-                        }`}
+                        } ${connectingMCP === 'granola' ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -1222,29 +1304,25 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         />
                       </button>
                     </div>
-                    {settings.mcpServers?.granola?.enabled && (
-                      <div>
-                        <label className="block text-xs font-medium text-dark-text-secondary mb-1">
-                          API Key
-                        </label>
-                        <input
-                          type="password"
-                          value={settings.mcpServers?.granola?.env?.GRANOLA_API_KEY || ''}
-                          onChange={(e) => {
-                            const mcpServers = settings.mcpServers || {};
-                            const granola = mcpServers.granola || {
-                              command: 'npx',
-                              args: ['-y', '@granola/mcp-server'],
-                              env: {},
-                              enabled: true,
-                            };
-                            granola.env = { ...granola.env, GRANOLA_API_KEY: e.target.value };
-                            handleChange('mcpServers', { ...mcpServers, granola });
-                          }}
-                          className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded
-                                   text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                          placeholder="Enter your Granola API key"
-                        />
+                    {connectingMCP === 'granola' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-purple-500/10 border border-purple-500/30 rounded">
+                          <svg className="animate-spin h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Enabling MCP server...</span>
+                        </div>
+                      </div>
+                    )}
+                    {settings.mcpServers?.granola?.enabled && connectingMCP !== 'granola' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span>Enabled - Will connect when you start Strategize</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1265,21 +1343,15 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                       </div>
                       <button
                         onClick={() => {
-                          const mcpServers = settings.mcpServers || {};
-                          const clockwise = mcpServers.clockwise || {
-                            command: 'npx',
-                            args: ['-y', '@clockwise/mcp-server'],
-                            env: { CLOCKWISE_API_KEY: '' },
-                            enabled: false,
-                          };
-                          clockwise.enabled = !clockwise.enabled;
-                          handleChange('mcpServers', { ...mcpServers, clockwise });
+                          const isCurrentlyEnabled = settings.mcpServers?.clockwise?.enabled;
+                          handleMCPToggle('clockwise', !isCurrentlyEnabled);
                         }}
+                        disabled={connectingMCP === 'clockwise'}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                           settings.mcpServers?.clockwise?.enabled
                             ? 'bg-dark-accent-primary'
                             : 'bg-dark-border'
-                        }`}
+                        } ${connectingMCP === 'clockwise' ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <span
                           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -1288,29 +1360,25 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         />
                       </button>
                     </div>
-                    {settings.mcpServers?.clockwise?.enabled && (
-                      <div>
-                        <label className="block text-xs font-medium text-dark-text-secondary mb-1">
-                          API Key
-                        </label>
-                        <input
-                          type="password"
-                          value={settings.mcpServers?.clockwise?.env?.CLOCKWISE_API_KEY || ''}
-                          onChange={(e) => {
-                            const mcpServers = settings.mcpServers || {};
-                            const clockwise = mcpServers.clockwise || {
-                              command: 'npx',
-                              args: ['-y', '@clockwise/mcp-server'],
-                              env: {},
-                              enabled: true,
-                            };
-                            clockwise.env = { ...clockwise.env, CLOCKWISE_API_KEY: e.target.value };
-                            handleChange('mcpServers', { ...mcpServers, clockwise });
-                          }}
-                          className="w-full px-2 py-1.5 bg-dark-surface border border-dark-border rounded
-                                   text-dark-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-dark-accent-primary"
-                          placeholder="Enter your Clockwise API key"
-                        />
+                    {connectingMCP === 'clockwise' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <svg className="animate-spin h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Enabling MCP server...</span>
+                        </div>
+                      </div>
+                    )}
+                    {settings.mcpServers?.clockwise?.enabled && connectingMCP !== 'clockwise' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/30 rounded">
+                          <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span>Enabled - Will connect when you start Strategize (HTTP transport not yet supported)</span>
+                        </div>
                       </div>
                     )}
                   </div>

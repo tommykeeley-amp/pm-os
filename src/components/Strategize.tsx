@@ -1,43 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface StrategizeProps {
   isActive: boolean;
 }
 
-interface Message {
+interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  timestamp: string;
-  isStreaming?: boolean;
+  timestamp: Date;
 }
 
 export default function Strategize({ isActive }: StrategizeProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [folderPath, setFolderPath] = useState('');
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [enabledMCPs, setEnabledMCPs] = useState<string[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Load folder path and MCP settings
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        await window.electronAPI.writeDebugLog('[Strategize] Loading settings...');
         const settings = await window.electronAPI.getUserSettings();
-        await window.electronAPI.writeDebugLog(`[Strategize] Settings loaded: ${JSON.stringify({
-          hasFolderPath: !!settings?.strategizeFolderPath,
-          folderPath: settings?.strategizeFolderPath || 'NOT SET',
-          hasMcpServers: !!settings?.mcpServers
-        })}`);
-
         setFolderPath(settings?.strategizeFolderPath || '');
 
-        // Get enabled MCPs
         const enabled: string[] = [];
         if (settings?.mcpServers) {
           Object.keys(settings.mcpServers).forEach(serverName => {
@@ -47,10 +41,8 @@ export default function Strategize({ isActive }: StrategizeProps) {
           });
         }
         setEnabledMCPs(enabled);
-        await window.electronAPI.writeDebugLog(`[Strategize] Enabled MCPs: ${enabled.join(', ') || 'none'}`);
       } catch (error) {
         console.error('Failed to load settings:', error);
-        await window.electronAPI.writeDebugLog(`[Strategize] ERROR loading settings: ${error}`);
       }
     };
     loadSettings();
@@ -61,7 +53,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages]);
+  }, [chatMessages, streamingContent]);
 
   // Focus input when connected
   useEffect(() => {
@@ -70,232 +62,129 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   }, [isConnected, isActive]);
 
-  // Set up event listeners
+  // Set up OpenAI streaming listeners
   useEffect(() => {
-    const handleClaudeOutput = (output: string) => {
-      console.log('[Strategize] Received output:', output.substring(0, 100));
+    const cleanupStream = window.electronAPI.onStrategizeStream((chunk: string) => {
+      setStreamingContent(prev => prev + chunk);
+      setIsTyping(true);
+    });
 
-      setMessages(prev => {
-        // Check if we have a streaming message (typing indicator or existing response)
-        if (streamingMessageId) {
-          return prev.map(msg => {
-            if (msg.id === streamingMessageId) {
-              // If it's a typing indicator, replace it with real content
-              if (msg.content.startsWith('🤔') || msg.content.startsWith('🔍') ||
-                  msg.content.startsWith('✨') || msg.content.startsWith('🧠') ||
-                  msg.content.startsWith('⚡') || msg.content.startsWith('🎯') ||
-                  msg.content.startsWith('💭')) {
-                return { ...msg, content: output, isStreaming: true };
-              }
-              // Otherwise append to existing content
-              return { ...msg, content: msg.content + output, isStreaming: true };
-            }
-            return msg;
-          });
-        } else {
-          // Create a new streaming message
-          const newMessageId = `msg-${Date.now()}`;
-          setStreamingMessageId(newMessageId);
-
-          const newMessage: Message = {
-            id: newMessageId,
-            role: 'assistant',
-            content: output,
-            timestamp: new Date().toISOString(),
-            isStreaming: true,
-          };
-
-          return [...prev, newMessage];
-        }
-      });
-    };
-
-    const handleClaudeDisconnected = (data: { code: number | null; signal: string | null }) => {
-      console.log('[Strategize] Claude disconnected:', data);
-      setIsConnected(false);
-      setStreamingMessageId(null);
-
-      // Add system message
-      const systemMessage: Message = {
-        id: `sys-${Date.now()}`,
-        role: 'system',
-        content: `Disconnected from Claude Code (exit code: ${data.code})`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, systemMessage]);
-    };
-
-    const cleanupOutput = window.electronAPI.onClaudeOutput(handleClaudeOutput);
-    const cleanupDisconnected = window.electronAPI.onClaudeDisconnected(handleClaudeDisconnected);
+    const cleanupComplete = window.electronAPI.onStrategizeComplete(() => {
+      // Add completed message to chat
+      if (streamingContent) {
+        setChatMessages(prev => [...prev, {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: streamingContent,
+          timestamp: new Date(),
+        }]);
+      }
+      setStreamingContent('');
+      setIsTyping(false);
+    });
 
     return () => {
-      cleanupOutput();
-      cleanupDisconnected();
+      cleanupStream();
+      cleanupComplete();
     };
-  }, [streamingMessageId]);
+  }, [streamingContent]);
 
   const handleConnect = async () => {
-    const log = async (msg: string) => {
-      console.log(msg);
-      await window.electronAPI.writeDebugLog(msg);
-    };
-
-    await log('[Strategize] ========== CONNECT BUTTON CLICKED ==========');
-    await log(`[Strategize] Folder path: ${folderPath || 'NOT SET'}`);
-    await log(`[Strategize] Time: ${new Date().toISOString()}`);
-
     if (!folderPath) {
-      await log('[Strategize] ERROR: No folder path configured');
-      const systemMessage: Message = {
-        id: `sys-${Date.now()}`,
-        role: 'system',
-        content: 'Please configure a folder path in Settings → Customizations → Strategize Configuration',
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, systemMessage]);
+      alert('Please set a folder path first!\\n\\nGo to Settings → Customizations → Strategize Configuration');
       return;
     }
 
-    await log('[Strategize] Starting connection attempt...');
     setIsConnecting(true);
 
     try {
-      await log(`[Strategize] Calling claudeCodeStart with path: ${folderPath}`);
-      const result = await window.electronAPI.claudeCodeStart(folderPath);
-      await log(`[Strategize] Result: ${JSON.stringify(result)}`);
-
+      const result = await window.electronAPI.strategizeStart(folderPath);
       if (result.success) {
-        await log('[Strategize] SUCCESS: Connected to Claude Code');
         setIsConnected(true);
-
-        // Add welcome message
-        const welcomeMessage: Message = {
+        setChatMessages([{
           id: `sys-${Date.now()}`,
           role: 'system',
-          content: `Connected to Claude Code for folder: ${folderPath}`,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages([welcomeMessage]);
+          content: `Connected • Using OpenAI to chat about ${folderPath.split('/').pop()}`,
+          timestamp: new Date(),
+        }]);
       } else {
-        await log(`[Strategize] FAILED: ${result.error || 'Unknown error'}`);
-        // Add error message
-        const errorMessage: Message = {
-          id: `sys-${Date.now()}`,
-          role: 'system',
-          content: `Failed to connect: ${result.error || 'Unknown error'}`,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, errorMessage]);
+        alert(`Failed to start chat:\\n\\n${result.error}\\n\\nMake sure you have OPENAI_API_KEY in your .env file`);
       }
     } catch (error: any) {
-      await log(`[Strategize] EXCEPTION: ${error.message || error}`);
-      console.error('Failed to start Claude Code:', error);
-      const errorMessage: Message = {
-        id: `sys-${Date.now()}`,
-        role: 'system',
-        content: `Error: ${error.message || 'Failed to connect'}`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      alert(`Error starting chat:\\n\\n${error.message}`);
     } finally {
       setIsConnecting(false);
-      await log('[Strategize] ========== CONNECT ATTEMPT COMPLETE ==========');
     }
   };
 
   const handleDisconnect = async () => {
     try {
-      await window.electronAPI.claudeCodeStop();
+      await window.electronAPI.strategizeStop();
       setIsConnected(false);
-      setStreamingMessageId(null);
-
-      const systemMessage: Message = {
+      setChatMessages(prev => [...prev, {
         id: `sys-${Date.now()}`,
         role: 'system',
-        content: 'Disconnected from Claude Code',
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, systemMessage]);
+        content: 'Disconnected',
+        timestamp: new Date(),
+      }]);
     } catch (error: any) {
-      console.error('Failed to stop Claude Code:', error);
+      console.error('Failed to stop chat:', error);
+    }
+  };
+
+  const handleNewChat = async () => {
+    try {
+      await window.electronAPI.strategizeReset();
+      // Clear UI messages except system messages
+      setChatMessages(prev => prev.filter(msg => msg.role === 'system' && msg.content.includes('Connected')));
+      // Add new chat indicator
+      setChatMessages(prev => [...prev, {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        content: 'New chat started',
+        timestamp: new Date(),
+      }]);
+    } catch (error: any) {
+      console.error('Failed to reset chat:', error);
     }
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !isConnected) return;
+    const message = inputValue.trim();
+    if (!message || !isConnected) return;
 
-    const userMessage: Message = {
+    // Add user message to chat
+    setChatMessages(prev => [...prev, {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: inputValue,
-      timestamp: new Date().toISOString(),
-    };
+      content: message,
+      timestamp: new Date(),
+    }]);
 
-    setMessages(prev => [...prev, userMessage]);
+    // Clear input
     setInputValue('');
-    setStreamingMessageId(null); // Reset streaming for new response
-
-    // Add fun typing indicator
-    const typingMessages = [
-      "🤔 Claude is thinking...",
-      "🔍 Analyzing your codebase...",
-      "✨ Cooking up a response...",
-      "🧠 Processing your question...",
-      "⚡ Gathering insights...",
-      "🎯 Strategizing...",
-      "💭 Hmm, let me see...",
-    ];
-    const randomTyping = typingMessages[Math.floor(Math.random() * typingMessages.length)];
-
-    const typingMessage: Message = {
-      id: `typing-${Date.now()}`,
-      role: 'assistant',
-      content: randomTyping,
-      timestamp: new Date().toISOString(),
-      isStreaming: true,
-    };
-
-    setMessages(prev => [...prev, typingMessage]);
-    setStreamingMessageId(typingMessage.id);
-
-    try {
-      const result = await window.electronAPI.claudeCodeSend(inputValue);
-
-      if (!result.success) {
-        // Remove typing indicator
-        setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
-        setStreamingMessageId(null);
-
-        const errorMessage: Message = {
-          id: `sys-${Date.now()}`,
-          role: 'system',
-          content: `Failed to send message: ${result.error}`,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, errorMessage]);
-      }
-    } catch (error: any) {
-      console.error('Failed to send message:', error);
-
-      // Remove typing indicator
-      setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
-      setStreamingMessageId(null);
-
-      const errorMessage: Message = {
-        id: `sys-${Date.now()}`,
-        role: 'system',
-        content: `Error: ${error.message}`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
     }
+
+    // Send to OpenAI
+    setIsTyping(true);
+    setStreamingContent('');
+    await window.electronAPI.strategizeSend(message);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value);
+    // Auto-resize textarea
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
   };
 
   return (
@@ -310,13 +199,22 @@ export default function Strategize({ isActive }: StrategizeProps) {
         </div>
 
         {isConnected ? (
-          <button
-            onClick={handleDisconnect}
-            className="px-3 py-1.5 text-xs bg-red-500/20 text-red-400 border border-red-500/30
-                     rounded-md hover:bg-red-500/30 transition-colors"
-          >
-            Disconnect
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewChat}
+              className="px-3 py-1.5 text-xs bg-dark-accent-primary/20 text-dark-accent-primary border border-dark-accent-primary/30
+                       rounded-md hover:bg-dark-accent-primary/30 transition-colors"
+            >
+              New Chat
+            </button>
+            <button
+              onClick={handleDisconnect}
+              className="px-3 py-1.5 text-xs bg-red-500/20 text-red-400 border border-red-500/30
+                       rounded-md hover:bg-red-500/30 transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
         ) : (
           <button
             onClick={handleConnect}
@@ -366,95 +264,137 @@ export default function Strategize({ isActive }: StrategizeProps) {
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && !isConnected && (
+      {/* Chat Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {!isConnected && chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <svg className="w-12 h-12 text-dark-text-muted mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <div className="text-sm text-dark-text-secondary mb-2">
-              Strategic AI Conversations
+            <div className="w-16 h-16 rounded-full bg-dark-accent-primary/10 flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-dark-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
             </div>
-            <div className="text-xs text-dark-text-muted max-w-xs">
-              Connect to chat with Claude Code about your project. Configure your project folder in Settings.
+            <h3 className="text-lg font-semibold text-dark-text-primary mb-2">AI Chat Workspace</h3>
+            <p className="text-sm text-dark-text-muted max-w-md mb-4">
+              Connect to start a conversation powered by OpenAI
+            </p>
+            <div className="text-xs text-dark-text-muted/70 space-y-1">
+              <p>💬 Real conversational AI</p>
+              <p>⚡ Streaming responses</p>
+              <p>🔑 Uses your OpenAI API key</p>
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            {chatMessages.map((msg, index) => {
+              const isLastMessage = index === chatMessages.length - 1;
+              const shouldExpand = isLastMessage;
 
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] rounded-lg px-4 py-3 ${
-                message.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : message.role === 'system'
-                  ? 'bg-yellow-500/20 text-yellow-200 border border-yellow-500/30'
-                  : 'bg-dark-surface text-dark-text-primary border border-dark-border'
-              }`}
-            >
-              <div className="text-sm whitespace-pre-wrap break-words">
-                {message.content}
-                {message.isStreaming && (message.content.startsWith('🤔') || message.content.startsWith('🔍') ||
-                  message.content.startsWith('✨') || message.content.startsWith('🧠') ||
-                  message.content.startsWith('⚡') || message.content.startsWith('🎯') ||
-                  message.content.startsWith('💭')) && (
-                  <span className="inline-flex ml-1">
-                    <span className="animate-bounce mx-0.5" style={{ animationDelay: '0ms' }}>.</span>
-                    <span className="animate-bounce mx-0.5" style={{ animationDelay: '150ms' }}>.</span>
-                    <span className="animate-bounce mx-0.5" style={{ animationDelay: '300ms' }}>.</span>
-                  </span>
-                )}
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div className={`max-w-[75%] ${msg.role === 'system' ? 'w-full flex justify-center' : ''}`}>
+                    {msg.role === 'system' ? (
+                      <div className="px-3 py-1 bg-dark-surface/50 text-dark-text-muted text-[10px] rounded-full border border-dark-border">
+                        {msg.content}
+                      </div>
+                    ) : (
+                      <div
+                        className={`px-3 py-2 rounded-2xl transition-all ${
+                          msg.role === 'user'
+                            ? 'bg-dark-accent-primary text-white rounded-br-sm'
+                            : 'bg-dark-surface text-white rounded-bl-sm border border-dark-border'
+                        }`}
+                      >
+                        <div className={`text-xs leading-relaxed ${shouldExpand ? '' : 'truncate'} markdown-content`}>
+                          {shouldExpand ? (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {msg.content}
+                            </ReactMarkdown>
+                          ) : (
+                            msg.content
+                          )}
+                        </div>
+                        <div className={`text-[9px] mt-1 opacity-60`}>
+                          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Streaming message */}
+            {isTyping && streamingContent && (
+              <div className="flex justify-start">
+                <div className="max-w-[75%]">
+                  <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-dark-surface border border-dark-border">
+                    <div className="text-xs leading-relaxed text-white markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {streamingContent}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div
-                className={`text-xs mt-1 ${
-                  message.role === 'user'
-                    ? 'text-blue-200'
-                    : message.role === 'system'
-                    ? 'text-yellow-300'
-                    : 'text-dark-text-muted'
-                }`}
-              >
-                {new Date(message.timestamp).toLocaleTimeString()}
-                {message.isStreaming && (
-                  <span className="ml-2 inline-flex items-center">
-                    <span className="animate-pulse">●</span>
-                  </span>
-                )}
+            )}
+
+            {/* Typing indicator */}
+            {isTyping && !streamingContent && (
+              <div className="flex justify-start">
+                <div className="max-w-[75%]">
+                  <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-dark-surface border border-dark-border">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-dark-text-muted rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-1.5 h-1.5 bg-dark-text-muted rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-1.5 h-1.5 bg-dark-text-muted rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+            )}
+
+            <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
-      {/* Input */}
+      {/* Input Area */}
       {isConnected && (
-        <div className="p-4 border-t border-dark-border">
-          <div className="flex items-center gap-2">
-            <input
+        <div className="border-t border-dark-border p-3">
+          <div className="flex gap-2 items-end">
+            <textarea
               ref={inputRef}
-              type="text"
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask Claude about your project..."
-              className="flex-1 px-3 py-2 bg-dark-surface border border-dark-border rounded-lg
-                       text-dark-text-primary placeholder-dark-text-muted
-                       focus:outline-none focus:ring-2 focus:ring-dark-accent-primary text-sm"
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask anything..."
+              disabled={!isConnected || isTyping}
+              rows={1}
+              className="flex-1 bg-dark-surface border border-dark-border rounded-2xl px-3 py-2
+                       text-xs text-dark-text-primary placeholder-dark-text-muted
+                       focus:outline-none focus:ring-2 focus:ring-dark-accent-primary/50
+                       disabled:opacity-50 disabled:cursor-not-allowed resize-none
+                       max-h-[100px] overflow-y-auto"
+              style={{ height: 'auto' }}
             />
             <button
               onClick={handleSendMessage}
-              disabled={!inputValue.trim()}
-              className="px-4 py-2 bg-dark-accent-primary text-white rounded-lg
-                       hover:bg-dark-accent-secondary transition-colors text-sm
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!inputValue.trim() || !isConnected || isTyping}
+              className="w-9 h-9 rounded-full bg-dark-accent-primary text-white
+                       flex items-center justify-center hover:bg-dark-accent-secondary
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                       flex-shrink-0"
             >
-              Send
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
             </button>
+          </div>
+          <div className="text-[9px] text-dark-text-muted mt-1.5 text-center">
+            Enter to send • Shift+Enter for new line
           </div>
         </div>
       )}
