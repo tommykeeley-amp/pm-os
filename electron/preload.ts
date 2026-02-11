@@ -101,8 +101,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('strategize-authenticate-mcp'),
   strategizeStart: (folderPath: string) =>
     ipcRenderer.invoke('strategize-start', folderPath),
-  strategizeSend: (message: string, conversationHistory?: Array<{role: string, content: string}>) =>
-    ipcRenderer.invoke('strategize-send', message, conversationHistory),
+  strategizeSend: (message: string, conversationHistory?: Array<{role: string, content: string}>, selectedMCPs?: string[]) =>
+    ipcRenderer.invoke('strategize-send', message, conversationHistory, selectedMCPs),
   strategizeStop: () =>
     ipcRenderer.invoke('strategize-stop'),
   strategizeReset: () =>
@@ -278,7 +278,7 @@ export interface ElectronAPI {
   slackSendReply: (channelId: string, threadTs: string, text: string) => Promise<{success: boolean}>;
   strategizeAuthenticateMCP: () => Promise<{ success: boolean; error?: string }>;
   strategizeStart: (folderPath: string) => Promise<{ success: boolean; error?: string }>;
-  strategizeSend: (message: string, conversationHistory?: Array<{role: string, content: string}>) => Promise<{ success: boolean; error?: string }>;
+  strategizeSend: (message: string, conversationHistory?: Array<{role: string, content: string}>, selectedMCPs?: string[]) => Promise<{ success: boolean; error?: string }>;
   strategizeStop: () => Promise<{ success: boolean }>;
   strategizeReset: () => Promise<{ success: boolean }>;
   onStrategizeStream: (callback: (chunk: string) => void) => () => void;

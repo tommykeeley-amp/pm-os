@@ -19,6 +19,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [folderPath, setFolderPath] = useState('');
   const [enabledMCPs, setEnabledMCPs] = useState<string[]>([]);
+  const [selectedMCPs, setSelectedMCPs] = useState<Set<string>>(new Set());
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -261,7 +262,10 @@ export default function Strategize({ isActive }: StrategizeProps) {
       content: msg.content
     }));
 
-    await window.electronAPI.strategizeSend(message, conversationHistory);
+    // Convert selected MCPs to array
+    const selectedMCPsArray = Array.from(selectedMCPs);
+
+    await window.electronAPI.strategizeSend(message, conversationHistory, selectedMCPsArray);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -295,6 +299,18 @@ export default function Strategize({ isActive }: StrategizeProps) {
         newSet.delete(messageId);
       } else {
         newSet.add(messageId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleMCPSelection = (mcpName: string) => {
+    setSelectedMCPs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(mcpName)) {
+        newSet.delete(mcpName);
+      } else {
+        newSet.add(mcpName);
       }
       return newSet;
     });
@@ -585,7 +601,27 @@ export default function Strategize({ isActive }: StrategizeProps) {
 
       {/* Input Area */}
       {isConnected && (
-        <div className="border-t border-dark-border p-3">
+        <div className="border-t border-dark-border p-3 space-y-2">
+          {/* MCP Selector */}
+          {enabledMCPs.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-dark-text-muted">Context:</span>
+              {enabledMCPs.map(mcp => (
+                <button
+                  key={mcp}
+                  onClick={() => toggleMCPSelection(mcp)}
+                  className={`px-2 py-1 text-xs rounded-full border transition-all ${
+                    selectedMCPs.has(mcp)
+                      ? 'bg-dark-accent-primary/20 text-dark-accent-primary border-dark-accent-primary/30'
+                      : 'bg-dark-surface text-dark-text-muted border-dark-border hover:border-dark-accent-primary/30'
+                  }`}
+                >
+                  {mcp}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex gap-2 items-end">
             <textarea
               ref={inputRef}

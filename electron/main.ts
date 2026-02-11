@@ -2821,9 +2821,10 @@ ipcMain.handle('strategize-start', async (_event, folderPath: string) => {
   }
 });
 
-ipcMain.handle('strategize-send', async (_event, message: string, conversationHistory?: Array<{role: string, content: string}>) => {
+ipcMain.handle('strategize-send', async (_event, message: string, conversationHistory?: Array<{role: string, content: string}>, selectedMCPs?: string[]) => {
   console.log('[IPC] strategize-send called with message:', message);
   console.log('[IPC] Conversation history length:', conversationHistory?.length || 0);
+  console.log('[IPC] Selected MCPs:', selectedMCPs);
 
   try {
     const folderPath = store.get('strategizeFolderPath') as string;
@@ -2847,32 +2848,51 @@ ipcMain.handle('strategize-send', async (_event, message: string, conversationHi
     }
 
     // Build MCP context to guide Claude on available data sources
-    let mcpGuidance = '\n\n## Available Data Sources\n\nYou have access to the following data sources through MCP (Model Context Protocol) servers:\n\n';
+    // Only include selected MCPs (if any selected), otherwise include all enabled
+    const mcpsToUse = (selectedMCPs && selectedMCPs.length > 0) ? selectedMCPs : [];
 
-    // Check which MCPs are enabled and authenticated
-    if (userSettings.mcpServers) {
+    if (userSettings.mcpServers && (mcpsToUse.length > 0 || !selectedMCPs || selectedMCPs.length === 0)) {
+      let mcpGuidance = '\n\n## Available Data Sources\n\nYou have access to the following data sources through MCP (Model Context Protocol) servers:\n\n';
       const mcpList: string[] = [];
 
-      if (userSettings.mcpServers.amplitude?.enabled) {
+      // Helper to check if MCP should be included
+      const shouldInclude = (mcpName: string) => {
+        if (!selectedMCPs || selectedMCPs.length === 0) {
+          // No selection = include all enabled
+          return userSettings.mcpServers[mcpName.toLowerCase()]?.enabled;
+        }
+        // Include only if selected
+        return mcpsToUse.includes(mcpName);
+      };
+
+      if (shouldInclude('amplitude') && userSettings.mcpServers.amplitude?.enabled) {
         mcpList.push('- **Amplitude MCP**: Query analytics data, WAU/MAU/DAU metrics, user events, charts, cohorts, and experiments');
       }
-      if (userSettings.mcpServers.granola?.enabled) {
+      if (shouldInclude('granola') && userSettings.mcpServers.granola?.enabled) {
         mcpList.push('- **Granola MCP**: Access meeting notes, transcripts, action items, and meeting summaries');
       }
-      if (userSettings.mcpServers.clockwise?.enabled) {
+      if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
         mcpList.push('- **Clockwise MCP**: Check calendar, schedule meetings, find availability, and manage calendar events');
       }
-      if (userSettings.mcpServers.atlassian?.enabled) {
+      if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
         mcpList.push('- **Atlassian MCP**: Access Jira issues/tickets, Confluence pages, and Compass service components');
       }
 
       if (mcpList.length > 0) {
         mcpGuidance += mcpList.join('\n') + '\n\n';
         mcpGuidance += '**IMPORTANT**: When the user asks questions about:\n';
-        mcpGuidance += '- Analytics, metrics, events, or users → Use Amplitude MCP tools\n';
-        mcpGuidance += '- Meetings, notes, or action items → Use Granola MCP tools\n';
-        mcpGuidance += '- Calendar, schedule, or availability → Use Clockwise MCP tools\n';
-        mcpGuidance += '- Jira tickets, Confluence docs, or Compass services → Use Atlassian MCP tools\n';
+        if (shouldInclude('amplitude') && userSettings.mcpServers.amplitude?.enabled) {
+          mcpGuidance += '- Analytics, metrics, events, or users → Use Amplitude MCP tools\n';
+        }
+        if (shouldInclude('granola') && userSettings.mcpServers.granola?.enabled) {
+          mcpGuidance += '- Meetings, notes, or action items → Use Granola MCP tools\n';
+        }
+        if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
+          mcpGuidance += '- Calendar, schedule, or availability → Use Clockwise MCP tools\n';
+        }
+        if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
+          mcpGuidance += '- Jira tickets, Confluence docs, or Compass services → Use Atlassian MCP tools\n';
+        }
         mcpGuidance += '\nProactively search and use these tools when relevant to the user\'s question.\n';
 
         systemPrompt += mcpGuidance;
