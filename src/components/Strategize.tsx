@@ -11,6 +11,7 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
+  selectedMCPs?: string[];
 }
 
 export default function Strategize({ isActive }: StrategizeProps) {
@@ -238,12 +239,13 @@ export default function Strategize({ isActive }: StrategizeProps) {
     const message = inputValue.trim();
     if (!message || !isConnected) return;
 
-    // Add user message to chat
+    // Add user message to chat with selected MCPs
     setChatMessages(prev => [...prev, {
       id: `msg-${Date.now()}`,
       role: 'user',
       content: message,
       timestamp: new Date(),
+      selectedMCPs: Array.from(selectedMCPs),
     }]);
 
     // Clear input
@@ -433,64 +435,85 @@ export default function Strategize({ isActive }: StrategizeProps) {
                         onMouseEnter={() => setHoveredMessageId(msg.id)}
                         onMouseLeave={() => setHoveredMessageId(null)}
                       >
-                        <div
-                          className={`px-3 py-2 rounded-2xl transition-all cursor-pointer ${
-                            msg.role === 'user'
-                              ? 'bg-dark-accent-primary text-white rounded-br-sm'
-                              : 'bg-dark-surface text-white rounded-bl-sm border border-dark-border'
-                          }`}
-                          onClick={() => toggleMessageExpansion(msg.id)}
-                        >
-                          <div className="flex items-start gap-2">
-                            {/* Expand/Collapse chevron */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleMessageExpansion(msg.id);
-                              }}
-                              className="flex-shrink-0 mt-0.5 hover:opacity-70 transition-opacity"
-                            >
-                              <svg
-                                className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <div className={`text-xs leading-relaxed ${isExpanded ? '' : 'line-clamp-2'} markdown-content`}>
-                                {isExpanded ? (
-                                  <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                      a: ({ node, ...props }) => (
-                                        <a
-                                          {...props}
-                                          onClick={(e) => {
-                                            e.preventDefault();
-                                            if (props.href) {
-                                              window.electronAPI.openExternal(props.href);
-                                            }
-                                          }}
-                                          className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                                        />
-                                      ),
-                                    }}
+                        {msg.role === 'user' ? (
+                          // User messages: Simple display with MCP pills
+                          <div className="bg-dark-accent-primary text-white rounded-2xl rounded-br-sm px-3 py-2">
+                            <div className="text-xs leading-relaxed">
+                              {msg.content}
+                            </div>
+                            {msg.selectedMCPs && msg.selectedMCPs.length > 0 && (
+                              <div className="flex gap-1 mt-2 flex-wrap">
+                                {msg.selectedMCPs.map(mcp => (
+                                  <span
+                                    key={mcp}
+                                    className="px-1.5 py-0.5 text-[9px] bg-white/20 rounded-full"
                                   >
-                                    {msg.content}
-                                  </ReactMarkdown>
-                                ) : (
-                                  msg.content
-                                )}
+                                    {mcp}
+                                  </span>
+                                ))}
                               </div>
+                            )}
+                            <div className="text-[9px] mt-1 opacity-60">
+                              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
-                          <div className={`text-[9px] mt-1 opacity-60 ml-5`}>
-                            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        ) : (
+                          // Assistant messages: Expandable with chevron
+                          <div
+                            className="px-3 py-2 rounded-2xl transition-all cursor-pointer bg-dark-surface text-white rounded-bl-sm border border-dark-border"
+                            onClick={() => toggleMessageExpansion(msg.id)}
+                          >
+                            <div className="flex items-start gap-2">
+                              {/* Expand/Collapse chevron */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleMessageExpansion(msg.id);
+                                }}
+                                className="flex-shrink-0 mt-0.5 hover:opacity-70 transition-opacity"
+                              >
+                                <svg
+                                  className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-xs leading-relaxed ${isExpanded ? '' : 'line-clamp-2'} markdown-content`}>
+                                  {isExpanded ? (
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={{
+                                        a: ({ node, ...props }) => (
+                                          <a
+                                            {...props}
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              if (props.href) {
+                                                window.electronAPI.openExternal(props.href);
+                                              }
+                                            }}
+                                            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                                          />
+                                        ),
+                                      }}
+                                    >
+                                      {msg.content}
+                                    </ReactMarkdown>
+                                  ) : (
+                                    msg.content
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className={`text-[9px] mt-1 opacity-60 ml-5`}>
+                              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* Copy button - only show for assistant messages */}
                         {msg.role === 'assistant' && (
