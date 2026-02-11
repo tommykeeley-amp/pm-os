@@ -3252,8 +3252,9 @@ ipcMain.handle('claude-code-resize', async (_event, cols: number, rows: number) 
   }
 });
 
-ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'stdio', urlOrCommand: string) => {
+ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'stdio', urlOrCommand: string, env?: Record<string, string>) => {
   console.log(`[IPC] add-mcp-server called: ${name} (${type}) -> ${urlOrCommand}`);
+  if (env) console.log(`[IPC] Environment variables:`, Object.keys(env));
   try {
     // Get strategize folder path to add MCP to that project
     const strategizeFolderPath = store.get('strategizeFolderPath') as string;
@@ -3308,9 +3309,21 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       args = ['mcp', 'add', '-t', 'http', '-s', 'user', name, urlOrCommand];
     } else {
       // For stdio: claude mcp add -s user <name> -- <command> [args...]
-      // Example: claude mcp add -s user "Google Drive" -- npx -y @modelcontextprotocol/server-gdrive
+      // Example: claude mcp add -e KEY=value -s user "Google Drive" -- npx -y @modelcontextprotocol/server-gdrive
+      args = ['mcp', 'add'];
+
+      // Add environment variables if provided
+      if (env) {
+        Object.entries(env).forEach(([key, value]) => {
+          if (value) { // Only add if value is not empty
+            args.push('-e', `${key}=${value}`);
+          }
+        });
+      }
+
+      args.push('-s', 'user', name, '--');
       const commandParts = urlOrCommand.split(' ');
-      args = ['mcp', 'add', '-s', 'user', name, '--', ...commandParts];
+      args.push(...commandParts);
     }
 
     console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));

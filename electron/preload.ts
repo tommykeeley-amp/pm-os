@@ -129,8 +129,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('claude-code-get-history'),
   claudeCodeResize: (cols: number, rows: number) =>
     ipcRenderer.invoke('claude-code-resize', cols, rows),
-  addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) =>
-    ipcRenderer.invoke('add-mcp-server', name, type, urlOrCommand),
+  addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string, env?: Record<string, string>) =>
+    ipcRenderer.invoke('add-mcp-server', name, type, urlOrCommand, env),
   removeMCPServer: (name: string) =>
     ipcRenderer.invoke('remove-mcp-server', name),
 
@@ -288,7 +288,7 @@ export interface ElectronAPI {
   claudeCodeStop: () => Promise<{ success: boolean }>;
   claudeCodeGetHistory: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
   claudeCodeResize: (cols: number, rows: number) => Promise<{ success: boolean; error?: string }>;
-  addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string) => Promise<{ success: boolean; error?: string }>;
+  addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string, env?: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
   removeMCPServer: (name: string) => Promise<{ success: boolean; error?: string }>;
   startMCPOAuth: (serverName: string) => Promise<{ success: boolean; tokens?: any; error?: string }>;
   getMCPAuthStatus: (serverName: string) => Promise<{ success: boolean; isAuthenticated: boolean; error?: string }>;

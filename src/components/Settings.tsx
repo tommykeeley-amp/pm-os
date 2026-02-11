@@ -357,7 +357,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     console.log(`[Settings] ${enable ? 'Enabling' : 'Disabling'} MCP provider: ${mcpProvider}`);
 
     // Different MCPs have different setup methods
-    const mcpConfig: Record<string, { name: string; type: 'http' | 'stdio'; url?: string; command?: string; clientId?: string }> = {
+    const mcpConfig: Record<string, { name: string; type: 'http' | 'stdio'; url?: string; command?: string; clientId?: string; env?: Record<string, string> }> = {
       amplitude: {
         name: 'Amplitude',
         type: 'http',
@@ -383,11 +383,18 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         name: 'Google Drive',
         type: 'stdio',
         command: 'npx -y @modelcontextprotocol/server-gdrive',
+        env: {
+          GDRIVE_CREDENTIALS_PATH: `${process.env.HOME}/.gdrive-server-credentials.json`
+        }
       },
       slack: {
         name: 'Slack',
         type: 'stdio',
         command: 'npx -y @modelcontextprotocol/server-slack',
+        env: {
+          SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN || '',
+          SLACK_TEAM_ID: process.env.SLACK_TEAM_ID || ''
+        }
       },
     };
 
@@ -425,7 +432,8 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
           const registerResult = await window.electronAPI.addMCPServer(
             config.name,
             'http',
-            config.url || ''
+            config.url || '',
+            undefined // No env variables for HTTP MCPs
           );
 
           if (!registerResult.success) {
@@ -457,9 +465,9 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
           // Show success message - user will complete OAuth in Terminal
           console.log(`[Settings] Opened Terminal for ${config.name} authentication - waiting for user to complete OAuth`);
         } else {
-          // For stdio MCPs: use Claude CLI as before
+          // For stdio MCPs: use Claude CLI with environment variables
           const urlOrCommand = config.url || config.command || '';
-          const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand);
+          const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand, config.env);
 
           if (!result.success) {
             console.error(`[Settings] Failed to register MCP with Claude CLI:`, result.error);
