@@ -3276,8 +3276,10 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       // For HTTP/SSE: claude mcp add -t http -s user <name> <url>
       args = ['mcp', 'add', '-t', 'http', '-s', 'user', name, urlOrCommand];
     } else {
-      // For stdio: claude mcp add -t stdio -s user --command <command> <name>
-      args = ['mcp', 'add', '-t', 'stdio', '-s', 'user', '--command', urlOrCommand, name];
+      // For stdio: claude mcp add -s user <name> -- <command> [args...]
+      // Example: claude mcp add -s user "Google Drive" -- npx -y @modelcontextprotocol/server-gdrive
+      const commandParts = urlOrCommand.split(' ');
+      args = ['mcp', 'add', '-s', 'user', name, '--', ...commandParts];
     }
 
     console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));
