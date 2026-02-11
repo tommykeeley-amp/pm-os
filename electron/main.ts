@@ -2706,12 +2706,34 @@ ipcMain.handle('strategize-send', async (_event, message: string) => {
       return { success: false, error: 'No folder path set' };
     }
 
+    // Read custom system prompt if configured
+    const userSettings = store.get('userSettings', {}) as any;
+    let systemPrompt = '';
+    if (userSettings.strategizeSystemPromptPath) {
+      try {
+        const promptPath = userSettings.strategizeSystemPromptPath;
+        if (fs.existsSync(promptPath)) {
+          systemPrompt = fs.readFileSync(promptPath, 'utf-8');
+          console.log('[Claude] Loaded system prompt from:', promptPath);
+        }
+      } catch (error) {
+        console.error('[Claude] Could not read system prompt:', error);
+      }
+    }
+
     // Build Claude CLI args
     const args = [
       '--print',                           // Non-interactive mode
       '--dangerously-skip-permissions',    // Auto-accept permissions
-      message                              // The actual prompt
     ];
+
+    // Add system prompt if exists
+    if (systemPrompt) {
+      args.push('--append-system-prompt', systemPrompt);
+    }
+
+    // Add the user message
+    args.push(message);
 
     // Spawn Claude process
     console.log('[Claude] Spawning with args:', args);
@@ -2723,14 +2745,36 @@ ipcMain.handle('strategize-send', async (_event, message: string) => {
     // Close stdin immediately - we're not sending more input
     proc.stdin.end();
 
-    // Handle stdout - plain text response
+    // Handle stdout - stream character by character for typewriter effect
+    let charQueue: string[] = [];
+    let isStreaming = false;
+
+    const streamNextChar = () => {
+      if (charQueue.length === 0) {
+        isStreaming = false;
+        return;
+      }
+
+      const char = charQueue.shift()!;
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('strategize-stream', char);
+      }
+
+      // Continue streaming with small delay
+      setTimeout(streamNextChar, 10); // 10ms between characters
+    };
+
     proc.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
-      console.log('[Claude] Output:', text.substring(0, 200));
+      console.log('[Claude] Output chunk:', text.substring(0, 100));
 
-      // Send text directly to UI
-      if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('strategize-stream', text);
+      // Add characters to queue
+      charQueue.push(...text.split(''));
+
+      // Start streaming if not already
+      if (!isStreaming) {
+        isStreaming = true;
+        streamNextChar();
       }
     });
 
