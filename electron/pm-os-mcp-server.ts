@@ -273,6 +273,13 @@ class PMOSMCPServer {
                       type: 'string',
                       description: 'Event location (optional)',
                     },
+                    attendees: {
+                      type: 'array',
+                      description: 'List of attendee email addresses (optional)',
+                      items: {
+                        type: 'string'
+                      }
+                    },
                   },
                   required: ['summary', 'start', 'end'],
                 },
@@ -325,6 +332,20 @@ class PMOSMCPServer {
                   required: ['eventId'],
                 },
               },
+              {
+                name: 'search_contacts',
+                description: 'Search Google Contacts by name to find email addresses for calendar invites',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    query: {
+                      type: 'string',
+                      description: 'Name to search for (e.g., "Chethana", "John Smith")',
+                    },
+                  },
+                  required: ['query'],
+                },
+              },
             ],
           });
           break;
@@ -367,6 +388,9 @@ class PMOSMCPServer {
 
       case 'delete_calendar_event':
         return await this.deleteCalendarEvent(args);
+
+      case 'search_contacts':
+        return await this.searchContacts(args);
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
@@ -533,10 +557,10 @@ class PMOSMCPServer {
     };
   }
 
-  private async createCalendarEvent(args: { summary: string; start: string; end: string; description?: string; location?: string }) {
+  private async createCalendarEvent(args: { summary: string; start: string; end: string; description?: string; location?: string; attendees?: string[] }) {
     const calendar = this.getGoogleCalendar();
 
-    const event = {
+    const event: any = {
       summary: args.summary,
       description: args.description,
       location: args.location,
@@ -548,18 +572,27 @@ class PMOSMCPServer {
       },
     };
 
+    // Add attendees if provided
+    if (args.attendees && args.attendees.length > 0) {
+      event.attendees = args.attendees.map(email => ({ email }));
+    }
+
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: event,
+      sendUpdates: 'all', // Send email invites to attendees
     });
 
     const createdEvent = response.data;
+    const attendeesList = createdEvent.attendees
+      ? `\nAttendees: ${createdEvent.attendees.map(a => a.email).join(', ')}`
+      : '';
 
     return {
       content: [
         {
           type: 'text',
-          text: `✅ Calendar event created successfully!\n\nTitle: ${createdEvent.summary}\nStart: ${createdEvent.start?.dateTime}\nEnd: ${createdEvent.end?.dateTime}\nEvent ID: ${createdEvent.id}\nLink: ${createdEvent.htmlLink}`,
+          text: `✅ Calendar event created successfully!\n\nTitle: ${createdEvent.summary}\nStart: ${createdEvent.start?.dateTime}\nEnd: ${createdEvent.end?.dateTime}${attendeesList}\nEvent ID: ${createdEvent.id}\nLink: ${createdEvent.htmlLink}`,
         },
       ],
     };
@@ -619,6 +652,102 @@ class PMOSMCPServer {
         },
       ],
     };
+  }
+
+  private async searchContacts(args: { query: string }) {
+    try {
+      const storeData = readStore();
+
+      const accessToken = storeData.google_access_token;
+      const refreshToken = storeData.google_refresh_token;
+      const expiresAt = storeData.google_expires_at;
+
+      if (!refreshToken) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `⚠️ Google Contacts not available. Please ask the user for ${args.query}'s email address directly.`,
+            },
+          ],
+        };
+      }
+
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `⚠️ Google OAuth not configured. Please ask the user for ${args.query}'s email address directly.`,
+            },
+          ],
+        };
+      }
+
+      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost');
+      oauth2Client.setCredentials({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expiry_date: expiresAt,
+      });
+
+      const people = google.people({ version: 'v1', auth: oauth2Client });
+
+      // Search contacts with timeout
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Contact search timeout')), 3000)
+      );
+
+      const searchPromise = people.people.searchContacts({
+        query: args.query,
+        readMask: 'names,emailAddresses',
+      });
+
+      const response = await Promise.race([searchPromise, timeoutPromise]) as any;
+
+      const contacts = response.data.results || [];
+
+      if (contacts.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No contacts found matching "${args.query}". Please ask the user for their email address.`,
+            },
+          ],
+        };
+      }
+
+      const contactList = contacts.map((result: any) => {
+        const person = result.person;
+        const name = person.names?.[0]?.displayName || 'Unknown';
+        const email = person.emailAddresses?.[0]?.value || 'No email';
+        return `• **${name}**: ${email}`;
+      }).join('\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${contacts.length} contact(s) matching "${args.query}":\n\n${contactList}`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      // Fail gracefully - contacts API might not have proper OAuth scope
+      console.error('[MCP] Contact search failed:', error.message);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `⚠️ Unable to search contacts (${error.message}). Please ask the user for ${args.query}'s email address directly.`,
+          },
+        ],
+      };
+    }
   }
 
   private async createJiraTicket(args: { summary: string; description?: string; projectKey?: string; issueType?: string }) {

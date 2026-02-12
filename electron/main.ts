@@ -631,7 +631,7 @@ async function handleProtocolUrl(url: string) {
 
       console.log('[Protocol] Saving to store: google_expires_at');
       store.set('google_expires_at', tokenData.expiresAt);
-      store.set('google_oauth_scope_version', 2);
+      store.set('google_oauth_scope_version', 3); // v3: Added Google Contacts scope
 
       console.log('[Protocol] ✓ Google tokens saved successfully');
 
@@ -3009,6 +3009,22 @@ ${userSettings.secondaryTimezone ? `**Secondary Timezone**: ${userSettings.secon
 - When listing events, display times in the primary timezone
 - If you need to assume a timezone and one isn't specified, use the primary timezone above
 
+## Current Date & Time
+
+**Current Date/Time**: ${new Date().toLocaleString('en-US', {
+  timeZone: userSettings.primaryTimezone || 'America/Los_Angeles',
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  timeZoneName: 'short'
+})}
+
+Use this as the reference point for all time-based calculations (e.g., "in 15 minutes", "next meeting", "today", "tomorrow").
+
 `;
 
     if (userSettings.strategizeSystemPromptPath) {
@@ -3060,6 +3076,13 @@ ${userSettings.secondaryTimezone ? `**Secondary Timezone**: ${userSettings.secon
       if (mcpList.length > 0) {
         mcpGuidance += mcpList.join('\n') + '\n\n';
         mcpGuidance += '## PROACTIVE CONTEXT GATHERING - CRITICAL\n\n';
+        mcpGuidance += '🚨 **MANDATORY WORKFLOW FOR CALENDAR EVENTS WITH ATTENDEES:**\n';
+        mcpGuidance += 'If user says "create meeting/event with [name]" or mentions inviting people:\n';
+        mcpGuidance += '1. TRY search_contacts({ query: "person name" }) to get email from Google Contacts\n';
+        mcpGuidance += '2. If that fails → TRY Slack MCP slack_get_users to find their email in Slack workspace\n';
+        mcpGuidance += '3. If both fail → ASK USER for email address directly\n';
+        mcpGuidance += '4. THEN: Call create_calendar_event with attendees: [email] parameter\n';
+        mcpGuidance += '⚠️ Don\'t get stuck - try both sources then ask user if needed!\n\n';
         mcpGuidance += '**IMPORTANT**: Before answering questions, ALWAYS check relevant MCPs for context:\n\n';
         mcpGuidance += '**When user mentions a person\'s name:**\n';
         mcpGuidance += '1. 🔍 **Check Granola MCP first** - Search for meeting notes, transcripts, and discussions with that person\n';
@@ -3106,11 +3129,19 @@ ${userSettings.secondaryTimezone ? `**Secondary Timezone**: ${userSettings.secon
 
           // Load interview scorecard skill if Granola is enabled
           try {
-            const scorecardSkillPath = path.join(__dirname, '..', 'interview-scorecard.md');
-            if (fs.existsSync(scorecardSkillPath)) {
-              const scorecardSkill = fs.readFileSync(scorecardSkillPath, 'utf-8');
-              mcpGuidance += '\n### Interview Scorecard Skill\n\n' + scorecardSkill + '\n';
-              console.log('[Strategize] Loaded interview scorecard skill');
+            // Try keeley-strategy version first (more concise, Greenhouse-optimized)
+            const scorecardPaths = [
+              path.join(os.homedir(), 'keeley-strategy', 'interview-scorecard.md'),
+              path.join(__dirname, '..', 'interview-scorecard.md')
+            ];
+
+            for (const scorecardSkillPath of scorecardPaths) {
+              if (fs.existsSync(scorecardSkillPath)) {
+                const scorecardSkill = fs.readFileSync(scorecardSkillPath, 'utf-8');
+                mcpGuidance += '\n### Interview Scorecard Skill\n\n' + scorecardSkill + '\n';
+                console.log('[Strategize] Loaded interview scorecard skill from:', scorecardSkillPath);
+                break;
+              }
             }
           } catch (error) {
             console.error('[Strategize] Failed to load interview scorecard skill:', error);
@@ -3126,7 +3157,18 @@ ${userSettings.secondaryTimezone ? `**Secondary Timezone**: ${userSettings.secon
           mcpGuidance += '- **Creating tasks or tracking work** → Use PM-OS MCP tools (create_task, list_tasks, update_task)\n';
           mcpGuidance += '- **Creating Jira tickets** → Use PM-OS MCP create_jira_ticket tool\n';
           mcpGuidance += '- **Managing Google Calendar events** → Use PM-OS MCP calendar tools (list_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event)\n';
-          mcpGuidance += '\n**IMPORTANT - Task Creation Formatting:**\n';
+          mcpGuidance += '- **Looking up contact emails** → Use PM-OS MCP search_contacts tool to find email addresses by name\n';
+          mcpGuidance += '\n🚨 **CRITICAL REQUIREMENT - Calendar Events with People:**\n';
+          mcpGuidance += 'When user mentions creating a meeting/event "with [person name]":\n\n';
+          mcpGuidance += 'STEP 1: Try to get their email (in order):\n';
+          mcpGuidance += '  1. Try search_contacts({ query: "Chethana" }) - PM-OS MCP Google Contacts\n';
+          mcpGuidance += '  2. If that fails, try Slack MCP slack_get_users and search by display name\n';
+          mcpGuidance += '  3. If both fail, ASK USER: "What\'s Chethana\'s email address?"\n\n';
+          mcpGuidance += 'STEP 2: Create the event with attendees\n';
+          mcpGuidance += '  → Call create_calendar_event with attendees: ["email@example.com"]\n';
+          mcpGuidance += '  → Calendar invites sent automatically to all attendees\n\n';
+          mcpGuidance += '⚠️ IMPORTANT: Don\'t get stuck - try both sources then ask user!\n\n';
+          mcpGuidance += '**IMPORTANT - Task Creation Formatting:**\n';
           mcpGuidance += '1. When you create a task, ALWAYS include a deep link: [View task in PM-OS](pmos://task/[task-id])\n';
           mcpGuidance += '2. Format task confirmations like this:\n';
           mcpGuidance += '   ✅ **Task created:** [Title]\n';

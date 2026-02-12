@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     const scopes = [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/contacts.readonly', // For searching contacts by name
     ].join(' ');
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');

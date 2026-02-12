@@ -30,7 +30,7 @@ function logToFile(message: string) {
 logToFile('[IntegrationManager] MODULE LOADED - logToFile is working');
 
 // OAuth scope version tracking
-const REQUIRED_GOOGLE_SCOPE_VERSION = 2;
+const REQUIRED_GOOGLE_SCOPE_VERSION = 3; // v3: Added Google Contacts scope for email lookup
 
 export class IntegrationManager {
   private calendarService: CalendarService | null = null;
@@ -235,6 +235,14 @@ export class IntegrationManager {
       throw new Error('Calendar service not initialized');
     }
     return await this.calendarService.createEvent(request);
+  }
+
+  // Update calendar event
+  async updateCalendarEvent(eventId: string, updates: any): Promise<any> {
+    if (!this.calendarService) {
+      throw new Error('Calendar service not initialized');
+    }
+    return await this.calendarService.updateEvent(eventId, updates);
   }
 
   // Create Zoom meeting
