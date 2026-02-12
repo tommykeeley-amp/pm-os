@@ -249,7 +249,7 @@ class PMOSMCPServer {
               },
               {
                 name: 'create_calendar_event',
-                description: 'Create a new Google Calendar event. For meetings with video, create a Zoom meeting FIRST using create_zoom_meeting, then pass the Zoom join URL to this function.',
+                description: 'Create a new Google Calendar event. IMPORTANT: For ANY meeting, ALWAYS create a Zoom meeting FIRST using create_zoom_meeting, then pass the join URL as zoom_link parameter. Only falls back to Google Meet if zoom_link is not provided.',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -352,7 +352,7 @@ class PMOSMCPServer {
               },
               {
                 name: 'create_zoom_meeting',
-                description: 'Create a Zoom meeting and get the join URL. Returns meeting link that can be added to calendar events or shared with attendees.',
+                description: 'Create a Zoom meeting and get the join URL. ALWAYS call this BEFORE creating a calendar event. Returns the Zoom join URL which MUST be passed to create_calendar_event as the zoom_link parameter.',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -591,11 +591,17 @@ class PMOSMCPServer {
   }
 
   private async createCalendarEvent(args: { summary: string; start: string; end: string; description?: string; location?: string; attendees?: string[]; zoom_link?: string }) {
+    console.log('[MCP] ========== CREATE CALENDAR EVENT ==========');
+    console.log('[MCP] Summary:', args.summary);
+    console.log('[MCP] Zoom link provided:', args.zoom_link || 'NONE');
+    console.log('[MCP] Attendees:', args.attendees);
+
     const calendar = this.getGoogleCalendar();
 
     // Build description with Zoom link if provided
     let description = args.description || '';
     if (args.zoom_link) {
+      console.log('[MCP] ✅ Adding Zoom link to event description');
       description = `${description}\n\nJoin Zoom Meeting:\n${args.zoom_link}`.trim();
     }
 
@@ -613,6 +619,7 @@ class PMOSMCPServer {
 
     // Only add Google Meet if NO Zoom link is provided
     if (!args.zoom_link) {
+      console.log('[MCP] ⚠️ No Zoom link - falling back to Google Meet');
       event.conferenceData = {
         createRequest: {
           requestId: `meet-${Date.now()}`,
@@ -621,6 +628,8 @@ class PMOSMCPServer {
           },
         },
       };
+    } else {
+      console.log('[MCP] ✅ Using Zoom - skipping Google Meet');
     }
 
     // Add attendees if provided
@@ -922,10 +931,18 @@ class PMOSMCPServer {
   }
 
   private async createZoomMeeting(args: { topic: string; start_time: string; duration: number; timezone?: string }) {
+    console.log('[MCP] ========== CREATE ZOOM MEETING ==========');
+    console.log('[MCP] Topic:', args.topic);
+    console.log('[MCP] Start time:', args.start_time);
+    console.log('[MCP] Duration:', args.duration);
+
     const storeData = readStore();
     const accessToken = storeData.zoom_access_token;
 
+    console.log('[MCP] Zoom access token exists:', !!accessToken);
+
     if (!accessToken) {
+      console.log('[MCP] ❌ No Zoom token - returning error');
       return {
         content: [
           {
@@ -937,6 +954,7 @@ class PMOSMCPServer {
     }
 
     try {
+      console.log('[MCP] Making Zoom API request...');
       const response = await httpRequest('https://api.zoom.us/v2/users/me/meetings', {
         method: 'POST',
         headers: {
@@ -965,16 +983,20 @@ class PMOSMCPServer {
 
       const meeting = await response.json();
 
+      console.log('[MCP] ✅ Zoom meeting created!');
+      console.log('[MCP] Join URL:', meeting.join_url);
+      console.log('[MCP] Meeting ID:', meeting.id);
+
       return {
         content: [
           {
             type: 'text',
-            text: `✅ Zoom meeting created successfully!\n\n**Topic:** ${meeting.topic}\n**Join URL:** ${meeting.join_url}\n**Meeting ID:** ${meeting.id}\n**Password:** ${meeting.password || 'none'}\n\nYou can add this Zoom link to your calendar event.`,
+            text: `✅ Zoom meeting created successfully!\n\n**Topic:** ${meeting.topic}\n**Join URL:** ${meeting.join_url}\n**Meeting ID:** ${meeting.id}\n**Password:** ${meeting.password || 'none'}\n\n⚠️ IMPORTANT: Use this join URL when creating the calendar event by passing it as the zoom_link parameter.`,
           },
         ],
       };
     } catch (error: any) {
-      console.error('[MCP] Zoom meeting creation failed:', error);
+      console.error('[MCP] ❌ Zoom meeting creation failed:', error);
       return {
         content: [
           {
