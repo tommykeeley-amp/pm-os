@@ -77,14 +77,16 @@ function httpRequest(url: string, options: any): Promise<{ ok: boolean; status: 
 
 interface Task {
   id: string;
-  text: string;
+  title: string;
   completed: boolean;
   createdAt: string;
+  updatedAt?: string;
   completedAt?: string;
   source?: string;
   sourceId?: string;
   priority?: 'low' | 'medium' | 'high';
   dueDate?: string;
+  deadline?: string;
 }
 
 // MCP Protocol Handler
@@ -145,21 +147,21 @@ class PMOSMCPServer {
                 inputSchema: {
                   type: 'object',
                   properties: {
-                    text: {
+                    title: {
                       type: 'string',
-                      description: 'The task description',
+                      description: 'The task title/description',
                     },
                     priority: {
                       type: 'string',
                       enum: ['low', 'medium', 'high'],
-                      description: 'Task priority (optional)',
+                      description: 'Task priority (optional, defaults to medium)',
                     },
-                    dueDate: {
+                    deadline: {
                       type: 'string',
-                      description: 'Due date in ISO format (optional)',
+                      description: 'Deadline date in YYYY-MM-DD format (optional)',
                     },
                   },
-                  required: ['text'],
+                  required: ['title'],
                 },
               },
               {
@@ -189,9 +191,9 @@ class PMOSMCPServer {
                       type: 'boolean',
                       description: 'Mark task as completed/incomplete',
                     },
-                    text: {
+                    title: {
                       type: 'string',
-                      description: 'Update task text',
+                      description: 'Update task title',
                     },
                   },
                   required: ['id'],
@@ -259,18 +261,19 @@ class PMOSMCPServer {
     }
   }
 
-  private async createTask(args: { text: string; priority?: string; dueDate?: string }) {
+  private async createTask(args: { title: string; priority?: string; deadline?: string }) {
     const storeData = readStore();
     const tasks = (storeData.tasks as Task[]) || [];
 
     const newTask: Task = {
       id: `task-${Date.now()}`,
-      text: args.text,
+      title: args.title,
       completed: false,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       source: 'strategize',
-      priority: args.priority as any,
-      dueDate: args.dueDate,
+      priority: (args.priority as any) || 'medium',
+      deadline: args.deadline,
     };
 
     tasks.push(newTask);
@@ -281,7 +284,7 @@ class PMOSMCPServer {
       content: [
         {
           type: 'text',
-          text: `✅ Task created successfully!\n\nID: ${newTask.id}\nText: ${newTask.text}\nPriority: ${newTask.priority || 'none'}\nDue: ${newTask.dueDate || 'not set'}`,
+          text: `✅ Task created successfully!\n\nID: ${newTask.id}\nTitle: ${newTask.title}\nPriority: ${newTask.priority}\nDeadline: ${newTask.deadline || 'not set'}`,
         },
       ],
     };
@@ -297,7 +300,7 @@ class PMOSMCPServer {
     }
 
     const taskList = filteredTasks
-      .map((t, i) => `${i + 1}. ${t.completed ? '✅' : '⬜'} ${t.text} (ID: ${t.id})`)
+      .map((t, i) => `${i + 1}. ${t.completed ? '✅' : '⬜'} ${t.title} (ID: ${t.id})`)
       .join('\n');
 
     return {
@@ -312,7 +315,7 @@ class PMOSMCPServer {
     };
   }
 
-  private async updateTask(args: { id: string; completed?: boolean; text?: string }) {
+  private async updateTask(args: { id: string; completed?: boolean; title?: string }) {
     const storeData = readStore();
     const tasks = (storeData.tasks as Task[]) || [];
     const taskIndex = tasks.findIndex(t => t.id === args.id);
@@ -323,6 +326,7 @@ class PMOSMCPServer {
 
     if (args.completed !== undefined) {
       tasks[taskIndex].completed = args.completed;
+      tasks[taskIndex].updatedAt = new Date().toISOString();
       if (args.completed) {
         tasks[taskIndex].completedAt = new Date().toISOString();
       } else {
@@ -330,8 +334,9 @@ class PMOSMCPServer {
       }
     }
 
-    if (args.text) {
-      tasks[taskIndex].text = args.text;
+    if (args.title) {
+      tasks[taskIndex].title = args.title;
+      tasks[taskIndex].updatedAt = new Date().toISOString();
     }
 
     storeData.tasks = tasks;
@@ -341,7 +346,7 @@ class PMOSMCPServer {
       content: [
         {
           type: 'text',
-          text: `✅ Task updated successfully!\n\n${tasks[taskIndex].text}${args.completed !== undefined ? `\nStatus: ${args.completed ? 'Completed' : 'Incomplete'}` : ''}`,
+          text: `✅ Task updated successfully!\n\n${tasks[taskIndex].title}${args.completed !== undefined ? `\nStatus: ${args.completed ? 'Completed' : 'Incomplete'}` : ''}`,
         },
       ],
     };

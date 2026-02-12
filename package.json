@@ -77,7 +77,8 @@
     ],
     "asarUnpack": [
       ".env",
-      "node_modules/node-pty/**/*"
+      "node_modules/node-pty/**/*",
+      "dist-electron/pm-os-mcp-server.cjs"
     ],
     "directories": {
       "output": "release"

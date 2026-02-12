@@ -188,6 +188,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('task-created', handler);
     return () => ipcRenderer.removeListener('task-created', handler);
   },
+  onHighlightTask: (callback: (taskId: string) => void) => {
+    const handler = (_event: any, taskId: string) => callback(taskId);
+    ipcRenderer.on('highlight-task', handler);
+    return () => ipcRenderer.removeListener('highlight-task', handler);
+  },
   onMCPOAuthCallback: (callback: (data: { serverName: string; code: string; state?: string }) => void) => {
     const handler = (_event: any, data: { serverName: string; code: string; state?: string }) => callback(data);
     ipcRenderer.on('mcp-oauth-callback', handler);
@@ -308,6 +313,7 @@ export interface ElectronAPI {
   onOAuthError: (callback: (data: { error: string }) => void) => () => void;
   onSwitchTab: (callback: (tab: 'tasks' | 'meetings' | 'strategize' | 'chats') => void) => () => void;
   onTaskCreated: (callback: (task: any) => void) => () => void;
+  onHighlightTask: (callback: (taskId: string) => void) => () => void;
   onMCPOAuthCallback: (callback: (data: { serverName: string; code: string; state?: string }) => void) => () => void;
   mcpOAuthComplete: (serverName: string) => Promise<{ success: boolean; error?: string }>;
   onStrategizeRestartRequired: (callback: () => void) => () => void;

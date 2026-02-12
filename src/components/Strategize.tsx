@@ -572,7 +572,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
         {/* MCP Selector */}
         {isConnected && enabledMCPs.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-dark-text-muted">Context:</span>
+            <span className="text-xs text-dark-text-muted">MCPs:</span>
             {enabledMCPs.map(mcp => (
               <button
                 key={mcp}

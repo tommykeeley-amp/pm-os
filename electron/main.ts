@@ -1604,6 +1604,51 @@ app.whenReady().then(async () => {
     console.error('[Main] Failed to start OAuth callback server:', error);
   }
 
+  // Watch for config file changes (for MCP-created tasks)
+  const configPath = store.path;
+  console.log('[Main] Watching config file:', configPath);
+
+  let lastTaskCount = ((store.get('tasks') as any[]) || []).length;
+  console.log('[Main] Initial task count:', lastTaskCount);
+
+  fs.watch(configPath, { persistent: false }, async (eventType) => {
+    try {
+      console.log('[Main] Config file changed, event:', eventType);
+
+      // Small delay to ensure file write is complete
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Read file directly instead of using store.get() to avoid cache
+      const fileContent = fs.readFileSync(configPath, 'utf-8');
+      const data = JSON.parse(fileContent);
+      const tasks = (data.tasks as any[]) || [];
+
+      console.log('[Main] Current task count:', tasks.length, 'Previous:', lastTaskCount);
+
+      if (tasks.length > lastTaskCount) {
+        // New task(s) added
+        const newTasks = tasks.slice(lastTaskCount);
+        lastTaskCount = tasks.length;
+
+        console.log('[Main] New tasks detected:', newTasks.length);
+
+        // Notify renderer about new tasks
+        newTasks.forEach(task => {
+          if (mainWindow && mainWindow.webContents) {
+            console.log('[Main] Sending task-created event for:', task.title);
+            mainWindow.webContents.send('task-created', task);
+          }
+        });
+      } else {
+        lastTaskCount = tasks.length;
+      }
+    } catch (error) {
+      console.error('[Main] Error processing config change:', error);
+    }
+  });
+
+  console.log('[Main] Config file watcher started');
+
   // Start Slack events server
   const slackEventsServer = new SlackEventsServer();
   slackEventsServer.setTaskCreateHandler(async (taskData) => {
@@ -1881,6 +1926,30 @@ ipcMain.handle('minimize-window', () => {
 });
 
 ipcMain.handle('open-external', async (_event, url: string) => {
+  // Handle internal pmos:// URLs
+  if (url.startsWith('pmos://')) {
+    const urlObj = new URL(url);
+
+    if (urlObj.hostname === 'task' && urlObj.pathname) {
+      // Format: pmos://task/[task-id]
+      const taskId = urlObj.pathname.substring(1); // Remove leading slash
+      console.log('[Main] Opening task:', taskId);
+
+      // Switch to tasks tab and highlight the task
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('switch-tab', 'tasks');
+        // Small delay to let tab switch complete
+        setTimeout(() => {
+          if (mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send('highlight-task', taskId);
+          }
+        }, 100);
+      }
+      return;
+    }
+  }
+
+  // External URLs - open in browser
   await shell.openExternal(url);
 });
 
@@ -2924,6 +2993,14 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
         if (shouldInclude('pmos') && userSettings.mcpServers.pmos?.enabled) {
           mcpGuidance += '- Creating tasks or tracking work → Use PM-OS MCP tools (create_task, list_tasks, update_task)\n';
           mcpGuidance += '- Creating Jira tickets → Use PM-OS MCP create_jira_ticket tool\n';
+          mcpGuidance += '\n**IMPORTANT - Task Creation Formatting:**\n';
+          mcpGuidance += '1. When you create a task, ALWAYS include a deep link: [View task in PM-OS](pmos://task/[task-id])\n';
+          mcpGuidance += '2. Format task confirmations like this:\n';
+          mcpGuidance += '   ✅ **Task created:** [Title]\n';
+          mcpGuidance += '   Priority: [priority] | ID: [id]\n';
+          mcpGuidance += '   [View task in PM-OS](pmos://task/[id])\n\n';
+          mcpGuidance += '   Would you like to set a deadline? (note the blank line before the question)\n';
+          mcpGuidance += '3. ALWAYS add a blank line before follow-up questions for better readability\n';
         }
         mcpGuidance += '\nProactively search and use these tools when relevant to the user\'s question.\n';
 
@@ -3318,7 +3395,7 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       if (name === 'PM-OS') {
         // Use the compiled MCP server from dist-electron
         const mcpServerPath = app.isPackaged
-          ? path.join(process.resourcesPath, 'dist-electron', 'pm-os-mcp-server.cjs')
+          ? path.join(process.resourcesPath, 'app.asar.unpacked', 'dist-electron', 'pm-os-mcp-server.cjs')
           : path.join(__dirname, 'pm-os-mcp-server.cjs');
         args.push('node', mcpServerPath);
       } else {
