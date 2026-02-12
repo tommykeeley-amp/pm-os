@@ -3,7 +3,23 @@ import { getPendingTasks, markTaskProcessed } from '../store';
 
 export async function GET(request: NextRequest) {
   try {
-    const tasks = getPendingTasks();
+    // Get email filter from query parameter
+    const searchParams = request.nextUrl.searchParams;
+    const email = searchParams.get('email')?.toLowerCase();
+
+    let tasks = getPendingTasks();
+
+    // Filter by email if provided
+    if (email) {
+      tasks = tasks.filter((task: any) => {
+        const reporterEmail = task.reporterEmail?.toLowerCase() || task.user_email?.toLowerCase() || '';
+        return reporterEmail === email;
+      });
+      console.log(`[Pending Tasks] Filtered to ${tasks.length} tasks for email: ${email}`);
+    } else {
+      console.log(`[Pending Tasks] No email filter, returning all ${tasks.length} tasks`);
+    }
+
     return NextResponse.json({
       success: true,
       tasks,
