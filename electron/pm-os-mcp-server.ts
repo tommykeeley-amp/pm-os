@@ -264,7 +264,7 @@ class PMOSMCPServer {
               },
               {
                 name: 'create_calendar_event',
-                description: 'Create a new Google Calendar event. IMPORTANT: For ANY meeting, ALWAYS create a Zoom meeting FIRST using create_zoom_meeting, then pass the join URL as zoom_link parameter. Only falls back to Google Meet if zoom_link is not provided.',
+                description: 'Create a new Google Calendar event. Video conferencing is automatically handled: if user has configured a personal Zoom link in settings, it will be used; otherwise falls back to Google Meet. Do NOT manually create Zoom meetings unless specifically requested.',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -710,7 +710,7 @@ class PMOSMCPServer {
       : '';
 
     // Extract video link (either Zoom or Google Meet)
-    let videoLink = args.zoom_link;
+    let videoLink = zoomLink; // Use the zoomLink we determined earlier (from settings, API, or not set)
     if (!videoLink) {
       videoLink = createdEvent.conferenceData?.entryPoints?.find(
         (ep: any) => ep.entryPointType === 'video'
