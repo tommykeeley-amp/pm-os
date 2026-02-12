@@ -5,11 +5,12 @@
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "dev": "npm run build:mcp && vite",
+    "build": "npm run build:mcp && tsc && vite build && electron-builder",
+    "build:mcp": "tsc electron/pm-os-mcp-server.ts --outDir dist-electron --module commonjs --target es2020 --moduleResolution node --esModuleInterop true --skipLibCheck true && mv dist-electron/pm-os-mcp-server.js dist-electron/pm-os-mcp-server.cjs",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
+    "electron:dev": "npm run build:mcp && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build:mcp && vite build && electron-builder"
   },
   "keywords": [
     "electron",

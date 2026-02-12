@@ -3318,8 +3318,8 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       if (name === 'PM-OS') {
         // Use the compiled MCP server from dist-electron
         const mcpServerPath = app.isPackaged
-          ? path.join(process.resourcesPath, 'dist-electron', 'pm-os-mcp-server.js')
-          : path.join(__dirname, 'pm-os-mcp-server.js');
+          ? path.join(process.resourcesPath, 'dist-electron', 'pm-os-mcp-server.cjs')
+          : path.join(__dirname, 'pm-os-mcp-server.cjs');
         args.push('node', mcpServerPath);
       } else {
         const commandParts = urlOrCommand.split(' ');

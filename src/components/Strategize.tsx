@@ -382,20 +382,24 @@ export default function Strategize({ isActive }: StrategizeProps) {
                             <div className="text-xs leading-relaxed">
                               {msg.content}
                             </div>
-                            {msg.selectedMCPs && msg.selectedMCPs.length > 0 && (
-                              <div className="flex gap-1 mt-2 flex-wrap">
-                                {msg.selectedMCPs.map(mcp => (
-                                  <span
-                                    key={mcp}
-                                    className="px-1.5 py-0.5 text-[9px] bg-white/20 rounded-full"
-                                  >
-                                    {mcp}
-                                  </span>
-                                ))}
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="text-[9px] opacity-60">
+                                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </div>
-                            )}
-                            <div className="text-[9px] mt-1 opacity-60">
-                              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {msg.selectedMCPs && msg.selectedMCPs.length > 0 && (
+                                <div className={`flex gap-1 flex-wrap transition-opacity ${
+                                  hoveredMessageId === msg.id ? 'opacity-100' : 'opacity-0'
+                                }`}>
+                                  {msg.selectedMCPs.map(mcp => (
+                                    <span
+                                      key={mcp}
+                                      className="px-1.5 py-0.5 text-[9px] bg-white/20 rounded-full"
+                                    >
+                                      {mcp}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         ) : (
