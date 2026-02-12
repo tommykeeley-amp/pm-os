@@ -44,6 +44,7 @@ interface UserSettings {
   showDeclinedMeetings?: boolean;
   primaryTimezone?: string;
   secondaryTimezone?: string;
+  zoomPersonalMeetingLink?: string;
 
   // Strategize Settings
   strategizeFolderPath?: string;
@@ -1448,6 +1449,26 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                   </select>
                   <p className="text-xs text-dark-text-muted mt-1">
                     Timezone shown on hover in the Meetings tab
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-dark-border">
+                <h3 className="text-base font-semibold text-dark-text-primary">Video Meetings</h3>
+                <div className="bg-dark-bg border border-dark-border rounded-lg p-4">
+                  <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                    Personal Zoom Meeting Link
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.zoomPersonalMeetingLink || ''}
+                    onChange={(e) => handleChange('zoomPersonalMeetingLink', e.target.value)}
+                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                             text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                    placeholder="https://zoom.us/j/your-meeting-id"
+                  />
+                  <p className="text-xs text-dark-text-muted mt-1">
+                    Your permanent Zoom meeting link (found in Zoom settings under Personal Meeting ID)
                   </p>
                 </div>
               </div>

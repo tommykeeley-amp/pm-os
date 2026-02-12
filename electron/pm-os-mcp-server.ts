@@ -616,37 +616,45 @@ class PMOSMCPServer {
 
     // Auto-create Zoom meeting if no zoom_link provided
     if (!zoomLink) {
-      console.log('[MCP] No Zoom link provided - auto-creating Zoom meeting');
       const storeData = readStore();
-      const zoomAccessToken = storeData.zoom_access_token;
+      const settings = storeData.userSettings as any;
 
-      if (zoomAccessToken) {
-        console.log('[MCP] Zoom is connected - creating meeting');
-        try {
-          // Calculate duration from start/end times
-          const startTime = new Date(args.start);
-          const endTime = new Date(args.end);
-          const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
-
-          // Create Zoom meeting
-          const zoomResult = await this.createZoomMeeting({
-            topic: args.summary,
-            start_time: args.start,
-            duration: durationMinutes,
-          });
-
-          // Extract Zoom link from the result
-          const zoomText = zoomResult.content[0].text;
-          const urlMatch = zoomText.match(/Join URL:\*\* (https:\/\/[^\s]+)/);
-          if (urlMatch) {
-            zoomLink = urlMatch[1];
-            console.log('[MCP] ✅ Auto-created Zoom meeting:', zoomLink);
-          }
-        } catch (error: any) {
-          console.log('[MCP] ⚠️ Failed to auto-create Zoom:', error.message);
-        }
+      // First priority: Check for personal Zoom meeting link in settings
+      if (settings?.zoomPersonalMeetingLink) {
+        zoomLink = settings.zoomPersonalMeetingLink;
+        console.log('[MCP] ✅ Using personal Zoom link from settings');
       } else {
-        console.log('[MCP] ⚠️ Zoom not connected - falling back to Google Meet');
+        console.log('[MCP] No personal Zoom link - attempting to auto-create Zoom meeting');
+        const zoomAccessToken = storeData.zoom_access_token;
+
+        if (zoomAccessToken) {
+          console.log('[MCP] Zoom is connected - creating meeting');
+          try {
+            // Calculate duration from start/end times
+            const startTime = new Date(args.start);
+            const endTime = new Date(args.end);
+            const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+            // Create Zoom meeting
+            const zoomResult = await this.createZoomMeeting({
+              topic: args.summary,
+              start_time: args.start,
+              duration: durationMinutes,
+            });
+
+            // Extract Zoom link from the result
+            const zoomText = zoomResult.content[0].text;
+            const urlMatch = zoomText.match(/Join URL:\*\* (https:\/\/[^\s]+)/);
+            if (urlMatch) {
+              zoomLink = urlMatch[1];
+              console.log('[MCP] ✅ Auto-created Zoom meeting:', zoomLink);
+            }
+          } catch (error: any) {
+            console.log('[MCP] ⚠️ Failed to auto-create Zoom:', error.message);
+          }
+        } else {
+          console.log('[MCP] ⚠️ Zoom not connected - falling back to Google Meet');
+        }
       }
     }
 
@@ -776,7 +784,8 @@ class PMOSMCPServer {
     };
   }
 
-  // Simple string similarity using Levenshtein distance
+  // Simple string similarity using Levenshtein distance (unused but kept for future use)
+  // @ts-ignore - kept for potential future use
   private stringSimilarity(str1: string, str2: string): number {
     const s1 = str1.toLowerCase();
     const s2 = str2.toLowerCase();
@@ -943,6 +952,9 @@ class PMOSMCPServer {
       // If single match, provide it directly
       if (matches.length === 1) {
         const match = matches[0];
+        if (!match) {
+          throw new Error('Unexpected: matches array has length 1 but first element is undefined');
+        }
         const orgInfo = match.organization ? ` (${match.organization})` : '';
         return {
           content: [
