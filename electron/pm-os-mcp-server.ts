@@ -249,7 +249,7 @@ class PMOSMCPServer {
               },
               {
                 name: 'create_calendar_event',
-                description: 'Create a new Google Calendar event',
+                description: 'Create a new Google Calendar event. For meetings with video, create a Zoom meeting FIRST using create_zoom_meeting, then pass the Zoom join URL to this function.',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -271,7 +271,7 @@ class PMOSMCPServer {
                     },
                     location: {
                       type: 'string',
-                      description: 'Event location (optional)',
+                      description: 'Event location or Zoom link (optional)',
                     },
                     attendees: {
                       type: 'array',
@@ -279,6 +279,10 @@ class PMOSMCPServer {
                       items: {
                         type: 'string'
                       }
+                    },
+                    zoom_link: {
+                      type: 'string',
+                      description: 'Zoom meeting join URL (optional). If provided, will be added to the event instead of Google Meet.',
                     },
                   },
                   required: ['summary', 'start', 'end'],
@@ -586,29 +590,38 @@ class PMOSMCPServer {
     };
   }
 
-  private async createCalendarEvent(args: { summary: string; start: string; end: string; description?: string; location?: string; attendees?: string[] }) {
+  private async createCalendarEvent(args: { summary: string; start: string; end: string; description?: string; location?: string; attendees?: string[]; zoom_link?: string }) {
     const calendar = this.getGoogleCalendar();
+
+    // Build description with Zoom link if provided
+    let description = args.description || '';
+    if (args.zoom_link) {
+      description = `${description}\n\nJoin Zoom Meeting:\n${args.zoom_link}`.trim();
+    }
 
     const event: any = {
       summary: args.summary,
-      description: args.description,
-      location: args.location,
+      description: description,
+      location: args.zoom_link || args.location, // Use Zoom link as location if provided
       start: {
         dateTime: args.start,
       },
       end: {
         dateTime: args.end,
       },
-      // Automatically add Google Meet video conference link
-      conferenceData: {
+    };
+
+    // Only add Google Meet if NO Zoom link is provided
+    if (!args.zoom_link) {
+      event.conferenceData = {
         createRequest: {
-          requestId: `meet-${Date.now()}`, // Unique request ID
+          requestId: `meet-${Date.now()}`,
           conferenceSolutionKey: {
-            type: 'hangoutsMeet', // Google Meet
+            type: 'hangoutsMeet',
           },
         },
-      },
-    };
+      };
+    }
 
     // Add attendees if provided
     if (args.attendees && args.attendees.length > 0) {
@@ -618,8 +631,8 @@ class PMOSMCPServer {
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: event,
-      conferenceDataVersion: 1, // Required to create conference data
-      sendUpdates: 'all', // Send email invites to attendees
+      conferenceDataVersion: args.zoom_link ? 0 : 1, // Only request conference data if using Google Meet
+      sendUpdates: 'all',
     });
 
     const createdEvent = response.data;
@@ -627,11 +640,14 @@ class PMOSMCPServer {
       ? `\nAttendees: ${createdEvent.attendees.map(a => a.email).join(', ')}`
       : '';
 
-    // Extract Google Meet link
-    const meetLink = createdEvent.conferenceData?.entryPoints?.find(
-      (ep: any) => ep.entryPointType === 'video'
-    )?.uri || '';
-    const meetInfo = meetLink ? `\n🎥 Video Link: ${meetLink}` : '';
+    // Extract video link (either Zoom or Google Meet)
+    let videoLink = args.zoom_link;
+    if (!videoLink) {
+      videoLink = createdEvent.conferenceData?.entryPoints?.find(
+        (ep: any) => ep.entryPointType === 'video'
+      )?.uri || '';
+    }
+    const meetInfo = videoLink ? `\n🎥 Video Link: ${videoLink}` : '';
 
     return {
       content: [
