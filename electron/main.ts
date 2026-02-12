@@ -2399,12 +2399,21 @@ ipcMain.handle('get-oauth-tokens', (_event, provider: string) => {
 });
 
 ipcMain.handle('save-oauth-tokens', (_event, provider: string, tokens: any) => {
-  store.set(`${provider}_access_token`, tokens.accessToken);
-  if (tokens.refreshToken) {
-    store.set(`${provider}_refresh_token`, tokens.refreshToken);
-  }
-  if (tokens.expiresAt) {
-    store.set(`${provider}_expires_at`, tokens.expiresAt);
+  // If tokens are null, delete them (disconnect scenario)
+  if (tokens.accessToken === null) {
+    store.delete(`${provider}_access_token`);
+    store.delete(`${provider}_refresh_token`);
+    store.delete(`${provider}_expires_at`);
+    console.log(`[OAuth] Cleared all ${provider} tokens`);
+  } else {
+    // Save tokens normally
+    store.set(`${provider}_access_token`, tokens.accessToken);
+    if (tokens.refreshToken) {
+      store.set(`${provider}_refresh_token`, tokens.refreshToken);
+    }
+    if (tokens.expiresAt) {
+      store.set(`${provider}_expires_at`, tokens.expiresAt);
+    }
   }
 });
 
