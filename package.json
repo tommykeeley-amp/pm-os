@@ -33,6 +33,7 @@
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "vosk-browser": "^0.0.8",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
   },
@@ -72,13 +73,16 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "mcp-servers/**/*",
       "build/icon.png",
-      ".env"
+      ".env",
+      "interview-scorecard.md"
     ],
     "asarUnpack": [
       ".env",
       "node_modules/node-pty/**/*",
-      "dist-electron/pm-os-mcp-server.cjs"
+      "dist-electron/pm-os-mcp-server.cjs",
+      "mcp-servers/**/*"
     ],
     "directories": {
       "output": "release"

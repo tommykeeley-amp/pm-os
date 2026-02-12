@@ -581,6 +581,9 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
           await logToFile(`✓ Terminal opened for ${config.name} authentication`);
           await logToFile(`User should now see Terminal window with Claude Code`);
           await logToFile(`User needs to type: /mcp`);
+
+          // Clear connecting state since terminal is now open
+          setConnectingMCP(null);
         }
 
         // Don't auto-restart - user will do it manually after authenticating in Terminal

@@ -45,6 +45,8 @@ Choose one of:
 
 ## Instructions for Claude
 
+**CRITICAL**: You MUST use the exact format specified below. Do NOT create your own format or add additional sections like scoring systems, technical assessments, or other categories not listed here.
+
 When generating an interview scorecard:
 
 1. **Fetch Meeting Data**: Use the Granola MCP to retrieve the meeting transcript and notes
@@ -63,7 +65,7 @@ When generating an interview scorecard:
    - What's the confidence level in this assessment?
    - Choose appropriate recommendation tier
 
-4. **Structure the Output**: Format as follows:
+4. **Structure the Output**: Use this EXACT format - do not add extra sections, scoring systems, or modify the structure:
 
 ```markdown
 # Interview Scorecard: [Candidate Name]

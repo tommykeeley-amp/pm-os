@@ -2998,6 +2998,17 @@ ipcMain.handle('strategize-send', async (_event, message: string, conversationHi
 
 Your goal is to make information **instantly scannable** and **easy to digest**.
 
+## User Timezone Settings
+
+**Primary Timezone**: ${userSettings.primaryTimezone || 'America/Los_Angeles'}
+${userSettings.secondaryTimezone ? `**Secondary Timezone**: ${userSettings.secondaryTimezone}` : ''}
+
+**IMPORTANT**:
+- Always use the user's **primary timezone** when displaying times, scheduling events, or interpreting time-based queries
+- When creating or updating calendar events, use the primary timezone unless explicitly told otherwise
+- When listing events, display times in the primary timezone
+- If you need to assume a timezone and one isn't specified, use the primary timezone above
+
 `;
 
     if (userSettings.strategizeSystemPromptPath) {
@@ -3048,6 +3059,21 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
 
       if (mcpList.length > 0) {
         mcpGuidance += mcpList.join('\n') + '\n\n';
+        mcpGuidance += '## PROACTIVE CONTEXT GATHERING - CRITICAL\n\n';
+        mcpGuidance += '**IMPORTANT**: Before answering questions, ALWAYS check relevant MCPs for context:\n\n';
+        mcpGuidance += '**When user mentions a person\'s name:**\n';
+        mcpGuidance += '1. 🔍 **Check Granola MCP first** - Search for meeting notes, transcripts, and discussions with that person\n';
+        mcpGuidance += '2. 📅 **Check Clockwise/Calendar** - Look for upcoming or past meetings with them\n';
+        mcpGuidance += '3. Use this context to provide informed, personalized responses\n\n';
+        mcpGuidance += '**When user asks about work/projects:**\n';
+        mcpGuidance += '1. 🔍 **Check Granola MCP** - Look for recent meeting notes and action items\n';
+        mcpGuidance += '2. 📊 **Check Amplitude MCP** - Look for relevant analytics or experiments\n';
+        mcpGuidance += '3. 🎫 **Check Atlassian MCP** - Search for related Jira tickets\n\n';
+        mcpGuidance += '**When user asks to create documents (scorecards, reviews, etc.):**\n';
+        mcpGuidance += '1. 🔍 **First gather context** from Granola, Clockwise, or other relevant MCPs\n';
+        mcpGuidance += '2. Then create the document with full context about the person/topic\n';
+        mcpGuidance += '3. Never assume - always check available data sources first\n\n';
+        mcpGuidance += '**DO NOT** just answer from general knowledge - USE THE MCP TOOLS to gather real, specific context!\n\n';
         mcpGuidance += '## CALENDAR OPERATIONS - CRITICAL PRIORITY ORDER\n\n';
         mcpGuidance += '**When user asks to move/update/delete/create calendar events:**\n\n';
         mcpGuidance += '**PRIORITY 1: Use PM-OS MCP Calendar Tools** (if available)\n';
@@ -3077,6 +3103,18 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
         }
         if (shouldInclude('granola') && userSettings.mcpServers.granola?.enabled) {
           mcpGuidance += '- Meetings, notes, or action items → Use Granola MCP tools\n';
+
+          // Load interview scorecard skill if Granola is enabled
+          try {
+            const scorecardSkillPath = path.join(__dirname, '..', 'interview-scorecard.md');
+            if (fs.existsSync(scorecardSkillPath)) {
+              const scorecardSkill = fs.readFileSync(scorecardSkillPath, 'utf-8');
+              mcpGuidance += '\n### Interview Scorecard Skill\n\n' + scorecardSkill + '\n';
+              console.log('[Strategize] Loaded interview scorecard skill');
+            }
+          } catch (error) {
+            console.error('[Strategize] Failed to load interview scorecard skill:', error);
+          }
         }
         if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
           mcpGuidance += '- Finding optimal meeting times or team availability → Use Clockwise MCP for smart scheduling only\n';
