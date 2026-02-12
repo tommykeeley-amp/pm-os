@@ -336,3 +336,73 @@ input[type="checkbox"]:checked {
 .animate-fadeInScale {
   animation: fadeInScale 2s ease-out forwards;
 }
+
+/* Markdown content styling */
+.markdown-content {
+  @apply space-y-2;
+}
+
+.markdown-content p {
+  @apply mb-2;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  @apply my-2 pl-4 space-y-1;
+}
+
+.markdown-content li {
+  @apply mb-1;
+}
+
+.markdown-content ul li {
+  @apply list-disc;
+}
+
+.markdown-content ol li {
+  @apply list-decimal;
+}
+
+.markdown-content strong {
+  @apply font-semibold;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  @apply font-semibold mt-3 mb-2;
+}
+
+.markdown-content h1 {
+  @apply text-base;
+}
+
+.markdown-content h2 {
+  @apply text-sm;
+}
+
+.markdown-content h3,
+.markdown-content h4 {
+  @apply text-xs;
+}
+
+.markdown-content hr {
+  @apply my-3 border-dark-border;
+}
+
+.markdown-content code {
+  @apply px-1 py-0.5 rounded bg-dark-bg text-dark-text-primary;
+}
+
+.markdown-content pre {
+  @apply p-2 rounded bg-dark-bg overflow-x-auto my-2;
+}
+
+.markdown-content pre code {
+  @apply p-0 bg-transparent;
+}
+
+.markdown-content blockquote {
+  @apply pl-3 border-l-2 border-dark-border italic text-dark-text-muted;
+}

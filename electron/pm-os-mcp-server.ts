@@ -654,6 +654,48 @@ class PMOSMCPServer {
     };
   }
 
+  // Simple string similarity using Levenshtein distance
+  private stringSimilarity(str1: string, str2: string): number {
+    const s1 = str1.toLowerCase();
+    const s2 = str2.toLowerCase();
+
+    // Perfect match
+    if (s1 === s2) return 1.0;
+
+    // Contains match (high score)
+    if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+
+    // Levenshtein distance
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const matrix: number[][] = [];
+
+    for (let i = 0; i <= len1; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= len2; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        if (s1[i - 1] === s2[j - 1]) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+
+    const distance = matrix[len1][len2];
+    const maxLen = Math.max(len1, len2);
+    return 1 - distance / maxLen;
+  }
+
   private async searchContacts(args: { query: string }) {
     try {
       const storeData = readStore();
@@ -696,21 +738,63 @@ class PMOSMCPServer {
 
       const people = google.people({ version: 'v1', auth: oauth2Client });
 
-      // Search contacts with timeout
+      // Fetch all contacts with timeout (up to 1000 contacts)
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Contact search timeout')), 3000)
+        setTimeout(() => reject(new Error('Contact search timeout')), 5000)
       );
 
-      const searchPromise = people.people.searchContacts({
-        query: args.query,
-        readMask: 'names,emailAddresses',
+      const listPromise = people.people.connections.list({
+        resourceName: 'people/me',
+        pageSize: 1000,
+        personFields: 'names,emailAddresses',
       });
 
-      const response = await Promise.race([searchPromise, timeoutPromise]) as any;
+      const response = await Promise.race([listPromise, timeoutPromise]) as any;
+      const allContacts = response.data.connections || [];
 
-      const contacts = response.data.results || [];
+      if (allContacts.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No contacts found in Google Contacts. Please ask the user for ${args.query}'s email address.`,
+            },
+          ],
+        };
+      }
 
-      if (contacts.length === 0) {
+      // Fuzzy search against all contacts
+      const query = args.query.toLowerCase().trim();
+      const matches = allContacts
+        .map((person: any) => {
+          const displayName = person.names?.[0]?.displayName || '';
+          const givenName = person.names?.[0]?.givenName || '';
+          const familyName = person.names?.[0]?.familyName || '';
+          const email = person.emailAddresses?.[0]?.value || '';
+
+          if (!email) return null; // Skip contacts without email
+
+          // Calculate similarity scores for different name parts
+          const scores = [
+            this.stringSimilarity(query, displayName),
+            this.stringSimilarity(query, givenName),
+            this.stringSimilarity(query, familyName),
+            this.stringSimilarity(query, email),
+          ];
+
+          const maxScore = Math.max(...scores);
+
+          return {
+            name: displayName,
+            email,
+            score: maxScore,
+          };
+        })
+        .filter((match: any) => match && match.score > 0.5) // Only keep good matches
+        .sort((a: any, b: any) => b.score - a.score) // Sort by best match
+        .slice(0, 5); // Top 5 matches
+
+      if (matches.length === 0) {
         return {
           content: [
             {
@@ -721,18 +805,15 @@ class PMOSMCPServer {
         };
       }
 
-      const contactList = contacts.map((result: any) => {
-        const person = result.person;
-        const name = person.names?.[0]?.displayName || 'Unknown';
-        const email = person.emailAddresses?.[0]?.value || 'No email';
-        return `• **${name}**: ${email}`;
-      }).join('\n');
+      const contactList = matches.map((match: any) =>
+        `• **${match.name}**: ${match.email} (${Math.round(match.score * 100)}% match)`
+      ).join('\n');
 
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${contacts.length} contact(s) matching "${args.query}":\n\n${contactList}`,
+            text: `Found ${matches.length} contact(s) matching "${args.query}":\n\n${contactList}\n\nUse the email address from the best match above.`,
           },
         ],
       };

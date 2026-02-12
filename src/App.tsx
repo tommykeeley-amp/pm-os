@@ -884,7 +884,7 @@ function App() {
             </TabPanel>
 
             {/* Strategize Tab */}
-            <TabPanel isActive={activeTab === 'strategize'}>
+            <TabPanel isActive={activeTab === 'strategize'} className="h-full">
               <Strategize isActive={activeTab === 'strategize'} />
             </TabPanel>
 

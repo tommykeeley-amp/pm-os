@@ -346,6 +346,97 @@ export class CalendarService {
       throw error;
     }
   }
+
+  async updateEvent(
+    eventId: string,
+    updates: {
+      summary?: string;
+      description?: string;
+      start?: string; // ISO 8601
+      end?: string;   // ISO 8601
+      location?: string;
+      attendees?: string[];
+    }
+  ): Promise<CalendarEvent> {
+    try {
+      const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+
+      // First, get the existing event to merge with updates
+      const existingEvent = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: eventId,
+      });
+
+      // Build the update request body, merging with existing data
+      const requestBody: any = {
+        summary: updates.summary !== undefined ? updates.summary : existingEvent.data.summary,
+        description: updates.description !== undefined ? updates.description : existingEvent.data.description,
+        location: updates.location !== undefined ? updates.location : existingEvent.data.location,
+      };
+
+      // Update start time if provided
+      if (updates.start) {
+        requestBody.start = {
+          dateTime: updates.start,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        };
+      } else if (existingEvent.data.start) {
+        requestBody.start = existingEvent.data.start;
+      }
+
+      // Update end time if provided
+      if (updates.end) {
+        requestBody.end = {
+          dateTime: updates.end,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        };
+      } else if (existingEvent.data.end) {
+        requestBody.end = existingEvent.data.end;
+      }
+
+      // Update attendees if provided
+      if (updates.attendees) {
+        requestBody.attendees = updates.attendees.map(email => ({ email }));
+      } else if (existingEvent.data.attendees) {
+        requestBody.attendees = existingEvent.data.attendees;
+      }
+
+      // Perform the update
+      const response = await calendar.events.update({
+        calendarId: 'primary',
+        eventId: eventId,
+        requestBody: requestBody,
+      });
+
+      const event = response.data;
+      return {
+        id: event.id!,
+        title: event.summary || 'Untitled Event',
+        start: event.start?.dateTime || event.start?.date || '',
+        end: event.end?.dateTime || event.end?.date || '',
+        description: event.description || undefined,
+        location: event.location || undefined,
+        attendees: event.attendees?.map(a => ({
+          email: a.email!,
+          responseStatus: a.responseStatus || undefined,
+          self: a.self || undefined,
+        })),
+        htmlLink: event.htmlLink || undefined,
+        hangoutLink: event.hangoutLink || undefined,
+        conferenceData: event.conferenceData,
+        colorId: event.colorId || undefined,
+      };
+    } catch (error: any) {
+      if (error.code === 401) {
+        const refreshedTokens = await this.getRefreshedTokens();
+        if (refreshedTokens) {
+          this.setTokens(refreshedTokens);
+          return this.updateEvent(eventId, updates);
+        }
+      }
+      throw error;
+    }
+  }
 }
 
 export type { CalendarEvent, Attendee, TokenData, CreateEventRequest };

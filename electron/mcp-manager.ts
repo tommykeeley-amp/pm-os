@@ -108,6 +108,10 @@ export class MCPManager {
   public async getAllContextData(): Promise<string> {
     const contexts: string[] = [];
 
+    // Calendar events are fetched on-demand via window.electronAPI.syncCalendar()
+    // No need to add them to static context since they change frequently
+
+    // Add MCP server contexts
     for (const [name, client] of this.clients) {
       if (client.isAuthenticated()) {
         try {
@@ -119,7 +123,7 @@ export class MCPManager {
       }
     }
 
-    return contexts.join('\n');
+    return contexts.join('\n\n');
   }
 
   /**
