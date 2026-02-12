@@ -86,6 +86,16 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   const [settings, setSettings] = useState<UserSettings>({});
   const [activeTab, setActiveTab] = useState<'personal' | 'integrations' | 'customizations'>('personal');
 
+  // Helper to log to file that I can read
+  const logToFile = async (message: string) => {
+    console.log(message);
+    try {
+      await window.electronAPI.writeDebugLog(`[Settings] ${message}`);
+    } catch (error) {
+      console.error('[Settings] Failed to write to log file:', error);
+    }
+  };
+
   // Integrations state
   const [integrations, setIntegrations] = useState([
     {
@@ -194,14 +204,22 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       console.error(`\n========== [Settings] OAuth Error Event ==========`);
       console.error(`[Settings] Time: ${new Date().toISOString()}`);
       console.error(`[Settings] Event data:`, data);
-      console.error(`[Settings] ❌❌❌ OAuth flow failed`);
-      console.error(`[Settings] Error: ${data?.error || 'Unknown error'}`);
+      console.error(`[Settings] Current isConnecting state:`, isConnecting);
 
-      setConnectionError({
-        provider: isConnecting || 'unknown',
-        error: data?.error || 'An error occurred during OAuth flow'
-      });
-      setIsConnecting(null);
+      // Only show error if we're actually in an OAuth flow
+      // Ignore stale errors from previous sessions
+      if (isConnecting) {
+        console.error(`[Settings] ❌❌❌ OAuth flow failed`);
+        console.error(`[Settings] Error: ${data?.error || 'Unknown error'}`);
+
+        setConnectionError({
+          provider: isConnecting,
+          error: data?.error || 'An error occurred during OAuth flow'
+        });
+        setIsConnecting(null);
+      } else {
+        console.log(`[Settings] Ignoring stale OAuth error (not in OAuth flow)`);
+      }
 
       console.error(`========== [Settings] OAuth Error Handler Done ==========\n`);
     };
@@ -238,23 +256,53 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
   };
 
   const checkConnections = async () => {
+    console.log('[Settings] ========== CHECK CONNECTIONS START ==========');
+    // Clear any previous connection errors
+    setConnectionError(null);
     try {
+      console.log('[Settings] Fetching Google tokens...');
       const googleTokens = await window.electronAPI.getOAuthTokens('google');
+      console.log('[Settings] Google tokens:', {
+        hasAccessToken: !!googleTokens.accessToken,
+        hasRefreshToken: !!googleTokens.refreshToken,
+        expiresAt: googleTokens.expiresAt,
+        isExpired: googleTokens.expiresAt ? Date.now() > googleTokens.expiresAt : 'unknown'
+      });
+
+      console.log('[Settings] Fetching Slack tokens...');
       const slackTokens = await window.electronAPI.getOAuthTokens('slack');
+      console.log('[Settings] Slack tokens:', {
+        hasAccessToken: !!slackTokens.accessToken,
+        hasRefreshToken: !!slackTokens.refreshToken,
+        expiresAt: slackTokens.expiresAt
+      });
+
+      console.log('[Settings] Fetching user settings...');
       const userSettings = await window.electronAPI.getUserSettings();
       const jiraEnabled = !!userSettings?.jiraEnabled;
       const obsidianEnabled = !!userSettings?.obsidianEnabled;
+      console.log('[Settings] User settings:', { jiraEnabled, obsidianEnabled });
 
-      setIntegrations(prev => prev.map(integration => ({
-        ...integration,
-        connected: integration.id === 'google' ? !!googleTokens.accessToken :
-                   integration.id === 'slack' ? !!slackTokens.accessToken :
-                   integration.id === 'jira' ? jiraEnabled :
-                   integration.id === 'obsidian' ? obsidianEnabled : false,
-      })));
-    } catch (error) {
-      console.error('Failed to check connections:', error);
+      console.log('[Settings] Updating integration statuses...');
+      setIntegrations(prev => prev.map(integration => {
+        const connected = integration.id === 'google' ? !!googleTokens.accessToken :
+                         integration.id === 'slack' ? !!slackTokens.accessToken :
+                         integration.id === 'jira' ? jiraEnabled :
+                         integration.id === 'obsidian' ? obsidianEnabled : false;
+        console.log(`[Settings] ${integration.id}: ${connected ? 'CONNECTED' : 'DISCONNECTED'}`);
+        return { ...integration, connected };
+      }));
+      console.log('[Settings] ✓ Connection check complete - NO ERRORS');
+    } catch (error: any) {
+      console.error('[Settings] ❌ Exception in checkConnections:', error);
+      console.error('[Settings] Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      // Don't show error to user for connection checks - they're not critical
+      // Just log it for debugging
     }
+    console.log('[Settings] ========== CHECK CONNECTIONS END ==========');
   };
 
   const loadPluginStatus = async () => {
@@ -377,8 +425,12 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
-  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'pmos', enable: boolean) => {
-    console.log(`[Settings] ${enable ? 'Enabling' : 'Disabling'} MCP provider: ${mcpProvider}`);
+  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'atlassian' | 'pmos', enable: boolean) => {
+    await logToFile(`\n========== MCP TOGGLE START ==========`);
+    await logToFile(`Time: ${new Date().toISOString()}`);
+    await logToFile(`Provider: ${mcpProvider}`);
+    await logToFile(`Action: ${enable ? 'ENABLING' : 'DISABLING'}`);
+    await logToFile(`Current settings: ${JSON.stringify(settings.mcpServers?.[mcpProvider])}`);
 
     // Different MCPs have different setup methods
     const mcpConfig: Record<string, { name: string; type: 'http' | 'stdio'; url?: string; command?: string; clientId?: string; env?: Record<string, string> }> = {
@@ -397,6 +449,11 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         name: 'Clockwise',
         type: 'http',
         url: 'https://mcp.getclockwise.com/mcp',
+      },
+      atlassian: {
+        name: 'Atlassian',
+        type: 'http',
+        url: 'https://mcp.atlassian.com/v1/mcp',
       },
       pmos: {
         name: 'PM-OS',
@@ -430,24 +487,28 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
 
     try {
       // Update settings immediately
+      await logToFile(`Step 1: Updating settings...`);
       await handleChange('mcpServers', updatedMCPServers);
-      console.log(`[Settings] MCP ${mcpProvider} ${enable ? 'enabled' : 'disabled'} in settings`);
+      await logToFile(`✓ Settings updated: MCP ${mcpProvider} ${enable ? 'enabled' : 'disabled'}`);
 
       if (enable) {
         // For HTTP MCPs with OAuth: first register with Claude Code, then open for authentication
         if (config.type === 'http') {
-          console.log(`[Settings] Registering ${config.name} MCP with Claude Code...`);
+          await logToFile(`Step 2: HTTP MCP detected, registering with Claude Code...`);
+          await logToFile(`MCP Details: ${JSON.stringify({ name: config.name, type: config.type, url: config.url })}`);
 
           // First, register the MCP server with Claude Code
+          await logToFile(`Calling window.electronAPI.addMCPServer...`);
           const registerResult = await window.electronAPI.addMCPServer(
             config.name,
             'http',
             config.url || '',
             undefined // No env variables for HTTP MCPs
           );
+          await logToFile(`✓ addMCPServer returned: ${JSON.stringify(registerResult)}`);
 
           if (!registerResult.success) {
-            console.error(`[Settings] Failed to register ${config.name}:`, registerResult.error);
+            console.error(`[Settings] ❌ Failed to register ${config.name}:`, registerResult.error);
             setConnectionError({
               provider: mcpProvider,
               error: registerResult.error || 'Failed to register MCP server'
@@ -456,14 +517,16 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
             return;
           }
 
-          console.log(`[Settings] ${config.name} registered successfully`);
-          console.log(`[Settings] Opening interactive Claude for ${config.name} authentication...`);
+          await logToFile(`✓ ${config.name} registered successfully`);
+          await logToFile(`Step 3: Opening Terminal for authentication...`);
 
           // Open Terminal with Claude for interactive MCP authentication
+          await logToFile(`Calling window.electronAPI.strategizeAuthenticateMCP()...`);
           const authResult = await window.electronAPI.strategizeAuthenticateMCP();
+          await logToFile(`✓ strategizeAuthenticateMCP returned: ${JSON.stringify(authResult)}`);
 
           if (!authResult.success) {
-            console.error(`[Settings] Failed to open Claude for MCP auth:`, authResult.error);
+            await logToFile(`❌ Failed to open Claude for MCP auth: ${authResult.error}`);
             setConnectionError({
               provider: mcpProvider,
               error: authResult.error || 'Failed to open authentication terminal'
@@ -473,14 +536,19 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
           }
 
           // Show success message - user will complete OAuth in Terminal
-          console.log(`[Settings] Opened Terminal for ${config.name} authentication - waiting for user to complete OAuth`);
+          await logToFile(`✓ Terminal opened for ${config.name} authentication`);
+          await logToFile(`User should now see Terminal window with Claude Code`);
+          await logToFile(`User needs to type: /mcp`);
         } else {
-          // For stdio MCPs: use Claude CLI with environment variables
+          // For stdio MCPs: register first, then open terminal for authentication
+          await logToFile(`Step 2: stdio MCP detected, registering with Claude Code...`);
           const urlOrCommand = config.url || config.command || '';
           const result = await window.electronAPI.addMCPServer(config.name, config.type, urlOrCommand, config.env);
+          await logToFile(`✓ addMCPServer returned: ${JSON.stringify(result)}`);
 
           if (!result.success) {
             console.error(`[Settings] Failed to register MCP with Claude CLI:`, result.error);
+            await logToFile(`❌ Failed to register: ${result.error}`);
             setConnectionError({
               provider: mcpProvider,
               error: result.error || 'Failed to register with Claude Code CLI'
@@ -491,12 +559,31 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
             return;
           }
 
-          console.log(`[Settings] Successfully registered ${config.name} with Claude Code CLI`);
+          await logToFile(`✓ ${config.name} registered successfully`);
+          await logToFile(`Step 3: Opening Terminal for authentication...`);
+
+          // Open Terminal with Claude for interactive MCP authentication
+          await logToFile(`Calling window.electronAPI.strategizeAuthenticateMCP()...`);
+          const authResult = await window.electronAPI.strategizeAuthenticateMCP();
+          await logToFile(`✓ strategizeAuthenticateMCP returned: ${JSON.stringify(authResult)}`);
+
+          if (!authResult.success) {
+            await logToFile(`❌ Failed to open Claude for MCP auth: ${authResult.error}`);
+            setConnectionError({
+              provider: mcpProvider,
+              error: authResult.error || 'Failed to open authentication terminal'
+            });
+            setConnectingMCP(null);
+            return;
+          }
+
+          // Show success message - user will complete authentication in Terminal
+          await logToFile(`✓ Terminal opened for ${config.name} authentication`);
+          await logToFile(`User should now see Terminal window with Claude Code`);
+          await logToFile(`User needs to type: /mcp`);
         }
 
-        // Auto-restart Strategize session to pick up new MCP
-        console.log(`[Settings] Auto-restarting Strategize to activate ${config.name}...`);
-        await window.electronAPI.strategizeRestart();
+        // Don't auto-restart - user will do it manually after authenticating in Terminal
       } else {
         // Disabling: for HTTP MCPs, we just disable in settings
         // For stdio MCPs, remove from Claude Code CLI
@@ -1550,6 +1637,52 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                     )}
                   </div>
 
+                  {/* Atlassian MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-dark-text-primary">Atlassian</div>
+                          <div className="text-xs text-dark-text-muted">Read Jira tickets and browse issues</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const isCurrentlyEnabled = settings.mcpServers?.atlassian?.enabled;
+                          handleMCPToggle('atlassian', !isCurrentlyEnabled);
+                        }}
+                        disabled={connectingMCP === 'atlassian'}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.atlassian?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        } ${connectingMCP === 'atlassian' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.atlassian?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {connectingMCP === 'atlassian' && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                          <svg className="animate-spin h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Enabling MCP server...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* PM-OS MCP */}
                   <div className="border border-dark-border rounded-lg p-3 space-y-3">
                     <div className="flex items-center justify-between">
@@ -1561,7 +1694,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         </div>
                         <div>
                           <div className="text-sm font-medium text-dark-text-primary">PM-OS</div>
-                          <div className="text-xs text-dark-text-muted">Create tasks and Jira tickets from chat</div>
+                          <div className="text-xs text-dark-text-muted">Create tasks, Jira tickets, and manage Google Calendar events</div>
                         </div>
                       </div>
                       <button

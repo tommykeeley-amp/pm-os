@@ -39,6 +39,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('calendar-update-rsvp', eventId, status),
   calendarCreateEvent: (request: any) =>
     ipcRenderer.invoke('calendar-create-event', request),
+  calendarUpdateEvent: (eventId: string, updates: any) =>
+    ipcRenderer.invoke('calendar-update-event', eventId, updates),
+
+  // Dictation
+  startDictation: () => ipcRenderer.invoke('start-dictation'),
+  stopDictation: () => ipcRenderer.invoke('stop-dictation'),
+
+  // Voice transcription (Whisper)
+  voiceTranscribe: (audioData: ArrayBuffer) => ipcRenderer.invoke('voice-transcribe', audioData),
 
   // Zoom integration
   zoomIsConfigured: () =>
@@ -131,6 +140,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('claude-code-resize', cols, rows),
   addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string, env?: Record<string, string>) =>
     ipcRenderer.invoke('add-mcp-server', name, type, urlOrCommand, env),
+  setupGoogleMCP: (mcpType: 'google-calendar' | 'google-slides' | 'google-docs') =>
+    ipcRenderer.invoke('setup-google-mcp', mcpType),
   removeMCPServer: (name: string) =>
     ipcRenderer.invoke('remove-mcp-server', name),
 
@@ -252,6 +263,10 @@ export interface ElectronAPI {
   writeDebugFile: (filename: string, content: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   calendarUpdateRSVP: (eventId: string, status: string) => Promise<{ success: boolean; error?: string }>;
   calendarCreateEvent: (request: any) => Promise<{ success: boolean; event?: any; error?: string }>;
+  calendarUpdateEvent: (eventId: string, updates: any) => Promise<{ success: boolean; event?: any; error?: string }>;
+  startDictation: () => Promise<{ success: boolean; text?: string; error?: string }>;
+  stopDictation: () => Promise<{ success: boolean }>;
+  voiceTranscribe: (audioData: ArrayBuffer) => Promise<{ success: boolean; text?: string; error?: string }>;
   zoomIsConfigured: () => Promise<boolean>;
   zoomCreateMeeting: (request: any) => Promise<{ success: boolean; meeting?: any; error?: string }>;
   jiraIsConfigured: () => Promise<boolean>;
@@ -299,6 +314,7 @@ export interface ElectronAPI {
   claudeCodeGetHistory: () => Promise<Array<{ role: string; content: string; timestamp: string }>>;
   claudeCodeResize: (cols: number, rows: number) => Promise<{ success: boolean; error?: string }>;
   addMCPServer: (name: string, type: 'http' | 'stdio', urlOrCommand: string, env?: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
+  setupGoogleMCP: (mcpType: 'google-calendar' | 'google-slides' | 'google-docs') => Promise<{ success: boolean; credentialsPath?: string; tokenPath?: string; error?: string }>;
   removeMCPServer: (name: string) => Promise<{ success: boolean; error?: string }>;
   startMCPOAuth: (serverName: string) => Promise<{ success: boolean; tokens?: any; error?: string }>;
   getMCPAuthStatus: (serverName: string) => Promise<{ success: boolean; isAuthenticated: boolean; error?: string }>;

@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as https from 'https';
+import { google } from 'googleapis';
 
 // Path to electron-store config file
 const CONFIG_PATH = path.join(os.homedir(), 'Library', 'Application Support', 'pm-os', 'config.json');
@@ -225,6 +226,105 @@ class PMOSMCPServer {
                   required: ['summary'],
                 },
               },
+              {
+                name: 'list_calendar_events',
+                description: 'List Google Calendar events within a date range',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    timeMin: {
+                      type: 'string',
+                      description: 'Start date/time in ISO format (e.g., 2024-02-12T00:00:00Z)',
+                    },
+                    timeMax: {
+                      type: 'string',
+                      description: 'End date/time in ISO format (e.g., 2024-02-13T00:00:00Z)',
+                    },
+                    maxResults: {
+                      type: 'number',
+                      description: 'Maximum number of events to return (optional, default: 50)',
+                    },
+                  },
+                },
+              },
+              {
+                name: 'create_calendar_event',
+                description: 'Create a new Google Calendar event',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    summary: {
+                      type: 'string',
+                      description: 'Event title/summary',
+                    },
+                    start: {
+                      type: 'string',
+                      description: 'Start date/time in ISO format (e.g., 2024-02-12T14:00:00-08:00)',
+                    },
+                    end: {
+                      type: 'string',
+                      description: 'End date/time in ISO format (e.g., 2024-02-12T15:00:00-08:00)',
+                    },
+                    description: {
+                      type: 'string',
+                      description: 'Event description (optional)',
+                    },
+                    location: {
+                      type: 'string',
+                      description: 'Event location (optional)',
+                    },
+                  },
+                  required: ['summary', 'start', 'end'],
+                },
+              },
+              {
+                name: 'update_calendar_event',
+                description: 'Update an existing Google Calendar event - ACTUALLY modifies the event (unlike Clockwise which creates proposals)',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    eventId: {
+                      type: 'string',
+                      description: 'Event ID to update',
+                    },
+                    summary: {
+                      type: 'string',
+                      description: 'New event title (optional)',
+                    },
+                    start: {
+                      type: 'string',
+                      description: 'New start date/time in ISO format (optional)',
+                    },
+                    end: {
+                      type: 'string',
+                      description: 'New end date/time in ISO format (optional)',
+                    },
+                    description: {
+                      type: 'string',
+                      description: 'New event description (optional)',
+                    },
+                    location: {
+                      type: 'string',
+                      description: 'New event location (optional)',
+                    },
+                  },
+                  required: ['eventId'],
+                },
+              },
+              {
+                name: 'delete_calendar_event',
+                description: 'Delete a Google Calendar event',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    eventId: {
+                      type: 'string',
+                      description: 'Event ID to delete',
+                    },
+                  },
+                  required: ['eventId'],
+                },
+              },
             ],
           });
           break;
@@ -255,6 +355,18 @@ class PMOSMCPServer {
 
       case 'create_jira_ticket':
         return await this.createJiraTicket(args);
+
+      case 'list_calendar_events':
+        return await this.listCalendarEvents(args);
+
+      case 'create_calendar_event':
+        return await this.createCalendarEvent(args);
+
+      case 'update_calendar_event':
+        return await this.updateCalendarEvent(args);
+
+      case 'delete_calendar_event':
+        return await this.deleteCalendarEvent(args);
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
@@ -347,6 +459,163 @@ class PMOSMCPServer {
         {
           type: 'text',
           text: `✅ Task updated successfully!\n\n${tasks[taskIndex].title}${args.completed !== undefined ? `\nStatus: ${args.completed ? 'Completed' : 'Incomplete'}` : ''}`,
+        },
+      ],
+    };
+  }
+
+  private getGoogleCalendar() {
+    const storeData = readStore();
+
+    const accessToken = storeData.google_access_token;
+    const refreshToken = storeData.google_refresh_token;
+    const expiresAt = storeData.google_expires_at;
+
+    if (!refreshToken) {
+      throw new Error('Google Calendar is not connected. Please connect Google in PM-OS Settings.');
+    }
+
+    // Get client ID and secret from environment variables
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      throw new Error('Google OAuth credentials not found in environment variables');
+    }
+
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      'http://localhost'
+    );
+
+    oauth2Client.setCredentials({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expiry_date: expiresAt,
+    });
+
+    return google.calendar({ version: 'v3', auth: oauth2Client });
+  }
+
+  private async listCalendarEvents(args: { timeMin?: string; timeMax?: string; maxResults?: number }) {
+    const calendar = this.getGoogleCalendar();
+
+    const timeMin = args.timeMin || new Date().toISOString();
+    const timeMax = args.timeMax || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const maxResults = args.maxResults || 50;
+
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin,
+      timeMax,
+      maxResults,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = response.data.items || [];
+    const eventList = events.map((event, i) => {
+      const start = event.start?.dateTime || event.start?.date;
+      const end = event.end?.dateTime || event.end?.date;
+      return `${i + 1}. ${event.summary} (${start} - ${end})\n   ID: ${event.id}`;
+    }).join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: events.length > 0
+            ? `Found ${events.length} event(s):\n\n${eventList}`
+            : 'No events found in the specified time range',
+        },
+      ],
+    };
+  }
+
+  private async createCalendarEvent(args: { summary: string; start: string; end: string; description?: string; location?: string }) {
+    const calendar = this.getGoogleCalendar();
+
+    const event = {
+      summary: args.summary,
+      description: args.description,
+      location: args.location,
+      start: {
+        dateTime: args.start,
+      },
+      end: {
+        dateTime: args.end,
+      },
+    };
+
+    const response = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: event,
+    });
+
+    const createdEvent = response.data;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `✅ Calendar event created successfully!\n\nTitle: ${createdEvent.summary}\nStart: ${createdEvent.start?.dateTime}\nEnd: ${createdEvent.end?.dateTime}\nEvent ID: ${createdEvent.id}\nLink: ${createdEvent.htmlLink}`,
+        },
+      ],
+    };
+  }
+
+  private async updateCalendarEvent(args: { eventId: string; summary?: string; start?: string; end?: string; description?: string; location?: string }) {
+    const calendar = this.getGoogleCalendar();
+
+    // First, get the existing event
+    const existing = await calendar.events.get({
+      calendarId: 'primary',
+      eventId: args.eventId,
+    });
+
+    const existingEvent = existing.data;
+
+    // Build the update object
+    const updates: any = {
+      summary: args.summary || existingEvent.summary,
+      description: args.description !== undefined ? args.description : existingEvent.description,
+      location: args.location !== undefined ? args.location : existingEvent.location,
+      start: args.start ? { dateTime: args.start } : existingEvent.start,
+      end: args.end ? { dateTime: args.end } : existingEvent.end,
+    };
+
+    const response = await calendar.events.update({
+      calendarId: 'primary',
+      eventId: args.eventId,
+      requestBody: updates,
+    });
+
+    const updatedEvent = response.data;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `✅ Calendar event updated successfully!\n\nTitle: ${updatedEvent.summary}\nStart: ${updatedEvent.start?.dateTime}\nEnd: ${updatedEvent.end?.dateTime}\nEvent ID: ${updatedEvent.id}\nLink: ${updatedEvent.htmlLink}`,
+        },
+      ],
+    };
+  }
+
+  private async deleteCalendarEvent(args: { eventId: string }) {
+    const calendar = this.getGoogleCalendar();
+
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId: args.eventId,
+    });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `✅ Calendar event deleted successfully!\n\nEvent ID: ${args.eventId}`,
         },
       ],
     };

@@ -2,6 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+// TypeScript declarations for Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
 interface StrategizeProps {
   isActive: boolean;
 }
@@ -19,7 +27,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [folderPath, setFolderPath] = useState('');
   const [enabledMCPs, setEnabledMCPs] = useState<string[]>([]);
-  const [selectedMCPs, setSelectedMCPs] = useState<Set<string>>(new Set());
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -27,9 +34,12 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [showNewChatAnimation, setShowNewChatAnimation] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceModelLoaded, setVoiceModelLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasAutoConnected = useRef(false);
+  // const finalTranscriptRef = useRef(''); // Disabled - voice input disabled
 
   // Load folder path and MCP settings
   useEffect(() => {
@@ -42,16 +52,16 @@ export default function Strategize({ isActive }: StrategizeProps) {
         const enabled: string[] = [];
         if (settings?.mcpServers) {
           Object.keys(settings.mcpServers).forEach(serverName => {
-            // Filter out removed MCPs (slack, gdrive, atlassian) and PM-OS (integrated)
+            // Filter out removed MCPs (slack, gdrive) and PM-OS (integrated)
             if (settings.mcpServers[serverName].enabled &&
                 serverName !== 'slack' &&
                 serverName !== 'gdrive' &&
-                serverName !== 'atlassian' &&
                 serverName !== 'pmos') {
               enabled.push(serverName);
             }
           });
         }
+        console.log('[Strategize] Loaded enabled MCPs:', enabled);
         setEnabledMCPs(enabled);
       } catch (error) {
         console.error('Failed to load settings:', error);
@@ -59,6 +69,34 @@ export default function Strategize({ isActive }: StrategizeProps) {
     };
     loadSettings();
   }, []);
+
+  // Reload MCPs when tab becomes active (to pick up settings changes)
+  useEffect(() => {
+    if (isActive) {
+      const reloadMCPs = async () => {
+        try {
+          console.log('[Strategize] Tab active, reloading MCPs from settings...');
+          const settings = await window.electronAPI.getUserSettings();
+          const enabled: string[] = [];
+          if (settings?.mcpServers) {
+            Object.keys(settings.mcpServers).forEach(serverName => {
+              if (settings.mcpServers[serverName].enabled &&
+                  serverName !== 'slack' &&
+                  serverName !== 'gdrive' &&
+                  serverName !== 'pmos') {
+                enabled.push(serverName);
+              }
+            });
+          }
+          console.log('[Strategize] Reloaded enabled MCPs:', enabled);
+          setEnabledMCPs(enabled);
+        } catch (error) {
+          console.error('[Strategize] Failed to reload MCPs:', error);
+        }
+      };
+      reloadMCPs();
+    }
+  }, [isActive]);
 
   // Auto-connect when tab becomes active
   useEffect(() => {
@@ -69,14 +107,14 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   }, [isActive, folderPath, isConnected]);
 
-  // Auto-focus input when tab becomes active
+  // Auto-focus input when tab becomes active or connected
   useEffect(() => {
-    if (isActive && inputRef.current) {
+    if (isActive && inputRef.current && !isTyping) {
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
-  }, [isActive]);
+  }, [isActive, isConnected, isTyping]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -84,13 +122,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, streamingContent]);
-
-  // Focus input when connected
-  useEffect(() => {
-    if (isConnected && isActive && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isConnected, isActive]);
 
   // Set up OpenAI streaming listeners
   useEffect(() => {
@@ -221,6 +252,181 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   };
 
+  // Voice recognition with Vosk
+  const recognizerRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
+  // Initialize Vosk on mount
+  useEffect(() => {
+    const initVosk = async () => {
+      try {
+        const { createModel } = await import('vosk-browser');
+        console.log('[Voice] Initializing Vosk model (39MB, may take a moment)...');
+
+        // Load small English model
+        const model = await createModel('/vosk-model-small-en-us-0.15.tar.gz');
+        recognizerRef.current = model;
+        setVoiceModelLoaded(true);
+        console.log('[Voice] Vosk model loaded and ready');
+      } catch (error) {
+        console.error('[Voice] Failed to initialize Vosk:', error);
+        setVoiceModelLoaded(false);
+      }
+    };
+
+    initVosk();
+
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  /* Voice transcription functions - disabled for now
+  // Convert audio blob to WAV format
+  const convertToWav = async (audioBlob: Blob): Promise<ArrayBuffer> => {
+    const audioContext = new AudioContext();
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+    // Get PCM data
+    const numberOfChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length * numberOfChannels * 2; // 16-bit PCM
+    const buffer = new ArrayBuffer(44 + length);
+    const view = new DataView(buffer);
+
+    // Write WAV header
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true); // PCM format
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numberOfChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numberOfChannels * 2, true);
+    view.setUint16(32, numberOfChannels * 2, true);
+    view.setUint16(34, 16, true); // 16-bit
+    writeString(36, 'data');
+    view.setUint32(40, length, true);
+
+    // Write PCM data
+    const offset = 44;
+    const channelData = audioBuffer.getChannelData(0);
+    for (let i = 0; i < channelData.length; i++) {
+      const sample = Math.max(-1, Math.min(1, channelData[i]));
+      view.setInt16(offset + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+    }
+
+    return buffer;
+  };
+
+  const transcribeAudioChunk = async (audioBlob: Blob) => {
+    try {
+      console.log('[Voice] Transcribing audio chunk, size:', audioBlob.size);
+
+      // Convert to WAV format
+      console.log('[Voice] Converting to WAV format...');
+      const wavBuffer = await convertToWav(audioBlob);
+      console.log('[Voice] WAV conversion complete, size:', wavBuffer.byteLength);
+
+      // Send to main process for transcription
+      console.log('[Voice] Sending to Whisper for transcription...');
+      const result = await window.electronAPI.voiceTranscribe(wavBuffer);
+
+      if (result.success && result.text) {
+        console.log('[Voice] Transcription result:', result.text);
+        // Append transcribed text to input
+        setInputValue(prev => {
+          const newValue = (prev + ' ' + result.text).trim();
+          finalTranscriptRef.current = newValue;
+          return newValue;
+        });
+      } else {
+        console.error('[Voice] Transcription failed:', result.error);
+      }
+    } catch (error: any) {
+      console.error('[Voice] Error transcribing audio:', error);
+    }
+  };
+  */
+
+  const toggleVoiceInput = async () => {
+    if (!voiceModelLoaded || !recognizerRef.current) {
+      alert('Voice model is still loading (39MB). Please wait a moment and try again.');
+      return;
+    }
+
+    if (isListening) {
+      // Stop listening
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        await audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      setIsListening(false);
+    } else {
+      // Start listening
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+
+        const audioContext = new AudioContext({ sampleRate: 16000 });
+        audioContextRef.current = audioContext;
+
+        const source = audioContext.createMediaStreamSource(stream);
+        const recognizer = await recognizerRef.current.createRecognizer();
+
+        let fullTranscript = '';
+
+        recognizer.on('result', (message: any) => {
+          if (message.result && message.result.text) {
+            fullTranscript += ' ' + message.result.text;
+            setInputValue(fullTranscript.trim());
+          }
+        });
+
+        recognizer.on('partialresult', (message: any) => {
+          if (message.result && message.result.partial) {
+            setInputValue((fullTranscript + ' ' + message.result.partial).trim());
+          }
+        });
+
+        // Connect audio source to recognizer
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (e) => {
+          const audioData = e.inputBuffer.getChannelData(0);
+          recognizer.acceptWaveform(audioData);
+        };
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+
+        setInputValue(''); // Clear input before starting
+        setIsListening(true);
+        console.log('[Voice] Started listening with Vosk');
+      } catch (error: any) {
+        console.error('[Voice] Error starting microphone:', error);
+        alert('Microphone access denied or error: ' + error.message);
+      }
+    }
+  };
+
   const handleSendMessage = async () => {
     const message = inputValue.trim();
     if (!message || !isConnected) return;
@@ -231,7 +437,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
       role: 'user',
       content: message,
       timestamp: new Date(),
-      selectedMCPs: Array.from(selectedMCPs),
     }]);
 
     // Clear input
@@ -250,10 +455,8 @@ export default function Strategize({ isActive }: StrategizeProps) {
       content: msg.content
     }));
 
-    // Convert selected MCPs to array
-    const selectedMCPsArray = Array.from(selectedMCPs);
-
-    await window.electronAPI.strategizeSend(message, conversationHistory, selectedMCPsArray);
+    // Pass all enabled MCPs to backend - system will use them intelligently based on context
+    await window.electronAPI.strategizeSend(message, conversationHistory, enabledMCPs);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -292,17 +495,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
     });
   };
 
-  const toggleMCPSelection = (mcpName: string) => {
-    setSelectedMCPs(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(mcpName)) {
-        newSet.delete(mcpName);
-      } else {
-        newSet.add(mcpName);
-      }
-      return newSet;
-    });
-  };
 
   return (
     <div className="h-full flex flex-col bg-dark-bg">
@@ -355,6 +547,113 @@ export default function Strategize({ isActive }: StrategizeProps) {
               <p>🔧 MCP tool support</p>
             </div>
           </div>
+        ) : chatMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-dark-accent-primary/20 to-purple-500/20 flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-dark-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-dark-text-primary mb-3">Let's get sh!t done</h3>
+            <p className="text-sm text-dark-text-muted max-w-md mb-8">
+              I'm Claude, your AI workspace assistant. Ask me anything or try one of these:
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 w-full max-w-2xl">
+              <button
+                onClick={() => {
+                  setInputValue("What meetings do I have today?");
+                  inputRef.current?.focus();
+                }}
+                className="px-4 py-3 bg-dark-surface border border-dark-border rounded-xl hover:border-dark-accent-primary/50 transition-all text-left group"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-dark-text-primary group-hover:text-dark-accent-primary transition-colors">
+                      What meetings do I have today?
+                    </div>
+                    <div className="text-xs text-dark-text-muted mt-0.5">
+                      Check your calendar and get meeting details
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setInputValue("Show me my unread Slack messages");
+                  inputRef.current?.focus();
+                }}
+                className="px-4 py-3 bg-dark-surface border border-dark-border rounded-xl hover:border-dark-accent-primary/50 transition-all text-left group"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-dark-text-primary group-hover:text-dark-accent-primary transition-colors">
+                      Show me my unread Slack messages
+                    </div>
+                    <div className="text-xs text-dark-text-muted mt-0.5">
+                      Catch up on important conversations
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setInputValue("Help me prioritize my tasks for today");
+                  inputRef.current?.focus();
+                }}
+                className="px-4 py-3 bg-dark-surface border border-dark-border rounded-xl hover:border-dark-accent-primary/50 transition-all text-left group"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-dark-text-primary group-hover:text-dark-accent-primary transition-colors">
+                      Help me prioritize my tasks for today
+                    </div>
+                    <div className="text-xs text-dark-text-muted mt-0.5">
+                      Get AI-powered task recommendations
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-8 flex items-center gap-6 text-xs text-dark-text-muted/60">
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                Voice input
+              </div>
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                MCP integrations
+              </div>
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                Real-time streaming
+              </div>
+            </div>
+          </div>
         ) : (
           <>
             {chatMessages.map((msg) => {
@@ -386,36 +685,18 @@ export default function Strategize({ isActive }: StrategizeProps) {
                               <div className="text-[9px] opacity-60">
                                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </div>
-                              {msg.selectedMCPs && msg.selectedMCPs.length > 0 && (
-                                <div className={`flex gap-1 flex-wrap transition-opacity ${
-                                  hoveredMessageId === msg.id ? 'opacity-100' : 'opacity-0'
-                                }`}>
-                                  {msg.selectedMCPs.map(mcp => (
-                                    <span
-                                      key={mcp}
-                                      className="px-1.5 py-0.5 text-[9px] bg-white/20 rounded-full"
-                                    >
-                                      {mcp}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </div>
                         ) : (
                           // Assistant messages: Expandable with chevron
                           <div
-                            className="px-3 py-2 rounded-2xl transition-all cursor-pointer bg-dark-surface text-white rounded-bl-sm border border-dark-border"
-                            onClick={() => toggleMessageExpansion(msg.id)}
+                            className="px-3 py-2 rounded-2xl transition-all bg-dark-surface text-white rounded-bl-sm border border-dark-border"
                           >
                             <div className="flex items-start gap-2">
                               {/* Expand/Collapse chevron */}
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleMessageExpansion(msg.id);
-                                }}
-                                className="flex-shrink-0 mt-0.5 hover:opacity-70 transition-opacity"
+                                onClick={() => toggleMessageExpansion(msg.id)}
+                                className="flex-shrink-0 mt-0.5 hover:opacity-70 transition-opacity cursor-pointer"
                               >
                                 <svg
                                   className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
@@ -568,70 +849,70 @@ export default function Strategize({ isActive }: StrategizeProps) {
       </div>
 
       {/* Input Area - Anchored to bottom */}
-      <div className="flex-shrink-0 border-t border-dark-border p-3 space-y-2">
-        {/* MCP Selector */}
-        {isConnected && enabledMCPs.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-dark-text-muted">MCPs:</span>
-            {enabledMCPs.map(mcp => (
-              <button
-                key={mcp}
-                onClick={() => toggleMCPSelection(mcp)}
-                className={`px-2 py-1 text-xs rounded-full border transition-all ${
-                  selectedMCPs.has(mcp)
-                    ? 'bg-dark-accent-primary/20 text-dark-accent-primary border-dark-accent-primary/30'
-                    : 'bg-dark-surface text-dark-text-muted border-dark-border hover:border-dark-accent-primary/30'
-                }`}
-              >
-                {mcp}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2 items-end">
-          {/* New Chat button */}
-          {isConnected && (
-            <button
-              onClick={handleNewChat}
-              className="w-9 h-9 rounded-full bg-dark-surface border border-dark-border text-dark-text-primary
-                       flex items-center justify-center hover:bg-dark-accent-primary/10 hover:border-dark-accent-primary/30
-                       transition-colors flex-shrink-0"
-              title="New Chat"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          )}
-
+      <div className="flex-shrink-0 border-t border-dark-border pt-3 px-3 pb-2 space-y-2">
+        {/* Input container with buttons inside */}
+        <div className="relative flex-1">
           <textarea
             ref={inputRef}
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything..."
+            placeholder="Let's get sh!t done..."
             disabled={!isConnected || isTyping}
-            rows={1}
-            className="flex-1 bg-dark-surface border border-dark-border rounded-2xl px-3 py-2
-                     text-xs text-dark-text-primary placeholder-dark-text-muted
+            rows={3}
+            className="w-full bg-dark-surface border border-dark-border rounded-2xl pl-3 pr-11 pt-3 pb-10
+                     text-xs text-dark-text-primary placeholder-dark-text-muted placeholder:text-left
                      focus:outline-none focus:ring-2 focus:ring-dark-accent-primary/50
                      disabled:opacity-50 disabled:cursor-not-allowed resize-none
-                     max-h-[100px] overflow-y-auto"
+                     max-h-[150px] overflow-y-auto"
             style={{ height: 'auto' }}
           />
-          <button
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || !isConnected || isTyping}
-            className="w-9 h-9 rounded-full bg-dark-accent-primary text-white
-                     flex items-center justify-center hover:bg-dark-accent-secondary
-                     transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-                     flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-            </svg>
-          </button>
+
+          {/* New Chat button - positioned inside left */}
+          {isConnected && (
+            <button
+              onClick={handleNewChat}
+              className="absolute left-2 bottom-4 w-7 h-7 rounded-full bg-dark-bg border border-dark-border text-dark-text-primary
+                       flex items-center justify-center hover:bg-dark-accent-primary/10 hover:border-dark-accent-primary/30
+                       transition-colors"
+              title="New Chat"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
+
+          {/* Voice icon (when empty) or Send button (when typing) - positioned inside right */}
+          {!inputValue.trim() ? (
+            <button
+              onClick={toggleVoiceInput}
+              className={`absolute right-2 bottom-4 w-7 h-7 rounded-full flex items-center justify-center
+                       transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                       ${isListening
+                         ? 'bg-red-500 text-white animate-pulse'
+                         : 'text-dark-text-muted hover:text-dark-text-primary'
+                       }`}
+              disabled={!isConnected || isTyping || !voiceModelLoaded}
+              title={!voiceModelLoaded ? "Loading voice model..." : (isListening ? "Stop recording" : "Start voice input")}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSendMessage}
+              disabled={!isConnected || isTyping}
+              className="absolute right-2 bottom-4 w-7 h-7 rounded-full bg-dark-accent-primary text-white
+                       flex items-center justify-center hover:bg-dark-accent-secondary
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

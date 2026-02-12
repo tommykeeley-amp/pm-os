@@ -2449,6 +2449,65 @@ ipcMain.handle('calendar-create-event', async (_event, request: any) => {
   }
 });
 
+ipcMain.handle('calendar-update-event', async (_event, eventId: string, updates: any) => {
+  try {
+    const event = await integrationManager.updateCalendarEvent(eventId, updates);
+    return { success: true, event };
+  } catch (error: any) {
+    console.error('Failed to update event:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// macOS Dictation
+ipcMain.handle('start-dictation', async () => {
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execPromise = promisify(exec);
+
+    // Use AppleScript to trigger macOS dictation and capture text
+    const script = `
+      tell application "System Events"
+        set dictationResult to ""
+        try
+          -- Get text from clipboard before dictation
+          set oldClipboard to the clipboard
+
+          -- Start dictation (Fn Fn or Cmd+Fn depending on settings)
+          -- User will need to speak and press Done
+          display dialog "Speak now and press OK when done" buttons {"OK"} default button "OK" giving up after 30
+
+          -- Get clipboard after (in case user copied dictation result)
+          try
+            set dictationResult to the clipboard
+            if dictationResult is equal to oldClipboard then
+              set dictationResult to ""
+            end if
+          end try
+
+          return dictationResult
+        on error errMsg
+          return ""
+        end try
+      end tell
+    `;
+
+    const { stdout } = await execPromise(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
+    const text = stdout.trim();
+
+    return { success: true, text };
+  } catch (error: any) {
+    console.error('Dictation error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('stop-dictation', async () => {
+  // For now, just return success - stopping is handled by the dialog timeout
+  return { success: true };
+});
+
 // Zoom configuration check
 ipcMain.handle('zoom-is-configured', async () => {
   return integrationManager.isZoomConfigured();
@@ -2853,6 +2912,12 @@ ipcMain.handle('confluence-get-page', async (_event, pageId: string) => {
   return await confluenceService.getPage(pageId);
 });
 
+// Voice transcription handler (currently disabled)
+ipcMain.handle('voice-transcribe', async (_event, _audioData: ArrayBuffer) => {
+  console.log('[Voice] Voice transcription is temporarily disabled');
+  return { success: false, error: 'Voice transcription temporarily disabled' };
+});
+
 // Strategize (Claude Code CLI) IPC Handlers
 ipcMain.handle('strategize-authenticate-mcp', async () => {
   console.log('[IPC] strategize-authenticate-mcp called');
@@ -2861,7 +2926,7 @@ ipcMain.handle('strategize-authenticate-mcp', async () => {
     // Open Terminal with Claude Code for interactive MCP authentication
     const script = `tell application "Terminal"
   activate
-  do script "echo 'Amplitude MCP Authentication' && echo '===========================' && echo '' && echo 'To authenticate Amplitude MCP, type: /mcp' && echo 'Then follow the OAuth flow.' && echo '' && /Users/tommykeeley/.local/bin/claude"
+  do script "echo 'MCP Server Authentication' && echo '===========================' && echo '' && echo 'To authenticate the MCP server, type: /mcp' && echo 'Then follow the OAuth flow in your browser.' && echo '' && /Users/tommykeeley/.local/bin/claude"
 end tell`;
 
     spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore' });
@@ -2972,7 +3037,10 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
         mcpList.push('- **Granola MCP**: Access meeting notes, transcripts, action items, and meeting summaries');
       }
       if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
-        mcpList.push('- **Clockwise MCP**: Check calendar, schedule meetings, find availability, and manage calendar events. IMPORTANT: Always use "confirm proposal" to actually book meetings, not just "create proposal"');
+        mcpList.push('- **Clockwise MCP**: Smart scheduling, find optimal meeting times, and check team availability. Use for intelligent scheduling features only.');
+      }
+      if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
+        mcpList.push('- **Atlassian MCP**: Read and access Jira tickets, browse issues, search Jira, and get ticket details from Jira links');
       }
       if (shouldInclude('pmos') && userSettings.mcpServers.pmos?.enabled) {
         mcpList.push('- **PM-OS MCP**: Create and manage tasks in PM-OS, and create Jira tickets directly from conversation');
@@ -2980,7 +3048,30 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
 
       if (mcpList.length > 0) {
         mcpGuidance += mcpList.join('\n') + '\n\n';
-        mcpGuidance += '**IMPORTANT**: When the user asks questions about:\n';
+        mcpGuidance += '## CALENDAR OPERATIONS - CRITICAL PRIORITY ORDER\n\n';
+        mcpGuidance += '**When user asks to move/update/delete/create calendar events:**\n\n';
+        mcpGuidance += '**PRIORITY 1: Use PM-OS MCP Calendar Tools** (if available)\n';
+        mcpGuidance += '- PM-OS MCP has built-in Google Calendar tools that directly modify your calendar\n';
+        mcpGuidance += '- Events are ACTUALLY moved/created/deleted immediately\n';
+        mcpGuidance += '- Available tools: list_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event\n';
+        mcpGuidance += '- This is the CORRECT way to manage calendar events\n\n';
+        mcpGuidance += '**PRIORITY 2: Use Clockwise MCP ONLY for smart scheduling**\n';
+        mcpGuidance += '- ⚠️ Clockwise creates PROPOSALS, not actual calendar changes\n';
+        mcpGuidance += '- Proposals require user approval - they do NOT move events automatically\n';
+        mcpGuidance += '- ONLY use Clockwise for:\n';
+        mcpGuidance += '  - Finding optimal meeting times across multiple people\n';
+        mcpGuidance += '  - Checking team availability\n';
+        mcpGuidance += '  - Smart scheduling when no specific time is requested\n\n';
+        mcpGuidance += '**DO NOT use Clockwise MCP for:**\n';
+        mcpGuidance += '- ❌ Moving events to specific times (use PM-OS MCP calendar tools)\n';
+        mcpGuidance += '- ❌ Creating events (use PM-OS MCP calendar tools)\n';
+        mcpGuidance += '- ❌ Deleting events (use PM-OS MCP calendar tools)\n';
+        mcpGuidance += '- ❌ Updating event details (use PM-OS MCP calendar tools)\n\n';
+        mcpGuidance += '**IMPORTANT REMINDER:**\n';
+        mcpGuidance += '- ✅ PM-OS MCP calendar tools = ACTUALLY modifies calendar\n';
+        mcpGuidance += '- ❌ Clockwise = Creates proposals only (NOT automatic changes)\n';
+        mcpGuidance += '- User wants changes made NOW, not proposals to review later\n\n';
+        mcpGuidance += '## MCP Tool Usage Guide\n\n';
         if (shouldInclude('amplitude') && userSettings.mcpServers.amplitude?.enabled) {
           mcpGuidance += '- Analytics, metrics, events, or users → Use Amplitude MCP tools\n';
         }
@@ -2988,11 +3079,15 @@ Your goal is to make information **instantly scannable** and **easy to digest**.
           mcpGuidance += '- Meetings, notes, or action items → Use Granola MCP tools\n';
         }
         if (shouldInclude('clockwise') && userSettings.mcpServers.clockwise?.enabled) {
-          mcpGuidance += '- Calendar, schedule, or availability → Use Clockwise MCP tools. When scheduling meetings, always CONFIRM the proposal to book it\n';
+          mcpGuidance += '- Finding optimal meeting times or team availability → Use Clockwise MCP for smart scheduling only\n';
+        }
+        if (shouldInclude('atlassian') && userSettings.mcpServers.atlassian?.enabled) {
+          mcpGuidance += '- Jira links or reading Jira tickets → Use Atlassian MCP tools to fetch ticket details, browse issues, and search Jira\n';
         }
         if (shouldInclude('pmos') && userSettings.mcpServers.pmos?.enabled) {
-          mcpGuidance += '- Creating tasks or tracking work → Use PM-OS MCP tools (create_task, list_tasks, update_task)\n';
-          mcpGuidance += '- Creating Jira tickets → Use PM-OS MCP create_jira_ticket tool\n';
+          mcpGuidance += '- **Creating tasks or tracking work** → Use PM-OS MCP tools (create_task, list_tasks, update_task)\n';
+          mcpGuidance += '- **Creating Jira tickets** → Use PM-OS MCP create_jira_ticket tool\n';
+          mcpGuidance += '- **Managing Google Calendar events** → Use PM-OS MCP calendar tools (list_calendar_events, create_calendar_event, update_calendar_event, delete_calendar_event)\n';
           mcpGuidance += '\n**IMPORTANT - Task Creation Formatting:**\n';
           mcpGuidance += '1. When you create a task, ALWAYS include a deep link: [View task in PM-OS](pmos://task/[task-id])\n';
           mcpGuidance += '2. Format task confirmations like this:\n';
@@ -3380,8 +3475,30 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
       // Example: claude mcp add -e KEY=value -s user "ExampleMCP" -- npx -y @modelcontextprotocol/server-example
       args = ['mcp', 'add'];
 
-      // Add environment variables if provided
-      if (env) {
+      // Special handling for Google MCPs - inject credentials
+      if (env && env.GOOGLE_MCP_TYPE) {
+        const googleMCPType = env.GOOGLE_MCP_TYPE;
+        const credentialsPath = path.join(os.homedir(), '.pm-os', 'google-mcp-credentials.json');
+        const tokenPath = path.join(os.homedir(), '.pm-os', 'google-mcp-token.json');
+        const clientId = process.env.GOOGLE_CLIENT_ID || '';
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+        const refreshToken = store.get('google_refresh_token') as string || '';
+
+        if (googleMCPType === 'calendar') {
+          // Google Calendar MCP expects GOOGLE_OAUTH_CREDENTIALS path
+          args.push('-e', `GOOGLE_OAUTH_CREDENTIALS=${credentialsPath}`);
+        } else if (googleMCPType === 'slides') {
+          // Google Slides MCP expects individual env vars
+          args.push('-e', `GOOGLE_CLIENT_ID=${clientId}`);
+          args.push('-e', `GOOGLE_CLIENT_SECRET=${clientSecret}`);
+          args.push('-e', `GOOGLE_REFRESH_TOKEN=${refreshToken}`);
+        } else if (googleMCPType === 'docs') {
+          // Google Docs MCP expects credentials and token file paths
+          args.push('-e', `GOOGLE_DOCS_CREDENTIALS_PATH=${credentialsPath}`);
+          args.push('-e', `GOOGLE_DOCS_TOKEN_PATH=${tokenPath}`);
+        }
+      } else if (env) {
+        // Add other environment variables if provided
         Object.entries(env).forEach(([key, value]) => {
           if (value) { // Only add if value is not empty
             args.push('-e', `${key}=${value}`);
@@ -3398,6 +3515,15 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
           ? path.join(process.resourcesPath, 'app.asar.unpacked', 'dist-electron', 'pm-os-mcp-server.cjs')
           : path.join(__dirname, 'pm-os-mcp-server.cjs');
         args.push('node', mcpServerPath);
+      } else if (name === 'Google Calendar' || name === 'Google Slides' || name === 'Google Docs') {
+        // Use local Google MCP servers
+        const commandParts = urlOrCommand.split(' ');
+        const command = commandParts[0]; // 'node'
+        const relativePath = commandParts.slice(1).join(' '); // 'mcp-servers/...'
+        const absolutePath = app.isPackaged
+          ? path.join(process.resourcesPath, 'app.asar.unpacked', relativePath)
+          : path.join(__dirname, '..', relativePath);
+        args.push(command, absolutePath);
       } else {
         const commandParts = urlOrCommand.split(' ');
         args.push(...commandParts);
@@ -3428,8 +3554,15 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
         console.log(`[MCP] stdout: ${output}`);
         if (errorOutput) console.error(`[MCP] stderr: ${errorOutput}`);
 
-        if (code === 0) {
-          console.log(`[MCP] Successfully added ${name}`);
+        // Check if MCP already exists - treat this as success
+        const alreadyExists = errorOutput.includes('already exists in user config');
+
+        if (code === 0 || alreadyExists) {
+          if (alreadyExists) {
+            console.log(`[MCP] ${name} already exists - treating as success`);
+          } else {
+            console.log(`[MCP] Successfully added ${name}`);
+          }
 
           // For HTTP MCPs, notify user to complete OAuth in Strategize
           if (type === 'http') {
@@ -3439,7 +3572,9 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
               mainWindow.webContents.send('mcp-auth-complete', {
                 serverName: name,
                 success: true,
-                message: 'MCP configured! OAuth will happen automatically when you send a Strategize message.'
+                message: alreadyExists
+                  ? 'MCP already configured! OAuth will happen automatically when you send a Strategize message.'
+                  : 'MCP configured! OAuth will happen automatically when you send a Strategize message.'
               });
             }
           }
@@ -3549,6 +3684,73 @@ ipcMain.handle('remove-mcp-server', async (_event, name: string) => {
     });
   } catch (error: any) {
     console.error('[MCP] Exception removing MCP server:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Setup Google MCP credentials automatically
+ipcMain.handle('setup-google-mcp', async (_event, mcpType: 'google-calendar' | 'google-slides' | 'google-docs') => {
+  console.log(`[IPC] setup-google-mcp called for ${mcpType}`);
+  try {
+    // Get Google OAuth credentials from env vars
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      return { success: false, error: 'Google OAuth credentials not found in environment variables' };
+    }
+
+    // Get stored tokens from electron-store
+    const accessToken = store.get('google_access_token') as string;
+    const refreshToken = store.get('google_refresh_token') as string;
+    const expiresAt = store.get('google_expires_at') as number;
+
+    if (!refreshToken) {
+      return { success: false, error: 'Google refresh token not found. Please reconnect Google Calendar in Settings.' };
+    }
+
+    // Create credentials directory
+    const credsDir = path.join(os.homedir(), '.pm-os');
+    if (!fs.existsSync(credsDir)) {
+      fs.mkdirSync(credsDir, { recursive: true });
+    }
+
+    // Generate credentials.json file (Google Cloud Console format)
+    const credentials = {
+      installed: {
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uris: ['http://localhost'],
+        auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+        token_uri: 'https://oauth2.googleapis.com/token',
+      }
+    };
+
+    const credentialsPath = path.join(credsDir, 'google-mcp-credentials.json');
+    fs.writeFileSync(credentialsPath, JSON.stringify(credentials, null, 2));
+    console.log('[Google MCP] Created credentials file:', credentialsPath);
+
+    // Generate token.json file
+    const tokens = {
+      type: 'authorized_user',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      ...(accessToken && { access_token: accessToken }),
+      ...(expiresAt && { expiry_date: expiresAt }),
+    };
+
+    const tokenPath = path.join(credsDir, 'google-mcp-token.json');
+    fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
+    console.log('[Google MCP] Created token file:', tokenPath);
+
+    return {
+      success: true,
+      credentialsPath,
+      tokenPath
+    };
+  } catch (error: any) {
+    console.error('[Google MCP] Exception setting up credentials:', error);
     return { success: false, error: error.message };
   }
 });
