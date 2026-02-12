@@ -403,6 +403,11 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         expiresAt: null,
       });
 
+      // Also clear scope version for Google to force re-authentication with new scopes
+      if (integrationId === 'google') {
+        await window.electronAPI.saveData('google_oauth_scope_version', null);
+      }
+
       setIntegrations(prev => prev.map(integration =>
         integration.id === integrationId ? { ...integration, connected: false } : integration
       ));

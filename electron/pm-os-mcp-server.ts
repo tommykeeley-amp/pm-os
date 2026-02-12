@@ -570,6 +570,15 @@ class PMOSMCPServer {
       end: {
         dateTime: args.end,
       },
+      // Automatically add Google Meet video conference link
+      conferenceData: {
+        createRequest: {
+          requestId: `meet-${Date.now()}`, // Unique request ID
+          conferenceSolutionKey: {
+            type: 'hangoutsMeet', // Google Meet
+          },
+        },
+      },
     };
 
     // Add attendees if provided
@@ -580,6 +589,7 @@ class PMOSMCPServer {
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: event,
+      conferenceDataVersion: 1, // Required to create conference data
       sendUpdates: 'all', // Send email invites to attendees
     });
 
@@ -588,11 +598,17 @@ class PMOSMCPServer {
       ? `\nAttendees: ${createdEvent.attendees.map(a => a.email).join(', ')}`
       : '';
 
+    // Extract Google Meet link
+    const meetLink = createdEvent.conferenceData?.entryPoints?.find(
+      (ep: any) => ep.entryPointType === 'video'
+    )?.uri || '';
+    const meetInfo = meetLink ? `\n🎥 Video Link: ${meetLink}` : '';
+
     return {
       content: [
         {
           type: 'text',
-          text: `✅ Calendar event created successfully!\n\nTitle: ${createdEvent.summary}\nStart: ${createdEvent.start?.dateTime}\nEnd: ${createdEvent.end?.dateTime}${attendeesList}\nEvent ID: ${createdEvent.id}\nLink: ${createdEvent.htmlLink}`,
+          text: `✅ Calendar event created successfully!\n\nTitle: ${createdEvent.summary}\nStart: ${createdEvent.start?.dateTime}\nEnd: ${createdEvent.end?.dateTime}${attendeesList}${meetInfo}\nEvent ID: ${createdEvent.id}\nLink: ${createdEvent.htmlLink}`,
         },
       ],
     };
