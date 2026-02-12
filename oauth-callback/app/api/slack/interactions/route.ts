@@ -519,6 +519,29 @@ async function handleJiraModalSubmission(payload: any) {
 
   console.log('[Slack Interactions] Creating Jira ticket:', { title, parent, priority, assigneeName, pillar, pod });
 
+  // Use the Slack user who submitted the modal (not the original message sender)
+  // so the correct PM-OS instance picks up the task
+  const submitterId = payload.user.id;
+  let submitterEmail = requestData.reporterEmail;
+  let submitterName = requestData.reporterName;
+
+  const botToken = process.env.SLACK_BOT_TOKEN;
+  if (botToken) {
+    try {
+      const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${submitterId}`, {
+        headers: { 'Authorization': `Bearer ${botToken}` },
+      });
+      const userInfo = await userInfoRes.json();
+      if (userInfo.ok && userInfo.user?.profile?.email) {
+        submitterEmail = userInfo.user.profile.email;
+        submitterName = userInfo.user.profile.real_name || submitterName;
+        console.log('[Slack Interactions] Modal submitted by:', submitterEmail);
+      }
+    } catch (err) {
+      console.error('[Slack Interactions] Failed to look up submitter email, using original requester:', err);
+    }
+  }
+
   // Create the task to be picked up by the Electron app for Jira creation
   // Use a unique ID with _jira_confirmed suffix to avoid conflicts with initial request
   const taskData = {
@@ -528,7 +551,7 @@ async function handleJiraModalSubmission(payload: any) {
     channel: requestData.channel,
     messageTs: requestData.messageTs,
     threadTs: requestData.threadTs,
-    user: requestData.user,
+    user: submitterId,
     teamId: requestData.teamId,
     timestamp: Date.now(),
     processed: false,
@@ -536,8 +559,8 @@ async function handleJiraModalSubmission(payload: any) {
     shouldCreateConfluence: false,
     assigneeName,
     assigneeEmail,
-    reporterName: requestData.reporterName,
-    reporterEmail: requestData.reporterEmail,
+    reporterName: submitterName,
+    reporterEmail: submitterEmail,
     parent,
     priority,
     pillar,
