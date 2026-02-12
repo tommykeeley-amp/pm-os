@@ -1,3 +1,0 @@
-[submodule "mcp-servers/zoom-mcp"]
-	path = mcp-servers/zoom-mcp
-	url = https://github.com/mattcoatsworth/zoom-mcp-server.git

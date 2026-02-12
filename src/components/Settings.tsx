@@ -112,13 +112,8 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       type: 'oauth' as const,
       connected: false,
     },
-    {
-      id: 'zoom' as const,
-      name: 'Zoom',
-      description: 'Video meetings',
-      type: 'oauth' as const,
-      connected: false,
-    },
+    // Zoom removed - requires OAuth app credentials
+    // To re-enable: add Zoom OAuth app at marketplace.zoom.us and add ZOOM_CLIENT_ID/SECRET to Vercel
     {
       id: 'jira' as const,
       name: 'Atlassian',
