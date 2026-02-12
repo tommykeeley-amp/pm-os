@@ -113,6 +113,13 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       connected: false,
     },
     {
+      id: 'zoom' as const,
+      name: 'Zoom',
+      description: 'Video meetings',
+      type: 'oauth' as const,
+      connected: false,
+    },
+    {
       id: 'jira' as const,
       name: 'Atlassian',
       description: 'Jira tickets & Confluence pages',
