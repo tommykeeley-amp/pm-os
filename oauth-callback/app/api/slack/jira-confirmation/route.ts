@@ -60,6 +60,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No bot token' }, { status: 500 });
     }
 
+    // Store request data directly in button value (instead of in-memory store)
+    // to avoid serverless state loss between function invocations
+    const buttonData = JSON.stringify({
+      title,
+      description,
+      assigneeName,
+      assigneeEmail,
+      reporterName,
+      reporterEmail,
+      parent,
+      priority,
+      pillar,
+      pod,
+      channel,
+      messageTs,
+      threadTs,
+      user,
+      teamId,
+    });
+
     const blocks = [
       {
         type: 'section',
@@ -83,7 +103,7 @@ export async function POST(request: NextRequest) {
             },
             style: 'primary',
             action_id: 'open_jira_modal',
-            value: requestId,
+            value: buttonData,
           },
         ],
       },

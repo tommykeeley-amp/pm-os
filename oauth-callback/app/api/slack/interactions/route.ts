@@ -241,15 +241,18 @@ async function handleConfluenceModalSubmission(payload: any) {
 
 async function handleOpenJiraModal(payload: any) {
   const triggerId = payload.trigger_id;
-  const requestId = payload.actions[0].value;
+  const buttonValue = payload.actions[0].value;
 
-  console.log('[Slack Interactions] Opening Jira modal for request:', requestId);
+  console.log('[Slack Interactions] Opening Jira modal, parsing button data...');
 
-  // Get the pending request data
-  const requestData = getPendingJiraRequest(requestId);
-  if (!requestData) {
-    console.error('[Slack Interactions] Jira request not found:', requestId);
-    return NextResponse.json({ error: 'Request not found' }, { status: 404 });
+  // Parse request data directly from button value (not from in-memory store)
+  let requestData;
+  try {
+    requestData = JSON.parse(buttonValue);
+    console.log('[Slack Interactions] Parsed request data for ticket:', requestData.title);
+  } catch (error) {
+    console.error('[Slack Interactions] Failed to parse button data:', error);
+    return NextResponse.json({ error: 'Invalid request data' }, { status: 400 });
   }
 
   // Open modal using Slack API
@@ -262,7 +265,7 @@ async function handleOpenJiraModal(payload: any) {
   const modal = {
     type: 'modal',
     callback_id: 'jira_ticket_modal',
-    private_metadata: requestId,
+    private_metadata: buttonValue, // Store full request data, not just ID
     title: {
       type: 'plain_text',
       text: 'Create Jira Ticket',
@@ -479,20 +482,21 @@ async function handleOpenJiraModal(payload: any) {
 
 async function handleJiraModalSubmission(payload: any) {
   try {
-    const requestId = payload.view.private_metadata;
+    const privateMetadata = payload.view.private_metadata;
     console.log('[Slack Interactions] ===== JIRA MODAL SUBMISSION START =====');
-    console.log('[Slack Interactions] Processing Jira modal submission for request:', requestId);
+    console.log('[Slack Interactions] Processing Jira modal submission, parsing data...');
 
-    // Get the pending request data
-    const requestData = getPendingJiraRequest(requestId);
-    console.log('[Slack Interactions] Request data found:', !!requestData);
-
-    if (!requestData) {
-      console.error('[Slack Interactions] Jira request not found:', requestId);
+    // Parse request data from private_metadata (not from in-memory store)
+    let requestData;
+    try {
+      requestData = JSON.parse(privateMetadata);
+      console.log('[Slack Interactions] Parsed request data for ticket:', requestData.title);
+    } catch (error) {
+      console.error('[Slack Interactions] Failed to parse private_metadata:', error);
       return NextResponse.json({
         response_action: 'errors',
         errors: {
-          ticket_title: 'Request expired. Please try again.',
+          ticket_title: 'Invalid request data. Please try again.',
         },
       });
     }
