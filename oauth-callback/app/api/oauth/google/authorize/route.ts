@@ -38,7 +38,8 @@ export async function GET(request: NextRequest) {
     const scopes = [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/contacts.readonly', // For searching contacts by name
+      'https://www.googleapis.com/auth/contacts.readonly', // For searching personal contacts
+      'https://www.googleapis.com/auth/directory.readonly', // For searching organization directory
     ].join(' ');
 
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');

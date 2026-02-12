@@ -631,7 +631,7 @@ async function handleProtocolUrl(url: string) {
 
       console.log('[Protocol] Saving to store: google_expires_at');
       store.set('google_expires_at', tokenData.expiresAt);
-      store.set('google_oauth_scope_version', 3); // v3: Added Google Contacts scope
+      store.set('google_oauth_scope_version', 4); // v4: Added Google Workspace directory scope
 
       console.log('[Protocol] ✓ Google tokens saved successfully');
 

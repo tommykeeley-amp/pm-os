@@ -334,7 +334,7 @@ class PMOSMCPServer {
               },
               {
                 name: 'search_contacts',
-                description: 'Search Google Contacts by name to find email addresses for calendar invites',
+                description: 'Search for people by name across Google Contacts AND organization directory (all employees). Searches personal contacts, Gmail interactions, and Google Workspace directory. Returns email addresses with organization info.',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -344,6 +344,32 @@ class PMOSMCPServer {
                     },
                   },
                   required: ['query'],
+                },
+              },
+              {
+                name: 'create_zoom_meeting',
+                description: 'Create a Zoom meeting and get the join URL. Returns meeting link that can be added to calendar events or shared with attendees.',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    topic: {
+                      type: 'string',
+                      description: 'Meeting topic/title (e.g., "1:1 with Chethana")',
+                    },
+                    start_time: {
+                      type: 'string',
+                      description: 'Start time in ISO 8601 format (e.g., "2024-02-12T14:00:00Z")',
+                    },
+                    duration: {
+                      type: 'number',
+                      description: 'Meeting duration in minutes (e.g., 30, 60)',
+                    },
+                    timezone: {
+                      type: 'string',
+                      description: 'Timezone (optional, e.g., "America/Los_Angeles", default: UTC)',
+                    },
+                  },
+                  required: ['topic', 'start_time', 'duration'],
                 },
               },
             ],
@@ -391,6 +417,9 @@ class PMOSMCPServer {
 
       case 'search_contacts':
         return await this.searchContacts(args);
+
+      case 'create_zoom_meeting':
+        return await this.createZoomMeeting(args);
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
@@ -754,82 +783,111 @@ class PMOSMCPServer {
 
       const people = google.people({ version: 'v1', auth: oauth2Client });
 
-      // Fetch all contacts with timeout (up to 1000 contacts)
+      // Use Google People API to search both personal contacts AND organization directory
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Contact search timeout')), 5000)
       );
 
-      const listPromise = people.people.connections.list({
-        resourceName: 'people/me',
-        pageSize: 1000,
-        personFields: 'names,emailAddresses',
-      });
+      // Search in parallel: personal contacts + organization directory
+      const searchPromises = [
+        // Personal contacts (and "other contacts" from Gmail interactions)
+        people.people.searchContacts({
+          query: args.query,
+          readMask: 'names,emailAddresses,organizations',
+          pageSize: 10,
+        }).catch(() => ({ data: { results: [] } })),
 
-      const response = await Promise.race([listPromise, timeoutPromise]) as any;
-      const allContacts = response.data.connections || [];
+        // Organization directory (Google Workspace employees)
+        people.people.searchDirectoryPeople({
+          query: args.query,
+          readMask: 'names,emailAddresses,organizations',
+          pageSize: 10,
+          sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'],
+        }).catch(() => ({ data: { people: [] } })),
+      ];
 
-      if (allContacts.length === 0) {
+      const [contactsResponse, directoryResponse] = await Promise.race([
+        Promise.all(searchPromises),
+        timeoutPromise
+      ]) as any;
+
+      // Combine results from both sources
+      const contactResults = contactsResponse.data.results || [];
+      const directoryResults = directoryResponse.data.people || [];
+
+      // Convert directory results to match contacts format
+      const allResults = [
+        ...contactResults,
+        ...directoryResults.map((person: any) => ({ person }))
+      ];
+
+      const results = allResults;
+
+      if (results.length === 0) {
         return {
           content: [
             {
               type: 'text',
-              text: `No contacts found in Google Contacts. Please ask the user for ${args.query}'s email address.`,
+              text: `I couldn't find "${args.query}" in your Google Contacts or Slack workspace. Could you provide ${args.query}'s email address so I can create the meeting for you?`,
             },
           ],
         };
       }
 
-      // Fuzzy search against all contacts
-      const query = args.query.toLowerCase().trim();
-      const matches = allContacts
-        .map((person: any) => {
+      // Extract matches with email addresses
+      const matches = results
+        .map((result: any) => {
+          const person = result.person;
           const displayName = person.names?.[0]?.displayName || '';
-          const givenName = person.names?.[0]?.givenName || '';
-          const familyName = person.names?.[0]?.familyName || '';
           const email = person.emailAddresses?.[0]?.value || '';
+          const organization = person.organizations?.[0]?.name || '';
 
           if (!email) return null; // Skip contacts without email
-
-          // Calculate similarity scores for different name parts
-          const scores = [
-            this.stringSimilarity(query, displayName),
-            this.stringSimilarity(query, givenName),
-            this.stringSimilarity(query, familyName),
-            this.stringSimilarity(query, email),
-          ];
-
-          const maxScore = Math.max(...scores);
 
           return {
             name: displayName,
             email,
-            score: maxScore,
+            organization,
           };
         })
-        .filter((match: any) => match && match.score > 0.5) // Only keep good matches
-        .sort((a: any, b: any) => b.score - a.score) // Sort by best match
-        .slice(0, 5); // Top 5 matches
+        .filter((match: any) => match !== null);
 
       if (matches.length === 0) {
         return {
           content: [
             {
               type: 'text',
-              text: `No contacts found matching "${args.query}". Please ask the user for their email address.`,
+              text: `I couldn't find "${args.query}" in your Google Contacts or Slack workspace. Could you provide ${args.query}'s email address so I can create the meeting for you?`,
             },
           ],
         };
       }
 
-      const contactList = matches.map((match: any) =>
-        `• **${match.name}**: ${match.email} (${Math.round(match.score * 100)}% match)`
-      ).join('\n');
+      // If single match, provide it directly
+      if (matches.length === 1) {
+        const match = matches[0];
+        const orgInfo = match.organization ? ` (${match.organization})` : '';
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Found contact: **${match.name}**${orgInfo} - ${match.email}\n\nUse this email address for the meeting invite.`,
+            },
+          ],
+        };
+      }
+
+      // Multiple matches - let Claude choose or ask user
+      const contactList = matches.map((match: any, index: number) => {
+        const orgInfo = match.organization ? ` (${match.organization})` : '';
+        return `${index + 1}. **${match.name}**${orgInfo}: ${match.email}`;
+      }).join('\n');
 
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${matches.length} contact(s) matching "${args.query}":\n\n${contactList}\n\nUse the email address from the best match above.`,
+            text: `Found ${matches.length} contacts matching "${args.query}":\n\n${contactList}\n\nUse the most relevant email address, or ask the user which one they meant.`,
           },
         ],
       };
@@ -841,6 +899,71 @@ class PMOSMCPServer {
           {
             type: 'text',
             text: `⚠️ Unable to search contacts (${error.message}). Please ask the user for ${args.query}'s email address directly.`,
+          },
+        ],
+      };
+    }
+  }
+
+  private async createZoomMeeting(args: { topic: string; start_time: string; duration: number; timezone?: string }) {
+    const storeData = readStore();
+    const accessToken = storeData.zoom_access_token;
+
+    if (!accessToken) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: '⚠️ Zoom is not connected. Please connect Zoom in PM-OS settings first.',
+          },
+        ],
+      };
+    }
+
+    try {
+      const response = await httpRequest('https://api.zoom.us/v2/users/me/meetings', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic: args.topic,
+          type: 2, // Scheduled meeting
+          start_time: args.start_time,
+          duration: args.duration,
+          timezone: args.timezone || 'UTC',
+          settings: {
+            host_video: true,
+            participant_video: true,
+            join_before_host: false,
+            mute_upon_entry: true,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Zoom API error: ${response.status} - ${errorData}`);
+      }
+
+      const meeting = await response.json();
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `✅ Zoom meeting created successfully!\n\n**Topic:** ${meeting.topic}\n**Join URL:** ${meeting.join_url}\n**Meeting ID:** ${meeting.id}\n**Password:** ${meeting.password || 'none'}\n\nYou can add this Zoom link to your calendar event.`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      console.error('[MCP] Zoom meeting creation failed:', error);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `⚠️ Failed to create Zoom meeting: ${error.message}`,
           },
         ],
       };

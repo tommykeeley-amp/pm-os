@@ -30,7 +30,7 @@ function logToFile(message: string) {
 logToFile('[IntegrationManager] MODULE LOADED - logToFile is working');
 
 // OAuth scope version tracking
-const REQUIRED_GOOGLE_SCOPE_VERSION = 3; // v3: Added Google Contacts scope for email lookup
+const REQUIRED_GOOGLE_SCOPE_VERSION = 4; // v4: Added Google Workspace directory.readonly for org-wide contact search
 
 export class IntegrationManager {
   private calendarService: CalendarService | null = null;
