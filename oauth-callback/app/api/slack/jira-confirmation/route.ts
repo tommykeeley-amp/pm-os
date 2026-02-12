@@ -27,29 +27,10 @@ export async function POST(request: NextRequest) {
     console.log('[Jira Confirmation] Assignee info:', { assigneeName, assigneeEmail });
     console.log('[Jira Confirmation] Reporter info:', { reporterName, reporterEmail });
 
-    // Fetch field options from Jira
+    // Field options will be populated by the local PM-OS which has access to Jira API
+    // Vercel doesn't need to fetch these - the modal will use text inputs
     let pillarOptions: Array<{ id: string; value: string }> = [];
     let podOptions: Array<{ id: string; value: string }> = [];
-
-    try {
-      const optionsResponse = await fetch('http://localhost:54321/jira-field-options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectKey: 'AMP' }),
-      });
-
-      if (optionsResponse.ok) {
-        const optionsData = await optionsResponse.json();
-        pillarOptions = optionsData.pillars || [];
-        podOptions = optionsData.pods || [];
-        console.log('[Jira Confirmation] Fetched field options:', {
-          pillarCount: pillarOptions.length,
-          podCount: podOptions.length
-        });
-      }
-    } catch (error) {
-      console.error('[Jira Confirmation] Failed to fetch field options:', error);
-    }
 
     // Store the request data
     addPendingJiraRequest(requestId, {
