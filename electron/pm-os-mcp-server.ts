@@ -11,6 +11,21 @@ import * as os from 'os';
 import * as https from 'https';
 import { google } from 'googleapis';
 
+// Logging to file for debugging
+const LOG_FILE = path.join(os.homedir(), 'pm-os-mcp-debug.log');
+function logToFile(message: string) {
+  const timestamp = new Date().toISOString();
+  fs.appendFileSync(LOG_FILE, `[${timestamp}] ${message}\n`);
+}
+
+// Override console.log to also write to file
+const originalLog = console.log;
+console.log = function(...args: any[]) {
+  const message = args.join(' ');
+  originalLog.apply(console, args);
+  logToFile(message);
+};
+
 // Path to electron-store config file
 const CONFIG_PATH = path.join(os.homedir(), 'Library', 'Application Support', 'pm-os', 'config.json');
 
@@ -597,18 +612,55 @@ class PMOSMCPServer {
     console.log('[MCP] Attendees:', args.attendees);
 
     const calendar = this.getGoogleCalendar();
+    let zoomLink = args.zoom_link;
 
-    // Build description with Zoom link if provided
+    // Auto-create Zoom meeting if no zoom_link provided
+    if (!zoomLink) {
+      console.log('[MCP] No Zoom link provided - auto-creating Zoom meeting');
+      const storeData = readStore();
+      const zoomAccessToken = storeData.zoom_access_token;
+
+      if (zoomAccessToken) {
+        console.log('[MCP] Zoom is connected - creating meeting');
+        try {
+          // Calculate duration from start/end times
+          const startTime = new Date(args.start);
+          const endTime = new Date(args.end);
+          const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+          // Create Zoom meeting
+          const zoomResult = await this.createZoomMeeting({
+            topic: args.summary,
+            start_time: args.start,
+            duration: durationMinutes,
+          });
+
+          // Extract Zoom link from the result
+          const zoomText = zoomResult.content[0].text;
+          const urlMatch = zoomText.match(/Join URL:\*\* (https:\/\/[^\s]+)/);
+          if (urlMatch) {
+            zoomLink = urlMatch[1];
+            console.log('[MCP] ✅ Auto-created Zoom meeting:', zoomLink);
+          }
+        } catch (error: any) {
+          console.log('[MCP] ⚠️ Failed to auto-create Zoom:', error.message);
+        }
+      } else {
+        console.log('[MCP] ⚠️ Zoom not connected - falling back to Google Meet');
+      }
+    }
+
+    // Build description with Zoom link if we have one
     let description = args.description || '';
-    if (args.zoom_link) {
+    if (zoomLink) {
       console.log('[MCP] ✅ Adding Zoom link to event description');
-      description = `${description}\n\nJoin Zoom Meeting:\n${args.zoom_link}`.trim();
+      description = `${description}\n\nJoin Zoom Meeting:\n${zoomLink}`.trim();
     }
 
     const event: any = {
       summary: args.summary,
       description: description,
-      location: args.zoom_link || args.location, // Use Zoom link as location if provided
+      location: zoomLink || args.location,
       start: {
         dateTime: args.start,
       },
@@ -617,9 +669,9 @@ class PMOSMCPServer {
       },
     };
 
-    // Only add Google Meet if NO Zoom link is provided
-    if (!args.zoom_link) {
-      console.log('[MCP] ⚠️ No Zoom link - falling back to Google Meet');
+    // Only add Google Meet if we don't have Zoom
+    if (!zoomLink) {
+      console.log('[MCP] Using Google Meet as final fallback');
       event.conferenceData = {
         createRequest: {
           requestId: `meet-${Date.now()}`,
