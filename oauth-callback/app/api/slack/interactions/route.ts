@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPendingConfluenceRequest, removePendingConfluenceRequest, markThreadHasConfluenceDoc, getPendingJiraRequest, removePendingJiraRequest, markThreadHasJiraTicket, addPendingTask } from '../store';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 // Add GET handler for health check
 export async function GET() {
@@ -568,9 +563,7 @@ async function handleJiraModalSubmission(payload: any) {
   markThreadHasJiraTicket(threadKey);
   console.log('[Slack Interactions] Thread marked as having Jira ticket');
 
-  // Clean up pending request
-  removePendingJiraRequest(requestId);
-  console.log('[Slack Interactions] Removed pending request:', requestId);
+  // Note: No need to clean up pending request - data is stored in button value, not in-memory store
 
   console.log('[Slack Interactions] Jira ticket queued for creation');
   console.log('[Slack Interactions] ===== JIRA MODAL SUBMISSION END =====');

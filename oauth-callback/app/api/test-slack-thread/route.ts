@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy-load OpenAI client to avoid build-time errors if API key not set
+function getOpenAI() {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 export async function GET(request: NextRequest) {
+  const openai = getOpenAI();
   const { searchParams } = new URL(request.url);
   const channel = searchParams.get('channel');
   const threadTs = searchParams.get('thread_ts');

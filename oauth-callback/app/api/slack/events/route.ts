@@ -3,9 +3,12 @@ import { addPendingTask, pendingTasks, hasThreadJiraTicket, markThreadHasJiraTic
 import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy-load OpenAI client to avoid build-time errors if API key not set
+function getOpenAI() {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -548,6 +551,7 @@ async function fetchThreadContext(channel: string, threadTs: string): Promise<{ 
 async function synthesizeTaskFromContext(context: string): Promise<{ title: string; description: string; assignee?: string }> {
   console.log('[Slack Events] Synthesizing task from context:', context);
 
+  const openai = getOpenAI();
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
