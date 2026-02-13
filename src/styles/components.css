@@ -232,6 +232,8 @@
 
   .markdown-content {
     @apply text-white;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
   .markdown-content p {
@@ -287,6 +289,8 @@
   .markdown-content a {
     @apply text-dark-accent-primary underline;
     @apply hover:text-dark-accent-secondary transition-colors;
+    word-break: break-all;
+    overflow-wrap: anywhere;
   }
 
   .markdown-content blockquote {
