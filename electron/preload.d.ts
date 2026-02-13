@@ -12,7 +12,7 @@ export interface ElectronAPI {
     startOAuthFlow: (provider: string) => Promise<any>;
     getOAuthTokens: (provider: string) => Promise<any>;
     saveOAuthTokens: (provider: string, tokens: any) => Promise<void>;
-    syncCalendar: () => Promise<any>;
+    syncCalendar: (date?: string) => Promise<any>;
     syncGmail: () => Promise<any>;
     syncSlack: () => Promise<any>;
     getSmartSuggestions: () => Promise<any[]>;

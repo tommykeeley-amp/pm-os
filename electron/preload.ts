@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveOAuthTokens: (provider: string, tokens: any) => ipcRenderer.invoke('save-oauth-tokens', provider, tokens),
 
   // Integrations
-  syncCalendar: () => ipcRenderer.invoke('sync-calendar'),
+  syncCalendar: (date?: string) => ipcRenderer.invoke('sync-calendar', date),
   syncGmail: () => ipcRenderer.invoke('sync-gmail'),
   syncSlack: () => ipcRenderer.invoke('sync-slack'),
   getSmartSuggestions: (forceRefresh?: boolean) => ipcRenderer.invoke('get-smart-suggestions', forceRefresh),
@@ -254,7 +254,7 @@ export interface ElectronAPI {
   startOAuthFlow: (provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => Promise<any>;
   getOAuthTokens: (provider: string) => Promise<any>;
   saveOAuthTokens: (provider: string, tokens: any) => Promise<void>;
-  syncCalendar: () => Promise<any>;
+  syncCalendar: (date?: string) => Promise<any>;
   syncGmail: () => Promise<any>;
   syncSlack: () => Promise<any>;
   getSmartSuggestions: (forceRefresh?: boolean) => Promise<any[]>;

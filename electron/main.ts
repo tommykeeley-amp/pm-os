@@ -2462,9 +2462,9 @@ ipcMain.handle('save-oauth-tokens', (_event, provider: string, tokens: any) => {
 });
 
 // Integration sync handlers
-ipcMain.handle('sync-calendar', async () => {
+ipcMain.handle('sync-calendar', async (_event, date?: string) => {
   try {
-    return await integrationManager.syncCalendar();
+    return await integrationManager.syncCalendar(date);
   } catch (error: any) {
     console.error('Failed to sync calendar:', error);
     return [];

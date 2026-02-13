@@ -222,6 +222,49 @@ export class CalendarService {
     }
   }
 
+  async getEventsForDate(date: Date): Promise<CalendarEvent[]> {
+    try {
+      const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+
+      const start = startOfDay(date);
+      const end = endOfDay(date);
+
+      const response = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin: start.toISOString(),
+        timeMax: end.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+
+      const events = response.data.items || [];
+
+      return events.map((event: any) => ({
+        id: event.id,
+        title: event.summary || 'Untitled Event',
+        start: event.start.dateTime || event.start.date,
+        end: event.end.dateTime || event.end.date,
+        description: event.description,
+        location: event.location,
+        attendees: event.attendees?.map((a: any) => ({
+          email: a.email,
+          responseStatus: a.responseStatus,
+          self: a.self,
+        })) || [],
+        htmlLink: event.htmlLink,
+        hangoutLink: event.hangoutLink,
+        conferenceData: event.conferenceData,
+        colorId: event.colorId,
+      }));
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        await this.oauth2Client.refreshAccessToken();
+        return this.getEventsForDate(date);
+      }
+      throw error;
+    }
+  }
+
   async getRefreshedTokens(): Promise<TokenData | null> {
     try {
       const { credentials } = await this.oauth2Client.refreshAccessToken();

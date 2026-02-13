@@ -191,21 +191,13 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         return;
       }
 
-      // Fetch calendar events
-      console.log('[Meetings] Fetching calendar events...');
-      const calendarEvents = await window.electronAPI.syncCalendar();
+      // Fetch calendar events for the selected date
+      console.log('[Meetings] Fetching calendar events for:', selectedDate.toISOString());
+      const calendarEvents = await window.electronAPI.syncCalendar(selectedDate.toISOString());
       console.log('[Meetings] Fetched', calendarEvents?.length || 0, 'calendar events');
 
-      // Filter for selected date's events
-      const dateStart = new Date(selectedDate);
-      dateStart.setHours(0, 0, 0, 0);
-      const dateEnd = new Date(dateStart);
-      dateEnd.setDate(dateEnd.getDate() + 1);
-
-      const todaysEvents = calendarEvents.filter((event: CalendarEvent) => {
-        const eventStart = new Date(event.start);
-        return eventStart >= dateStart && eventStart < dateEnd;
-      });
+      // Events are already filtered by the backend for the selected date
+      const todaysEvents = calendarEvents;
 
       console.log('[Meetings] Today\'s events:', todaysEvents.length);
 
@@ -618,61 +610,64 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   };
 
   return (
-    <div className={`relative h-full flex flex-col ${!isPinned ? 'overflow-y-auto' : ''}`}>
-      {/* Pending RSVPs Section */}
-      {pendingRSVPs.length > 0 && (
-        <div className="mb-6 space-y-2 px-4 pt-4">
-          <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider mb-3">
-            Pending RSVPs ({pendingRSVPs.length})
-          </h3>
-          {pendingRSVPs.map(event => (
-            <PendingRSVPCard
-              key={event.id}
-              event={event}
-              onRSVP={handleRSVP}
-            />
-          ))}
-        </div>
-      )}
+    <div className="relative h-full flex flex-col">
+      {/* Fixed header section - sticky */}
+      <div className="flex-shrink-0 bg-dark-bg">
+        {/* Pending RSVPs Section */}
+        {pendingRSVPs.length > 0 && (
+          <div className="mb-6 space-y-2 px-4 pt-4">
+            <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider mb-3">
+              Pending RSVPs ({pendingRSVPs.length})
+            </h3>
+            {pendingRSVPs.map(event => (
+              <PendingRSVPCard
+                key={event.id}
+                event={event}
+                onRSVP={handleRSVP}
+              />
+            ))}
+          </div>
+        )}
 
-      {/* Meeting Input */}
-      <div className={`px-4 mb-4 ${pendingRSVPs.length === 0 ? 'pt-4' : ''}`}>
-        <MeetingInput onCreateMeeting={handleCreateMeeting} isActive={isActive} />
-      </div>
-
-      {/* Header with Date Navigation */}
-      <div className="flex items-center justify-between mb-4 px-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
-            {getDateLabel()}
-          </h3>
-          <span className="text-xs text-dark-text-muted">
-            {getTimezoneAbbr(primaryTimezone)}
-          </span>
+        {/* Meeting Input */}
+        <div className={`px-4 mb-4 ${pendingRSVPs.length === 0 ? 'pt-4' : ''}`}>
+          <MeetingInput onCreateMeeting={handleCreateMeeting} isActive={isActive} />
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handlePreviousDay}
-            className="w-6 h-6 rounded-md flex items-center justify-center
-                     text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-surface
-                     transition-colors"
-            title="Previous day"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <button
-            onClick={handleNextDay}
-            className="w-6 h-6 rounded-md flex items-center justify-center
-                     text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-surface
-                     transition-colors"
-            title="Next day"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+
+        {/* Header with Date Navigation */}
+        <div className="flex items-center justify-between mb-4 px-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
+              {getDateLabel()}
+            </h3>
+            <span className="text-xs text-dark-text-muted">
+              {getTimezoneAbbr(primaryTimezone)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePreviousDay}
+              className="w-6 h-6 rounded-md flex items-center justify-center
+                       text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-surface
+                       transition-colors"
+              title="Previous day"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={handleNextDay}
+              className="w-6 h-6 rounded-md flex items-center justify-center
+                       text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-surface
+                       transition-colors"
+              title="Next day"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

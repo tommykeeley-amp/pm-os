@@ -260,20 +260,22 @@ export class IntegrationManager {
   }
 
   // Sync calendar events
-  async syncCalendar() {
+  async syncCalendar(date?: string) {
     if (!this.calendarService) {
       throw new Error('Calendar service not initialized. Please connect Google account first.');
     }
 
     try {
-      // Use getTodayEvents to include both past and future events from today
-      const events = await this.calendarService.getTodayEvents();
+      // Use getEventsForDate if date provided, otherwise getTodayEvents
+      const targetDate = date ? new Date(date) : new Date();
+      const events = await this.calendarService.getEventsForDate(targetDate);
       return events;
     } catch (error: any) {
       // Try to refresh tokens if unauthorized
       if (error.message?.includes('401') || error.message?.includes('unauthorized')) {
         await this.refreshGoogleTokens();
-        const events = await this.calendarService.getTodayEvents();
+        const targetDate = date ? new Date(date) : new Date();
+        const events = await this.calendarService.getEventsForDate(targetDate);
         return events;
       }
       throw error;
