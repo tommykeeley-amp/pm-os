@@ -3076,7 +3076,39 @@ ${userSettings.secondaryTimezone ? `**Secondary Timezone**: ${userSettings.secon
   timeZoneName: 'short'
 })}
 
-Use this as the reference point for all time-based calculations (e.g., "in 15 minutes", "next meeting", "today", "tomorrow").
+### Recent Calendar Reference (Past 7 Days)
+${(() => {
+  const now = new Date();
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(date.getDate() - i);
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: userSettings.primaryTimezone || 'America/Los_Angeles' });
+    const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: userSettings.primaryTimezone || 'America/Los_Angeles' });
+    const isToday = i === 0;
+    days.push(`${isToday ? '**TODAY → ' : ''}${dayName}, ${monthDay}${isToday ? '**' : ''}`);
+  }
+  return days.join('\n');
+})()}
+
+**CRITICAL - Date Calculation Rules**:
+- "Last [day]" means the most recent occurrence of that weekday that is NOT today
+  - If today is Friday, "last Friday" = ${(() => {
+    const now = new Date();
+    const lastWeek = new Date(now);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    return lastWeek.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: userSettings.primaryTimezone || 'America/Los_Angeles' });
+  })()} (7 days ago)
+  - If today is Friday, "last Monday" = ${(() => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 5 = Friday
+    const lastMonday = new Date(now);
+    lastMonday.setDate(lastMonday.getDate() - (dayOfWeek === 0 ? 6 : (dayOfWeek === 1 ? 7 : dayOfWeek - 1)));
+    return lastMonday.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: userSettings.primaryTimezone || 'America/Los_Angeles' });
+  })()}
+- "Next [day]" means the next occurrence of that weekday that is at least 1 day away
+- ALWAYS verify your date calculations against the calendar reference above
+- When in doubt, explicitly state the day of the week AND the date (e.g., "Friday, Feb 6" not just "Feb 6")
 
 `;
 
@@ -3129,9 +3161,15 @@ Use this as the reference point for all time-based calculations (e.g., "in 15 mi
       if (mcpList.length > 0) {
         mcpGuidance += mcpList.join('\n') + '\n\n';
         mcpGuidance += '## PROACTIVE CONTEXT GATHERING - CRITICAL\n\n';
+        mcpGuidance += '🚨 **MANDATORY: ALWAYS TRY search_contacts FIRST FOR EMAIL ADDRESSES**\n\n';
+        mcpGuidance += '**When user asks about someone or wants to contact them:**\n';
+        mcpGuidance += '1. **IMMEDIATELY call search_contacts({ query: "person name" })** - searches Google Contacts AND organization directory\n';
+        mcpGuidance += '2. If that fails → Try Slack MCP slack_get_users\n';
+        mcpGuidance += '3. If both fail → Then ask user for email\n\n';
+        mcpGuidance += '**NEVER ask for an email address without trying search_contacts first!**\n\n';
         mcpGuidance += '🚨 **MANDATORY WORKFLOW FOR CALENDAR EVENTS WITH ATTENDEES:**\n';
         mcpGuidance += 'If user says "create meeting/event with [name]" or mentions inviting people:\n';
-        mcpGuidance += '1. TRY search_contacts({ query: "person name" }) to get email from Google Contacts\n';
+        mcpGuidance += '1. **FIRST: Call search_contacts({ query: "person name" })** to get email from Google Contacts\n';
         mcpGuidance += '2. If that fails → TRY Slack MCP slack_get_users to find their email in Slack workspace\n';
         mcpGuidance += '3. If both fail → ASK USER for email address directly\n';
         mcpGuidance += '4. THEN: Call create_calendar_event with attendees: [email] parameter\n';
@@ -3288,54 +3326,31 @@ Use this as the reference point for all time-based calculations (e.g., "in 15 mi
 
     // Spawn Claude process with explicit environment
     console.log('[Claude] Spawning with args:', args);
+    const env: any = {
+      ...process.env,
+      HOME: '/Users/tommykeeley',
+      USER: 'tommykeeley',
+      SHELL: '/bin/zsh',
+    };
+    // Remove CLAUDECODE to allow nested sessions
+    delete env.CLAUDECODE;
+
     const proc = spawn('/Users/tommykeeley/.local/bin/claude', args, {
       cwd: folderPath,
-      env: {
-        ...process.env,
-        HOME: '/Users/tommykeeley',
-        USER: 'tommykeeley',
-        SHELL: '/bin/zsh',
-      }
+      env: env
     });
 
     // Close stdin immediately - we're not sending more input
     proc.stdin.end();
 
-    // Handle stdout - stream character by character for typewriter effect
-    let charQueue: string[] = [];
-    let isStreaming = false;
-    let processCompleted = false;
-
-    const streamNextChar = () => {
-      if (charQueue.length === 0) {
-        isStreaming = false;
-        // If process is done and queue is empty, NOW send complete event
-        if (processCompleted && mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('strategize-complete');
-        }
-        return;
-      }
-
-      const char = charQueue.shift()!;
-      if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('strategize-stream', char);
-      }
-
-      // Continue streaming with small delay
-      setTimeout(streamNextChar, 10); // 10ms between characters
-    };
-
+    // Handle stdout - stream in small chunks for faster display
     proc.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
       console.log('[Claude] Output chunk:', text.substring(0, 100));
 
-      // Add characters to queue
-      charQueue.push(...text.split(''));
-
-      // Start streaming if not already
-      if (!isStreaming) {
-        isStreaming = true;
-        streamNextChar();
+      // Stream immediately in chunks for faster display
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('strategize-stream', text);
       }
     });
 
@@ -3350,13 +3365,11 @@ Use this as the reference point for all time-based calculations (e.g., "in 15 mi
     proc.on('exit', (code: number) => {
       console.log('[Claude] Process exited with code:', code);
       logStream.write(`[Claude] Process exited with code: ${code}\n`);
-      processCompleted = true;
 
-      // Only send complete if queue is already empty and not streaming
-      if (charQueue.length === 0 && !isStreaming && mainWindow && mainWindow.webContents) {
+      // Send complete event immediately
+      if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send('strategize-complete');
       }
-      // Otherwise, streamNextChar will send it when queue empties
     });
 
     // Handle spawn errors

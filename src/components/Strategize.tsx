@@ -35,10 +35,13 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [showNewChatAnimation, setShowNewChatAnimation] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceModelLoaded, setVoiceModelLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasAutoConnected = useRef(false);
+  const charQueueRef = useRef<string>('');
+  const typewriterTimerRef = useRef<NodeJS.Timeout | null>(null);
   // const finalTranscriptRef = useRef(''); // Disabled - voice input disabled
 
   // Load folder path and MCP settings
@@ -123,31 +126,76 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   }, [chatMessages, streamingContent]);
 
-  // Set up OpenAI streaming listeners
+  // Set up streaming listeners with reliable typewriter effect
   useEffect(() => {
+    // Start interval-based processing when queue has content
+    const startProcessing = () => {
+      if (typewriterTimerRef.current) return; // Already running
+
+      typewriterTimerRef.current = setInterval(() => {
+        if (charQueueRef.current.length > 0) {
+          // Process 10 characters per tick for smooth, fast effect
+          const charsToAdd = charQueueRef.current.slice(0, 10);
+          charQueueRef.current = charQueueRef.current.slice(10);
+          setStreamingContent(prev => prev + charsToAdd);
+        } else {
+          // Queue empty, stop interval
+          if (typewriterTimerRef.current) {
+            clearInterval(typewriterTimerRef.current);
+            typewriterTimerRef.current = null;
+          }
+        }
+      }, 10) as any; // 10ms interval for smooth effect
+    };
+
     const cleanupStream = window.electronAPI.onStrategizeStream((chunk: string) => {
-      setStreamingContent(prev => prev + chunk);
+      // Add chunk to queue
+      charQueueRef.current += chunk;
       setIsTyping(true);
+
+      // Start processing if not already running
+      startProcessing();
     });
 
     const cleanupComplete = window.electronAPI.onStrategizeComplete(() => {
-      // Add completed message to chat
-      if (streamingContent) {
-        const newMessageId = `msg-${Date.now()}`;
-        setChatMessages(prev => [...prev, {
-          id: newMessageId,
-          role: 'assistant',
-          content: streamingContent,
-          timestamp: new Date(),
-        }]);
-        // Auto-expand new assistant message
-        setExpandedMessages(prev => new Set(prev).add(newMessageId));
-      }
-      setStreamingContent('');
-      setIsTyping(false);
+      // Wait for queue to finish, then add completed message
+      const finishUp = () => {
+        if (charQueueRef.current.length > 0) {
+          setTimeout(finishUp, 50);
+          return;
+        }
+
+        // Stop interval if still running
+        if (typewriterTimerRef.current) {
+          clearInterval(typewriterTimerRef.current);
+          typewriterTimerRef.current = null;
+        }
+
+        // Add completed message to chat
+        if (streamingContent) {
+          const newMessageId = `msg-${Date.now()}`;
+          setChatMessages(prev => [...prev, {
+            id: newMessageId,
+            role: 'assistant',
+            content: streamingContent,
+            timestamp: new Date(),
+          }]);
+          // Auto-expand new assistant message
+          setExpandedMessages(prev => new Set(prev).add(newMessageId));
+        }
+        setStreamingContent('');
+        setIsTyping(false);
+      };
+
+      finishUp();
     });
 
     return () => {
+      if (typewriterTimerRef.current) {
+        clearInterval(typewriterTimerRef.current);
+        typewriterTimerRef.current = null;
+      }
+      charQueueRef.current = '';
       cleanupStream();
       cleanupComplete();
     };
@@ -456,6 +504,9 @@ export default function Strategize({ isActive }: StrategizeProps) {
             silenceTimerRef.current = null;
           }
 
+          setIsListening(false);
+          setIsTranscribing(true); // Show transcription indicator
+
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           console.log('[Voice] Audio recorded, transcribing with Whisper...');
 
@@ -474,6 +525,8 @@ export default function Strategize({ isActive }: StrategizeProps) {
           } catch (error: any) {
             console.error('[Voice] Whisper error:', error);
             alert('Transcription failed: ' + error.message);
+          } finally {
+            setIsTranscribing(false); // Hide transcription indicator
           }
 
           // Stop and cleanup
@@ -485,7 +538,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
             audioContextRef.current.close();
             audioContextRef.current = null;
           }
-          setIsListening(false);
         };
 
         mediaRecorderRef.current = mediaRecorder;
@@ -527,7 +579,12 @@ export default function Strategize({ isActive }: StrategizeProps) {
 
   const handleSendMessage = async () => {
     const message = inputValue.trim();
-    if (!message || !isConnected) return;
+    if (!message || !isConnected) {
+      console.log('[Strategize] Cannot send - message empty or not connected');
+      return;
+    }
+
+    console.log('[Strategize] Sending message:', message);
 
     // Add user message to chat with selected MCPs
     setChatMessages(prev => [...prev, {
@@ -547,14 +604,49 @@ export default function Strategize({ isActive }: StrategizeProps) {
     setIsTyping(true);
     setStreamingContent('');
 
-    // Convert chat messages to history format
-    const conversationHistory = chatMessages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
+    // Clear any pending typewriter queue
+    charQueueRef.current = '';
+    if (typewriterTimerRef.current) {
+      clearTimeout(typewriterTimerRef.current);
+      typewriterTimerRef.current = null;
+    }
 
-    // Pass all enabled MCPs to backend - system will use them intelligently based on context
-    await window.electronAPI.strategizeSend(message, conversationHistory, enabledMCPs);
+    try {
+      // Convert chat messages to history format
+      const conversationHistory = chatMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      console.log('[Strategize] Calling strategizeSend with history length:', conversationHistory.length);
+
+      // Pass all enabled MCPs to backend - system will use them intelligently based on context
+      const result = await window.electronAPI.strategizeSend(message, conversationHistory, enabledMCPs);
+
+      console.log('[Strategize] strategizeSend result:', result);
+
+      if (result && !result.success) {
+        // Show error to user
+        setChatMessages(prev => [...prev, {
+          id: `sys-${Date.now()}`,
+          role: 'system',
+          content: `Error: ${result.error || 'Failed to send message'}`,
+          timestamp: new Date(),
+        }]);
+        setIsTyping(false);
+        setStreamingContent('');
+      }
+    } catch (error: any) {
+      console.error('[Strategize] Error sending message:', error);
+      setChatMessages(prev => [...prev, {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        content: `Error: ${error.message || 'Unknown error occurred'}`,
+        timestamp: new Date(),
+      }]);
+      setIsTyping(false);
+      setStreamingContent('');
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -860,7 +952,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Let's get sh!t done..."
+            placeholder={isTranscribing ? "Transcribing..." : "Let's get sh!t done..."}
             disabled={!isConnected || isTyping}
             rows={3}
             className="w-full bg-dark-surface border border-dark-border rounded-2xl pl-3 pr-11 pt-3 pb-10

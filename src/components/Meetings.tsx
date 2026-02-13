@@ -747,70 +747,82 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
               totalColumns: 1,
             }));
 
-            // Sort by start time
-            eventsWithLayout.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+            // Sort by start time, then by duration (longer events first)
+            eventsWithLayout.sort((a, b) => {
+              const timeDiff = a.startTime.getTime() - b.startTime.getTime();
+              if (timeDiff !== 0) return timeDiff;
+              return (b.endTime.getTime() - b.startTime.getTime()) -
+                     (a.endTime.getTime() - a.startTime.getTime());
+            });
 
-            // Find overlap groups and assign columns
-            const processed = new Set<number>();
+            // Greedy column assignment - assign each event to the first available column
+            const columns: Array<typeof eventsWithLayout> = [];
 
-            for (let i = 0; i < eventsWithLayout.length; i++) {
-              if (processed.has(i)) continue;
+            for (const eventLayout of eventsWithLayout) {
+              // Find the first column where this event doesn't overlap with any event already in that column
+              let assignedColumn = -1;
 
-              const current = eventsWithLayout[i];
-              const group = [current];
-              processed.add(i);
+              for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+                const column = columns[colIndex];
 
-              // Find all events that overlap with any event in the group
-              let changed = true;
-              while (changed) {
-                changed = false;
-                for (let j = 0; j < eventsWithLayout.length; j++) {
-                  if (processed.has(j)) continue;
+                // Check if event overlaps with any event in this column
+                const hasOverlap = column.some(e => {
+                  return eventLayout.startTime < e.endTime && eventLayout.endTime > e.startTime;
+                });
 
-                  const candidate = eventsWithLayout[j];
-
-                  // Check if candidate overlaps with any event in group
-                  for (const groupEvent of group) {
-                    if (candidate.startTime < groupEvent.endTime &&
-                        candidate.endTime > groupEvent.startTime) {
-                      group.push(candidate);
-                      processed.add(j);
-                      changed = true;
-                      break;
-                    }
-                  }
+                if (!hasOverlap) {
+                  assignedColumn = colIndex;
+                  break;
                 }
               }
 
-              // Assign columns to this group
-              if (group.length > 1) {
-                // Sort by start time, then by duration (longer first)
-                group.sort((a, b) => {
-                  const timeDiff = a.startTime.getTime() - b.startTime.getTime();
-                  if (timeDiff !== 0) return timeDiff;
-                  return (b.endTime.getTime() - b.startTime.getTime()) -
-                         (a.endTime.getTime() - a.startTime.getTime());
-                });
+              // If no column found, create a new one
+              if (assignedColumn === -1) {
+                assignedColumn = columns.length;
+                columns.push([]);
+              }
 
-                // Simple even split - each event gets equal width
-                const totalColumns = group.length;
-                group.forEach((item, index) => {
-                  item.column = index;
-                  item.totalColumns = totalColumns;
-                });
+              // Assign the event to the column
+              eventLayout.column = assignedColumn;
+              columns[assignedColumn].push(eventLayout);
+
+              console.log(`[Calendar] Event "${eventLayout.event.title}" assigned to column ${assignedColumn}`);
+            }
+
+            // Calculate total columns for each event based on which events actually overlap
+            for (const eventLayout of eventsWithLayout) {
+              // Find all events that overlap with this event (excluding itself)
+              const overlappingEvents = eventsWithLayout.filter(e =>
+                e !== eventLayout && e.startTime < eventLayout.endTime && e.endTime > eventLayout.startTime
+              );
+
+              // If no overlaps, force full width by setting to column 0 and totalColumns 1
+              if (overlappingEvents.length === 0) {
+                eventLayout.column = 0;
+                eventLayout.totalColumns = 1;
+                console.log(`[Calendar] Event "${eventLayout.event.title}" - NO OVERLAPS, forcing full width`);
+              } else {
+                // Total columns is the highest column number + 1 among overlapping events (including this event)
+                eventLayout.totalColumns = Math.max(
+                  eventLayout.column + 1, // Must include own column
+                  ...overlappingEvents.map(e => e.column + 1)
+                );
+                console.log(`[Calendar] Event "${eventLayout.event.title}" - column: ${eventLayout.column}, totalColumns: ${eventLayout.totalColumns}, overlapping: ${overlappingEvents.length}`);
               }
             }
 
-            return eventsWithLayout.map(({ event, column, totalColumns }) => {
+            return eventsWithLayout.map(({ event }) => {
             const startTime = parseISO(event.start);
             const endTime = parseISO(event.end);
             const colorClass = getEventColor(event);
             const meetingLink = extractMeetingLink(event);
             const baseStyle = getEventStyle(event);
 
-            // Calculate width and left offset based on column
-            const widthPercent = 100 / totalColumns;
-            const leftPercent = (column / totalColumns) * 100;
+            // TEMPORARY: Force ALL events to full width for testing
+            const widthPercent = 100;
+            const leftPercent = 0;
+
+            console.log(`[Calendar RENDER] Event "${event.title}" - FORCING ALL TO FULL WIDTH (width: ${widthPercent}%, left: ${leftPercent}%)`);
 
             const style = {
               ...baseStyle,
