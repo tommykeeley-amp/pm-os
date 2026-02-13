@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, addDays, subDays, isToday, isTomorrow, isYesterday } from 'date-fns';
 import PendingRSVPCard from './PendingRSVPCard';
 import CreateEventModal from './CreateEventModal';
 import MeetingInput from './MeetingInput';
@@ -40,11 +40,27 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
   const [secondaryTimezone, setSecondaryTimezone] = useState('America/New_York');
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [initialMeetingTitle, setInitialMeetingTitle] = useState<string | undefined>(undefined);
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   const handleCreateMeeting = (title: string) => {
     setInitialMeetingTitle(title);
     setShowCreateEventModal(true);
+  };
+
+  const handlePreviousDay = () => {
+    setSelectedDate(prev => subDays(prev, 1));
+  };
+
+  const handleNextDay = () => {
+    setSelectedDate(prev => addDays(prev, 1));
+  };
+
+  const getDateLabel = () => {
+    if (isToday(selectedDate)) return "Today's Schedule";
+    if (isTomorrow(selectedDate)) return "Tomorrow's Schedule";
+    if (isYesterday(selectedDate)) return "Yesterday's Schedule";
+    return format(selectedDate, 'EEEE, MMM d');
   };
 
   useEffect(() => {
@@ -73,6 +89,13 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
       loadTodaysEvents();
     }
   }, [isActive]);
+
+  // Reload events when selected date changes
+  useEffect(() => {
+    if (isConnected) {
+      loadTodaysEvents();
+    }
+  }, [selectedDate]);
 
   // Update current time every minute
   useEffect(() => {
@@ -173,15 +196,15 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
       const calendarEvents = await window.electronAPI.syncCalendar();
       console.log('[Meetings] Fetched', calendarEvents?.length || 0, 'calendar events');
 
-      // Filter for today's events
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      // Filter for selected date's events
+      const dateStart = new Date(selectedDate);
+      dateStart.setHours(0, 0, 0, 0);
+      const dateEnd = new Date(dateStart);
+      dateEnd.setDate(dateEnd.getDate() + 1);
 
       const todaysEvents = calendarEvents.filter((event: CalendarEvent) => {
         const eventStart = new Date(event.start);
-        return eventStart >= today && eventStart < tomorrow;
+        return eventStart >= dateStart && eventStart < dateEnd;
       });
 
       console.log('[Meetings] Today\'s events:', todaysEvents.length);
@@ -617,15 +640,39 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         <MeetingInput onCreateMeeting={handleCreateMeeting} isActive={isActive} />
       </div>
 
-      {/* Header with Create Event Button */}
+      {/* Header with Date Navigation */}
       <div className="flex items-center justify-between mb-4 px-4">
         <div className="flex items-center gap-3">
           <h3 className="text-xs font-semibold text-dark-text-secondary uppercase tracking-wider">
-            Today's Schedule
+            {getDateLabel()}
           </h3>
           <span className="text-xs text-dark-text-muted">
             {getTimezoneAbbr(primaryTimezone)}
           </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePreviousDay}
+            className="w-6 h-6 rounded-md flex items-center justify-center
+                     text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-surface
+                     transition-colors"
+            title="Previous day"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={handleNextDay}
+            className="w-6 h-6 rounded-md flex items-center justify-center
+                     text-dark-text-muted hover:text-dark-text-primary hover:bg-dark-surface
+                     transition-colors"
+            title="Next day"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       </div>
 

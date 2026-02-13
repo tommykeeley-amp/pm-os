@@ -507,6 +507,24 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   };
 
+  const handleCancelRequest = async () => {
+    try {
+      await window.electronAPI.strategizeStop();
+      setIsTyping(false);
+      setStreamingContent('');
+
+      // Add system message to indicate cancellation
+      setChatMessages(prev => [...prev, {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        content: 'Request cancelled',
+        timestamp: new Date(),
+      }]);
+    } catch (error: any) {
+      console.error('Failed to cancel request:', error);
+    }
+  };
+
   const handleSendMessage = async () => {
     const message = inputValue.trim();
     if (!message || !isConnected) return;
@@ -868,8 +886,20 @@ export default function Strategize({ isActive }: StrategizeProps) {
             </button>
           )}
 
-          {/* Voice icon (when empty) or Send button (when typing) - positioned inside right */}
-          {!inputValue.trim() ? (
+          {/* Cancel button (when request in progress), Voice icon (when empty), or Send button (when typing) - positioned inside right */}
+          {isTyping ? (
+            <button
+              onClick={handleCancelRequest}
+              className="absolute right-2 bottom-4 w-7 h-7 rounded-full bg-red-500 text-white
+                       flex items-center justify-center hover:bg-red-600
+                       transition-colors"
+              title="Cancel request"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          ) : !inputValue.trim() ? (
             <button
               onClick={toggleVoiceInput}
               className={`absolute right-2 bottom-4 w-7 h-7 rounded-full flex items-center justify-center
@@ -878,7 +908,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
                          ? 'bg-red-500 text-white animate-pulse'
                          : 'text-dark-text-muted hover:text-dark-text-primary'
                        }`}
-              disabled={!isConnected || isTyping || !voiceModelLoaded}
+              disabled={!isConnected || !voiceModelLoaded}
               title={!voiceModelLoaded ? "Speech recognition not available" : (isListening ? "Stop recording" : "Start voice input")}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -888,7 +918,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
           ) : (
             <button
               onClick={handleSendMessage}
-              disabled={!isConnected || isTyping}
+              disabled={!isConnected}
               className="absolute right-2 bottom-4 w-7 h-7 rounded-full bg-dark-accent-primary text-white
                        flex items-center justify-center hover:bg-dark-accent-secondary
                        transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
