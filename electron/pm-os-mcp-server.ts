@@ -365,32 +365,6 @@ class PMOSMCPServer {
                   required: ['query'],
                 },
               },
-              {
-                name: 'create_zoom_meeting',
-                description: 'Create a Zoom meeting and get the join URL. ALWAYS call this BEFORE creating a calendar event. Returns the Zoom join URL which MUST be passed to create_calendar_event as the zoom_link parameter.',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    topic: {
-                      type: 'string',
-                      description: 'Meeting topic/title (e.g., "1:1 with Chethana")',
-                    },
-                    start_time: {
-                      type: 'string',
-                      description: 'Start time in ISO 8601 format (e.g., "2024-02-12T14:00:00Z")',
-                    },
-                    duration: {
-                      type: 'number',
-                      description: 'Meeting duration in minutes (e.g., 30, 60)',
-                    },
-                    timezone: {
-                      type: 'string',
-                      description: 'Timezone (optional, e.g., "America/Los_Angeles", default: UTC)',
-                    },
-                  },
-                  required: ['topic', 'start_time', 'duration'],
-                },
-              },
             ],
           });
           break;
@@ -436,9 +410,6 @@ class PMOSMCPServer {
 
       case 'search_contacts':
         return await this.searchContacts(args);
-
-      case 'create_zoom_meeting':
-        return await this.createZoomMeeting(args);
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
@@ -619,42 +590,12 @@ class PMOSMCPServer {
       const storeData = readStore();
       const settings = storeData.userSettings as any;
 
-      // First priority: Check for personal Zoom meeting link in settings
+      // Check for personal Zoom meeting link in settings
       if (settings?.zoomPersonalMeetingLink) {
         zoomLink = settings.zoomPersonalMeetingLink;
         console.log('[MCP] ✅ Using personal Zoom link from settings');
       } else {
-        console.log('[MCP] No personal Zoom link - attempting to auto-create Zoom meeting');
-        const zoomAccessToken = storeData.zoom_access_token;
-
-        if (zoomAccessToken) {
-          console.log('[MCP] Zoom is connected - creating meeting');
-          try {
-            // Calculate duration from start/end times
-            const startTime = new Date(args.start);
-            const endTime = new Date(args.end);
-            const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
-
-            // Create Zoom meeting
-            const zoomResult = await this.createZoomMeeting({
-              topic: args.summary,
-              start_time: args.start,
-              duration: durationMinutes,
-            });
-
-            // Extract Zoom link from the result
-            const zoomText = zoomResult.content[0].text;
-            const urlMatch = zoomText.match(/Join URL:\*\* (https:\/\/[^\s]+)/);
-            if (urlMatch) {
-              zoomLink = urlMatch[1];
-              console.log('[MCP] ✅ Auto-created Zoom meeting:', zoomLink);
-            }
-          } catch (error: any) {
-            console.log('[MCP] ⚠️ Failed to auto-create Zoom:', error.message);
-          }
-        } else {
-          console.log('[MCP] ⚠️ Zoom not connected - falling back to Google Meet');
-        }
+        console.log('[MCP] No personal Zoom link configured - will use Google Meet');
       }
     }
 
@@ -988,84 +929,6 @@ class PMOSMCPServer {
           {
             type: 'text',
             text: `⚠️ Unable to search contacts (${error.message}). Please ask the user for ${args.query}'s email address directly.`,
-          },
-        ],
-      };
-    }
-  }
-
-  private async createZoomMeeting(args: { topic: string; start_time: string; duration: number; timezone?: string }) {
-    console.log('[MCP] ========== CREATE ZOOM MEETING ==========');
-    console.log('[MCP] Topic:', args.topic);
-    console.log('[MCP] Start time:', args.start_time);
-    console.log('[MCP] Duration:', args.duration);
-
-    const storeData = readStore();
-    const accessToken = storeData.zoom_access_token;
-
-    console.log('[MCP] Zoom access token exists:', !!accessToken);
-
-    if (!accessToken) {
-      console.log('[MCP] ❌ No Zoom token - returning error');
-      return {
-        content: [
-          {
-            type: 'text',
-            text: '⚠️ Zoom is not connected. Please connect Zoom in PM-OS settings first.',
-          },
-        ],
-      };
-    }
-
-    try {
-      console.log('[MCP] Making Zoom API request...');
-      const response = await httpRequest('https://api.zoom.us/v2/users/me/meetings', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          topic: args.topic,
-          type: 2, // Scheduled meeting
-          start_time: args.start_time,
-          duration: args.duration,
-          timezone: args.timezone || 'UTC',
-          settings: {
-            host_video: true,
-            participant_video: true,
-            join_before_host: false,
-            mute_upon_entry: true,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Zoom API error: ${response.status} - ${errorData}`);
-      }
-
-      const meeting = await response.json();
-
-      console.log('[MCP] ✅ Zoom meeting created!');
-      console.log('[MCP] Join URL:', meeting.join_url);
-      console.log('[MCP] Meeting ID:', meeting.id);
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `✅ Zoom meeting created successfully!\n\n**Topic:** ${meeting.topic}\n**Join URL:** ${meeting.join_url}\n**Meeting ID:** ${meeting.id}\n**Password:** ${meeting.password || 'none'}\n\n⚠️ IMPORTANT: Use this join URL when creating the calendar event by passing it as the zoom_link parameter.`,
-          },
-        ],
-      };
-    } catch (error: any) {
-      console.error('[MCP] ❌ Zoom meeting creation failed:', error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `⚠️ Failed to create Zoom meeting: ${error.message}`,
           },
         ],
       };
