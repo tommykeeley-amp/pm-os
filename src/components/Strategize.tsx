@@ -40,8 +40,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasAutoConnected = useRef(false);
-  const charQueueRef = useRef<string>('');
-  const typewriterTimerRef = useRef<NodeJS.Timeout | null>(null);
   // const finalTranscriptRef = useRef(''); // Disabled - voice input disabled
 
   // Load folder path and MCP settings
@@ -126,76 +124,32 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   }, [chatMessages, streamingContent]);
 
-  // Set up streaming listeners with reliable typewriter effect
+  // Set up streaming listeners - simple and reliable
   useEffect(() => {
-    // Start interval-based processing when queue has content
-    const startProcessing = () => {
-      if (typewriterTimerRef.current) return; // Already running
-
-      typewriterTimerRef.current = setInterval(() => {
-        if (charQueueRef.current.length > 0) {
-          // Process 10 characters per tick for smooth, fast effect
-          const charsToAdd = charQueueRef.current.slice(0, 10);
-          charQueueRef.current = charQueueRef.current.slice(10);
-          setStreamingContent(prev => prev + charsToAdd);
-        } else {
-          // Queue empty, stop interval
-          if (typewriterTimerRef.current) {
-            clearInterval(typewriterTimerRef.current);
-            typewriterTimerRef.current = null;
-          }
-        }
-      }, 10) as any; // 10ms interval for smooth effect
-    };
-
     const cleanupStream = window.electronAPI.onStrategizeStream((chunk: string) => {
-      // Add chunk to queue
-      charQueueRef.current += chunk;
+      // Just append chunks directly as they arrive - simple and reliable
+      setStreamingContent(prev => prev + chunk);
       setIsTyping(true);
-
-      // Start processing if not already running
-      startProcessing();
     });
 
     const cleanupComplete = window.electronAPI.onStrategizeComplete(() => {
-      // Wait for queue to finish, then add completed message
-      const finishUp = () => {
-        if (charQueueRef.current.length > 0) {
-          setTimeout(finishUp, 50);
-          return;
-        }
-
-        // Stop interval if still running
-        if (typewriterTimerRef.current) {
-          clearInterval(typewriterTimerRef.current);
-          typewriterTimerRef.current = null;
-        }
-
-        // Add completed message to chat
-        if (streamingContent) {
-          const newMessageId = `msg-${Date.now()}`;
-          setChatMessages(prev => [...prev, {
-            id: newMessageId,
-            role: 'assistant',
-            content: streamingContent,
-            timestamp: new Date(),
-          }]);
-          // Auto-expand new assistant message
-          setExpandedMessages(prev => new Set(prev).add(newMessageId));
-        }
-        setStreamingContent('');
-        setIsTyping(false);
-      };
-
-      finishUp();
+      // Add completed message to chat
+      if (streamingContent) {
+        const newMessageId = `msg-${Date.now()}`;
+        setChatMessages(prev => [...prev, {
+          id: newMessageId,
+          role: 'assistant',
+          content: streamingContent,
+          timestamp: new Date(),
+        }]);
+        // Auto-expand new assistant message
+        setExpandedMessages(prev => new Set(prev).add(newMessageId));
+      }
+      setStreamingContent('');
+      setIsTyping(false);
     });
 
     return () => {
-      if (typewriterTimerRef.current) {
-        clearInterval(typewriterTimerRef.current);
-        typewriterTimerRef.current = null;
-      }
-      charQueueRef.current = '';
       cleanupStream();
       cleanupComplete();
     };
@@ -603,13 +557,6 @@ export default function Strategize({ isActive }: StrategizeProps) {
     // Send to Claude with conversation history
     setIsTyping(true);
     setStreamingContent('');
-
-    // Clear any pending typewriter queue
-    charQueueRef.current = '';
-    if (typewriterTimerRef.current) {
-      clearTimeout(typewriterTimerRef.current);
-      typewriterTimerRef.current = null;
-    }
 
     try {
       // Convert chat messages to history format
