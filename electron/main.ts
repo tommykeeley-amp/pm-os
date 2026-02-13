@@ -17,6 +17,12 @@ import { SlackEventsServer } from './slack-events';
 import { SlackDigestService } from './slack-digest-service';
 import { MCPManager } from './mcp-manager';
 import OpenAI from 'openai';
+import { File as NodeFile } from 'node:buffer';
+
+// Polyfill File API for OpenAI SDK
+if (typeof globalThis.File === 'undefined') {
+  (globalThis as any).File = NodeFile;
+}
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -2051,6 +2057,44 @@ ipcMain.handle('get-stored-data', (_event, key: string) => {
 
 ipcMain.handle('save-data', (_event, key: string, data: any) => {
   store.set(key, data);
+});
+
+// Whisper transcription
+ipcMain.handle('transcribe-audio', async (_event, audioBuffer: ArrayBuffer) => {
+  try {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      return { success: false, error: 'OpenAI API key not configured' };
+    }
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    // Write audio buffer to temporary file
+    const tempDir = os.tmpdir();
+    const tempFilePath = path.join(tempDir, `whisper-${Date.now()}.webm`);
+    const buffer = Buffer.from(audioBuffer);
+    fs.writeFileSync(tempFilePath, buffer);
+
+    try {
+      // Transcribe using OpenAI Whisper
+      const transcription = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(tempFilePath),
+        model: 'whisper-1',
+      });
+
+      return { success: true, text: transcription.text };
+    } finally {
+      // Clean up temp file
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch (e) {
+        console.error('[Whisper] Failed to delete temp file:', e);
+      }
+    }
+  } catch (error: any) {
+    console.error('[Whisper] Transcription error:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // Obsidian Integration IPC Handlers

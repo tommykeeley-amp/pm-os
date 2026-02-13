@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Voice transcription (Whisper)
   voiceTranscribe: (audioData: ArrayBuffer) => ipcRenderer.invoke('voice-transcribe', audioData),
+  transcribeAudio: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('transcribe-audio', audioBuffer),
 
   // Zoom integration
   zoomIsConfigured: () =>

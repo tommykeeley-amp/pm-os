@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// TypeScript declarations for Web Speech API
+// TypeScript declarations
 declare global {
   interface Window {
     SpeechRecognition: any;
@@ -252,37 +252,39 @@ export default function Strategize({ isActive }: StrategizeProps) {
     }
   };
 
-  // Voice recognition with Vosk
-  const recognizerRef = useRef<any>(null);
+  // Voice recognition with Whisper API only
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  // Initialize Vosk on mount
+  // Check for OpenAI API key on mount
   useEffect(() => {
-    const initVosk = async () => {
-      try {
-        const { createModel } = await import('vosk-browser');
-        console.log('[Voice] Initializing Vosk model (39MB, may take a moment)...');
-
-        // Load small English model
-        const model = await createModel('/vosk-model-small-en-us-0.15.tar.gz');
-        recognizerRef.current = model;
+    const checkOpenAIKey = async () => {
+      // Check if OpenAI API key is configured in environment
+      const hasKey = !!process.env.OPENAI_API_KEY || process.env.NODE_ENV === 'production';
+      if (hasKey) {
+        console.log('[Voice] Whisper API available');
         setVoiceModelLoaded(true);
-        console.log('[Voice] Vosk model loaded and ready');
-      } catch (error) {
-        console.error('[Voice] Failed to initialize Vosk:', error);
+      } else {
+        console.log('[Voice] OpenAI API key not configured');
         setVoiceModelLoaded(false);
       }
     };
 
-    initVosk();
+    checkOpenAIKey();
 
     return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
       }
       if (audioContextRef.current) {
         audioContextRef.current.close();
+      }
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
       }
     };
   }, []);
@@ -364,65 +366,143 @@ export default function Strategize({ isActive }: StrategizeProps) {
   */
 
   const toggleVoiceInput = async () => {
-    if (!voiceModelLoaded || !recognizerRef.current) {
-      alert('Voice model is still loading (39MB). Please wait a moment and try again.');
+    if (!voiceModelLoaded) {
+      alert('Whisper API not available. Please configure your OpenAI API key.');
       return;
     }
 
     if (isListening) {
-      // Stop listening
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
+      // Stop recording (manual stop)
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
       }
-      if (audioContextRef.current) {
-        await audioContextRef.current.close();
-        audioContextRef.current = null;
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
       }
       setIsListening(false);
     } else {
-      // Start listening
+      // Start recording with Whisper API
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStreamRef.current = stream;
+        streamRef.current = stream;
+        const mediaRecorder = new MediaRecorder(stream);
+        audioChunksRef.current = [];
 
-        const audioContext = new AudioContext({ sampleRate: 16000 });
+        // Set up audio analysis for silence detection
+        const audioContext = new AudioContext();
         audioContextRef.current = audioContext;
-
         const source = audioContext.createMediaStreamSource(stream);
-        const recognizer = await recognizerRef.current.createRecognizer();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        analyserRef.current = analyser;
 
-        let fullTranscript = '';
+        // Start silence detection
+        const checkSilence = () => {
+          if (!isListening || !analyserRef.current) return;
 
-        recognizer.on('result', (message: any) => {
-          if (message.result && message.result.text) {
-            fullTranscript += ' ' + message.result.text;
-            setInputValue(fullTranscript.trim());
+          const bufferLength = analyserRef.current.fftSize;
+          const dataArray = new Uint8Array(bufferLength);
+          analyserRef.current.getByteTimeDomainData(dataArray);
+
+          // Calculate average volume
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            const normalized = (dataArray[i] - 128) / 128;
+            sum += normalized * normalized;
           }
-        });
+          const rms = Math.sqrt(sum / bufferLength);
+          const volume = rms * 100;
 
-        recognizer.on('partialresult', (message: any) => {
-          if (message.result && message.result.partial) {
-            setInputValue((fullTranscript + ' ' + message.result.partial).trim());
+          // Silence threshold (adjust if needed)
+          const SILENCE_THRESHOLD = 1;
+
+          if (volume < SILENCE_THRESHOLD) {
+            // Start silence timer if not already started
+            if (!silenceTimerRef.current) {
+              console.log('[Voice] Silence detected, starting 3s timer...');
+              silenceTimerRef.current = setTimeout(() => {
+                console.log('[Voice] 3 seconds of silence - auto-stopping...');
+                if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                  mediaRecorderRef.current.stop();
+                }
+              }, 3000);
+            }
+          } else {
+            // Reset silence timer if sound detected
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
           }
-        });
 
-        // Connect audio source to recognizer
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        processor.onaudioprocess = (e) => {
-          const audioData = e.inputBuffer.getChannelData(0);
-          recognizer.acceptWaveform(audioData);
+          // Continue checking
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            requestAnimationFrame(checkSilence);
+          }
         };
 
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
 
-        setInputValue(''); // Clear input before starting
+        mediaRecorder.onstop = async () => {
+          // Clear silence timer
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+          }
+
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          console.log('[Voice] Audio recorded, transcribing with Whisper...');
+
+          try {
+            // Send to Electron main process for Whisper transcription
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const result = await (window.electronAPI as any).transcribeAudio(arrayBuffer);
+
+            if (result.success) {
+              setInputValue(prev => (prev + ' ' + result.text).trim());
+              console.log('[Voice] Whisper transcription:', result.text);
+            } else {
+              console.error('[Voice] Whisper transcription failed:', result.error);
+              alert('Transcription failed: ' + result.error);
+            }
+          } catch (error: any) {
+            console.error('[Voice] Whisper error:', error);
+            alert('Transcription failed: ' + error.message);
+          }
+
+          // Stop and cleanup
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+          if (audioContextRef.current) {
+            audioContextRef.current.close();
+            audioContextRef.current = null;
+          }
+          setIsListening(false);
+        };
+
+        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorder.start();
         setIsListening(true);
-        console.log('[Voice] Started listening with Vosk');
+
+        // Start silence detection
+        checkSilence();
+
+        console.log('[Voice] Recording with Whisper API (auto-stops after 3s silence)...');
       } catch (error: any) {
         console.error('[Voice] Error starting microphone:', error);
-        alert('Microphone access denied or error: ' + error.message);
+        if (error.name === 'NotAllowedError') {
+          alert('Microphone access denied. Please allow microphone access in System Settings.');
+        } else {
+          alert('Failed to start recording: ' + error.message);
+        }
       }
     }
   };
@@ -799,7 +879,7 @@ export default function Strategize({ isActive }: StrategizeProps) {
                          : 'text-dark-text-muted hover:text-dark-text-primary'
                        }`}
               disabled={!isConnected || isTyping || !voiceModelLoaded}
-              title={!voiceModelLoaded ? "Loading voice model..." : (isListening ? "Stop recording" : "Start voice input")}
+              title={!voiceModelLoaded ? "Speech recognition not available" : (isListening ? "Stop recording" : "Start voice input")}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />

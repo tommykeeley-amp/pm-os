@@ -82,8 +82,7 @@
       ".env",
       "node_modules/node-pty/**/*",
       "dist-electron/pm-os-mcp-server.cjs",
-      "mcp-servers/**/*",
-      "dist/vosk-model-small-en-us-0.15.tar.gz"
+      "mcp-servers/**/*"
     ],
     "directories": {
       "output": "release"

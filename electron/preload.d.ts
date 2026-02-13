@@ -43,6 +43,7 @@ export interface ElectronAPI {
     getUserSettings: () => Promise<any>;
     saveUserSettings: (settings: any) => Promise<void>;
     onFocusTaskInput: (callback: () => void) => () => void;
+    transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ success: boolean; text?: string; error?: string }>;
 }
 declare global {
     interface Window {
