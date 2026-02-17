@@ -32,15 +32,25 @@ function markdownToHtml(markdown: string): string {
   html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="text-dark-accent-primary hover:underline" target="_blank" rel="noopener noreferrer">$1</a>');
 
   // Lists - convert to proper list items (will wrap in ul below)
+  // Handle *, -, and • bullet characters at start of lines
   html = html.replace(/^\* (.*$)/gim, '<LISTITEM>$1</LISTITEM>');
   html = html.replace(/^- (.*$)/gim, '<LISTITEM>$1</LISTITEM>');
+  html = html.replace(/^• (.*$)/gim, '<LISTITEM>$1</LISTITEM>');
+
+  // Also handle bullets that appear inline (e.g., "text • bullet1 • bullet2")
+  // Check if there are inline bullets (not at start of line)
+  if (/[^\n]•/.test(html) && !html.includes('<LISTITEM>')) {
+    // Split on bullets and create list items
+    const parts = html.split(/\s*•\s*/);
+    html = parts.map(part => part.trim() ? `<LISTITEM>${part.trim()}</LISTITEM>` : '').filter(Boolean).join('');
+  }
 
   // Wrap consecutive list items in ul tags
   html = html.replace(/(<LISTITEM>.*?<\/LISTITEM>\s*)+/g, (match) => {
     const items = match.match(/<LISTITEM>(.*?)<\/LISTITEM>/g)
-      ?.map(item => item.replace(/<LISTITEM>(.*?)<\/LISTITEM>/, '<li>$1</li>'))
+      ?.map(item => item.replace(/<LISTITEM>(.*?)<\/LISTITEM>/, '<li class="mb-1">$1</li>'))
       .join('');
-    return `<ul class="list-disc ml-6 my-2">${items}</ul>`;
+    return `<ul class="list-disc ml-6 my-2 space-y-1">${items}</ul>`;
   });
 
   // Line breaks
