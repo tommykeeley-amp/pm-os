@@ -82,11 +82,12 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
     };
   }, []);
 
-  // Refresh events when tab becomes active
+  // Refresh events and settings when tab becomes active
   useEffect(() => {
     if (isActive) {
-      console.log('[Meetings] Tab became active, refreshing events...');
+      console.log('[Meetings] Tab became active, refreshing events and settings...');
       loadTodaysEvents();
+      loadSettings();
     }
   }, [isActive]);
 
@@ -671,6 +672,26 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
         </div>
       </div>
 
+      {/* All-Day Events */}
+      {(() => {
+        const allDayEvents = events.filter(event => !event.start.includes('T') && (!showDeclinedMeetings ? !isDeclined(event) : true));
+        if (allDayEvents.length === 0) return null;
+        return (
+          <div className="px-4 mb-3 space-y-1.5">
+            {allDayEvents.map(event => (
+              <div
+                key={event.id}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-dark-surface border border-dark-border text-xs text-dark-text-secondary w-full"
+                title={event.title}
+              >
+                <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
+                <span className="truncate">{event.title}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Timeline container - scrollable with fixed height per hour */}
       <div ref={timelineContainerRef} className="flex-1 px-4 flex flex-row overflow-y-auto">
 
@@ -729,11 +750,14 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
             const filteredEvents = events.filter(event => {
               // Filter out declined events if showDeclinedMeetings is false
               if (!showDeclinedMeetings && isDeclined(event)) {
-                console.log('[Meetings] Filtering out declined event:', event.title);
                 return false;
               }
 
-              // Show all events regardless of time range (Option 3)
+              // Filter out all-day events (they're shown above the timeline)
+              if (!event.start.includes('T')) {
+                return false;
+              }
+
               return true;
             });
             console.log('[Meetings] Filtered events count:', filteredEvents.length, 'of', events.length);
@@ -811,18 +835,15 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
               }
             }
 
-            return eventsWithLayout.map(({ event }) => {
+            return eventsWithLayout.map(({ event, column, totalColumns }) => {
             const startTime = parseISO(event.start);
             const endTime = parseISO(event.end);
             const colorClass = getEventColor(event);
             const meetingLink = extractMeetingLink(event);
             const baseStyle = getEventStyle(event);
 
-            // TEMPORARY: Force ALL events to full width for testing
-            const widthPercent = 100;
-            const leftPercent = 0;
-
-            console.log(`[Calendar RENDER] Event "${event.title}" - FORCING ALL TO FULL WIDTH (width: ${widthPercent}%, left: ${leftPercent}%)`);
+            const widthPercent = 100 / totalColumns;
+            const leftPercent = column * widthPercent;
 
             const style = {
               ...baseStyle,
