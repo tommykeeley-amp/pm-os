@@ -444,8 +444,39 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full py-12">
-        <div className="text-dark-text-secondary">Loading events...</div>
+      <div className="flex flex-col h-full animate-pulse">
+        {/* Skeleton header */}
+        <div className="flex-shrink-0 px-4 pt-4 pb-3">
+          <div className="h-9 bg-dark-surface rounded-lg mb-4" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-3 w-32 bg-dark-surface rounded" />
+              <div className="h-3 w-8 bg-dark-surface rounded" />
+            </div>
+            <div className="flex gap-2">
+              <div className="w-6 h-6 bg-dark-surface rounded-md" />
+              <div className="w-6 h-6 bg-dark-surface rounded-md" />
+            </div>
+          </div>
+        </div>
+        {/* Skeleton timeline */}
+        <div className="flex-1 px-4 overflow-hidden">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="flex gap-3 mb-0" style={{ height: '120px' }}>
+              <div className="w-11 pt-0.5">
+                <div className="h-3 w-10 bg-dark-surface rounded" />
+              </div>
+              <div className="flex-1 border-t border-dark-border/30 pt-2">
+                {i % 2 === 0 && (
+                  <div className="bg-dark-surface rounded-lg border-l-4 border-dark-border p-2 mr-4" style={{ height: i === 0 ? '100px' : '60px' }}>
+                    <div className="h-3 w-3/4 bg-dark-border/50 rounded mb-2" />
+                    <div className="h-2.5 w-1/2 bg-dark-border/50 rounded" />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -681,11 +712,17 @@ export default function Meetings({ isPinned, onNextMeetingChange, isActive }: Me
             {allDayEvents.map(event => (
               <div
                 key={event.id}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-dark-surface border border-dark-border text-xs text-dark-text-secondary w-full"
+                className="group flex items-center gap-2 px-3 py-1.5 rounded-md bg-dark-surface border border-dark-border text-xs text-dark-text-secondary w-full"
                 title={event.title}
               >
                 <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
-                <span className="truncate">{event.title}</span>
+                <span className="truncate flex-1">{event.title}</span>
+                <button
+                  onClick={(e) => handleOpenEvent(event, e)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity px-2 py-0.5 bg-dark-accent-primary text-dark-bg rounded text-xs font-medium hover:bg-dark-accent-primary/90 flex-shrink-0"
+                >
+                  Open Event
+                </button>
               </div>
             ))}
           </div>
