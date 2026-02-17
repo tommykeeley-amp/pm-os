@@ -3679,9 +3679,11 @@ ipcMain.handle('add-mcp-server', async (_event, name: string, type: 'http' | 'st
     console.log('[MCP] Running command in', strategizeFolderPath, ':', claudePath, args.join(' '));
 
     return new Promise((resolve) => {
+      const spawnEnv = { ...process.env };
+      delete spawnEnv.CLAUDECODE;
       const addProcess = spawn(claudePath, args, {
         cwd: strategizeFolderPath, // Run in project directory
-        env: { ...process.env }
+        env: spawnEnv
       });
 
       let output = '';

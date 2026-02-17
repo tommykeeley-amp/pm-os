@@ -433,7 +433,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     }
   };
 
-  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'atlassian' | 'pmos' | 'zoom', enable: boolean) => {
+  const handleMCPToggle = async (mcpProvider: 'amplitude' | 'granola' | 'clockwise' | 'atlassian' | 'pmos' | 'zoom' | 'glean', enable: boolean) => {
     await logToFile(`\n========== MCP TOGGLE START ==========`);
     await logToFile(`Time: ${new Date().toISOString()}`);
     await logToFile(`Provider: ${mcpProvider}`);
@@ -470,6 +470,11 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         env: {
           PM_OS_MCP_SERVER: 'true',
         },
+      },
+      glean: {
+        name: 'Glean',
+        type: 'http',
+        url: 'https://amplitude-be.glean.com/mcp/default',
       },
     };
 
@@ -1750,6 +1755,71 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
                           <span>Enabling MCP server...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Glean MCP */}
+                  <div className="border border-dark-border rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-dark-text-primary">Glean</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const isCurrentlyEnabled = settings.mcpServers?.glean?.enabled;
+                          handleMCPToggle('glean', !isCurrentlyEnabled);
+                        }}
+                        disabled={connectingMCP === 'glean'}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.mcpServers?.glean?.enabled
+                            ? 'bg-dark-accent-primary'
+                            : 'bg-dark-border'
+                        } ${connectingMCP === 'glean' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.mcpServers?.glean?.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {(connectingMCP === 'glean' || (mcpAuthProgress?.serverName.toLowerCase() === 'glean')) && (
+                      <div className="text-xs text-dark-text-muted">
+                        <div className={`flex items-center gap-2 p-2 rounded border ${
+                          mcpAuthProgress?.status === 'complete' || mcpAuthProgress?.status === 'ready'
+                            ? 'bg-green-500/10 border-green-500/30'
+                            : 'bg-emerald-500/10 border-emerald-500/30'
+                        }`}>
+                          {(mcpAuthProgress?.status === 'complete' || mcpAuthProgress?.status === 'ready') ? (
+                            <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            <svg className="animate-spin h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          )}
+                          <span>{mcpAuthProgress?.message || 'Configuring Glean MCP server...'}</span>
+                        </div>
+                      </div>
+                    )}
+                    {connectionError?.provider === 'glean' && (
+                      <div className="text-xs">
+                        <div className="flex items-center gap-2 p-2 rounded border bg-red-500/10 border-red-500/30 text-red-400">
+                          <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          <span>{connectionError.error}</span>
                         </div>
                       </div>
                     )}
