@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteTask: (id: string) => ipcRenderer.invoke('delete-task', id),
 
   // OAuth
-  startOAuthFlow: (provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => ipcRenderer.invoke('start-oauth', provider),
+  startOAuthFlow: (provider: 'google' | 'slack' | 'jira' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => ipcRenderer.invoke('start-oauth', provider),
   getOAuthTokens: (provider: string) => ipcRenderer.invoke('get-oauth-tokens', provider),
   saveOAuthTokens: (provider: string, tokens: any) => ipcRenderer.invoke('save-oauth-tokens', provider, tokens),
 
@@ -251,7 +251,7 @@ export interface ElectronAPI {
   addTask: (task: any) => Promise<any>;
   updateTask: (id: string, updates: any) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  startOAuthFlow: (provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => Promise<any>;
+  startOAuthFlow: (provider: 'google' | 'slack' | 'jira' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => Promise<any>;
   getOAuthTokens: (provider: string) => Promise<any>;
   saveOAuthTokens: (provider: string, tokens: any) => Promise<void>;
   syncCalendar: (date?: string) => Promise<any>;

@@ -6,7 +6,7 @@ interface Integration {
   description: string;
   icon: JSX.Element;
   connected: boolean;
-  type: 'oauth' | 'api-token';
+  type: 'oauth';
 }
 
 interface IntegrationsProps {
@@ -46,7 +46,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
       id: 'jira',
       name: 'Jira',
       description: 'Create tickets from tasks',
-      type: 'api-token',
+      type: 'oauth',
       icon: (
         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
           <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 0 0-.84-.84H11.53zM2 11.53c0-2.4 1.97-4.35 4.35-4.35h1.78v-1.7c0-2.4 1.94-4.34 4.34-4.34V11.69a.84.84 0 0 1-.84.84H2zm9.53 9.47c0-2.4-1.97-4.35-4.35-4.35H5.4v-1.7c0-2.4-1.94-4.34-4.34-4.34v9.55c0 .46.37.84.84.84h9.63z" fill="#2684FF"/>
@@ -66,20 +66,20 @@ export default function Integrations({ onClose }: IntegrationsProps) {
     try {
       const googleTokens = await window.electronAPI.getOAuthTokens('google');
       const slackTokens = await window.electronAPI.getOAuthTokens('slack');
-      const jiraConfigured = await window.electronAPI.jiraIsConfigured();
+      const jiraTokens = await window.electronAPI.getOAuthTokens('jira');
 
       setIntegrations(prev => prev.map(integration => ({
         ...integration,
         connected: integration.id === 'google' ? !!googleTokens.accessToken :
                    integration.id === 'slack' ? !!slackTokens.accessToken :
-                   integration.id === 'jira' ? jiraConfigured : false,
+                   integration.id === 'jira' ? !!jiraTokens.accessToken : false,
       })));
     } catch (error) {
       console.error('Failed to check connections:', error);
     }
   };
 
-  const handleConnect = async (integrationId: 'google' | 'slack') => {
+  const handleConnect = async (integrationId: 'google' | 'slack' | 'jira') => {
     setIsConnecting(integrationId);
 
     try {
@@ -99,7 +99,7 @@ export default function Integrations({ onClose }: IntegrationsProps) {
     }
   };
 
-  const handleDisconnect = async (integrationId: 'google' | 'slack') => {
+  const handleDisconnect = async (integrationId: 'google' | 'slack' | 'jira') => {
     try {
       // Clear stored tokens
       await window.electronAPI.saveOAuthTokens(integrationId, {
@@ -158,51 +158,29 @@ export default function Integrations({ onClose }: IntegrationsProps) {
                   </div>
                 </div>
 
-                {integration.type === 'api-token' ? (
-                  // API token integrations (like Jira)
-                  integration.connected ? (
+                {integration.connected ? (
+                  <div className="flex items-center gap-2">
                     <span className="text-xs text-dark-accent-success flex items-center gap-1">
                       <svg className="icon-xs" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      Configured
+                      Connected
                     </span>
-                  ) : (
-                    <a
-                      href="https://github.com/tommykeeley-amp/pm-os#jiraatlassian"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-dark-accent-primary hover:text-dark-accent-primary/80 transition-colors"
-                    >
-                      Setup Guide →
-                    </a>
-                  )
-                ) : (
-                  // OAuth integrations (Google, Slack)
-                  integration.connected ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-dark-accent-success flex items-center gap-1">
-                        <svg className="icon-xs" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                        Connected
-                      </span>
-                      <button
-                        onClick={() => handleDisconnect(integration.id as 'google' | 'slack')}
-                        className="text-xs text-dark-text-muted hover:text-dark-accent-danger transition-colors"
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-                  ) : (
                     <button
-                      onClick={() => handleConnect(integration.id as 'google' | 'slack')}
-                      disabled={isConnecting === integration.id}
-                      className="btn-primary btn-sm"
+                      onClick={() => handleDisconnect(integration.id as 'google' | 'slack' | 'jira')}
+                      className="text-xs text-dark-text-muted hover:text-dark-accent-danger transition-colors"
                     >
-                      {isConnecting === integration.id ? 'Connecting...' : 'Connect'}
+                      Disconnect
                     </button>
-                  )
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleConnect(integration.id as 'google' | 'slack' | 'jira')}
+                    disabled={isConnecting === integration.id}
+                    className="btn-primary btn-sm"
+                  >
+                    {isConnecting === integration.id ? 'Connecting...' : 'Connect'}
+                  </button>
                 )}
               </div>
             ))}

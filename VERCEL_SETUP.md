@@ -25,7 +25,15 @@ Get these from: https://console.cloud.google.com/apis/credentials
 OAUTH_REDIRECT_URI=https://pm-os.vercel.app/oauth-callback
 ```
 
-### 4. Slack Bot (Already Set)
+### 4. Atlassian OAuth
+```
+ATLASSIAN_CLIENT_ID=<your-atlassian-client-id>
+ATLASSIAN_CLIENT_SECRET=<your-atlassian-client-secret>
+```
+
+Get these from: https://developer.atlassian.com/console/myapps
+
+### 5. Slack Bot (Already Set)
 ```
 SLACK_BOT_TOKEN=<your-slack-bot-token>
 SLACK_SIGNING_SECRET=<your-slack-signing-secret>
@@ -47,6 +55,8 @@ vercel env add SLACK_CLIENT_ID
 vercel env add SLACK_CLIENT_SECRET
 vercel env add GOOGLE_CLIENT_ID
 vercel env add GOOGLE_CLIENT_SECRET
+vercel env add ATLASSIAN_CLIENT_ID
+vercel env add ATLASSIAN_CLIENT_SECRET
 vercel env add OAUTH_REDIRECT_URI
 ```
 
@@ -71,6 +81,9 @@ curl -I https://pm-os.vercel.app/api/oauth/slack/authorize
 
 # Should return 307 redirect to Google
 curl -I https://pm-os.vercel.app/api/oauth/google/authorize
+
+# Should return 307 redirect to Atlassian
+curl -I https://pm-os.vercel.app/api/oauth/jira/authorize
 ```
 
 If you see errors, check that environment variables are set correctly.

@@ -65,6 +65,27 @@ export async function POST(request: NextRequest) {
           redirect_uri: REDIRECT_URI,
         }),
       });
+    } else if (provider === 'jira') {
+      const ATLASSIAN_CLIENT_ID = process.env.ATLASSIAN_CLIENT_ID;
+      const ATLASSIAN_CLIENT_SECRET = process.env.ATLASSIAN_CLIENT_SECRET;
+
+      if (!ATLASSIAN_CLIENT_ID || !ATLASSIAN_CLIENT_SECRET) {
+        return NextResponse.json({ error: 'Missing Atlassian OAuth credentials' }, { status: 500 });
+      }
+
+      tokenResponse = await fetch('https://auth.atlassian.com/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          client_id: ATLASSIAN_CLIENT_ID,
+          client_secret: ATLASSIAN_CLIENT_SECRET,
+          code,
+          redirect_uri: REDIRECT_URI,
+        }),
+      });
     } else {
       return NextResponse.json({ error: `Unsupported provider: ${provider}` }, { status: 400 });
     }
@@ -74,6 +95,30 @@ export async function POST(request: NextRequest) {
     if (!tokenResponse.ok || (provider === 'slack' && !tokens.ok)) {
       console.error('Token exchange failed:', tokens);
       return NextResponse.json({ error: 'Token exchange failed', details: tokens }, { status: 400 });
+    }
+
+    // Atlassian OAuth requires a second call to discover accessible Jira resources
+    if (provider === 'jira' && tokens.access_token) {
+      try {
+        const resourceResponse = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${tokens.access_token}`,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (resourceResponse.ok) {
+          tokens.accessible_resources = await resourceResponse.json();
+        } else {
+          const resourceError = await resourceResponse.text();
+          console.error('[OAuth/Jira] Failed to fetch accessible resources:', resourceError);
+          tokens.accessible_resources = [];
+        }
+      } catch (resourceError) {
+        console.error('[OAuth/Jira] Failed to fetch accessible resources:', resourceError);
+        tokens.accessible_resources = [];
+      }
     }
 
     // Generate session ID and store tokens temporarily

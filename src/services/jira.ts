@@ -45,23 +45,46 @@ interface CreateIssueRequest {
   parent?: string; // Parent issue key (e.g., AMP-12345)
 }
 
-interface JiraConfig {
+interface JiraApiTokenConfig {
+  authType?: 'apiToken';
   domain: string; // e.g., yourcompany.atlassian.net
   email: string;
   apiToken: string;
 }
 
+interface JiraOAuthConfig {
+  authType: 'oauth';
+  accessToken: string;
+  cloudId: string;
+  domain?: string;
+  siteUrl?: string;
+}
+
+type JiraConfig = JiraApiTokenConfig | JiraOAuthConfig;
+
 export class JiraService {
   private config: JiraConfig;
   private baseUrl: string;
+  private authMode: 'apiToken' | 'oauth';
 
   constructor(config: JiraConfig) {
     this.config = config;
-    this.baseUrl = `https://${config.domain}/rest/api/3`;
+    if (config.authType === 'oauth') {
+      this.authMode = 'oauth';
+      this.baseUrl = `https://api.atlassian.com/ex/jira/${config.cloudId}/rest/api/3`;
+    } else {
+      this.authMode = 'apiToken';
+      this.baseUrl = `https://${config.domain}/rest/api/3`;
+    }
   }
 
   private getAuthHeader(): string {
-    const credentials = Buffer.from(`${this.config.email}:${this.config.apiToken}`).toString('base64');
+    if (this.authMode === 'oauth') {
+      return `Bearer ${(this.config as JiraOAuthConfig).accessToken}`;
+    }
+
+    const apiTokenConfig = this.config as JiraApiTokenConfig;
+    const credentials = Buffer.from(`${apiTokenConfig.email}:${apiTokenConfig.apiToken}`).toString('base64');
     return `Basic ${credentials}`;
   }
 
@@ -103,7 +126,7 @@ export class JiraService {
         return {
           success: false,
           error: 'No projects accessible',
-          details: 'Connection successful, but your account has no access to any Jira projects. Check your permissions or API token scopes.'
+          details: 'Connection successful, but your account has no access to any Jira projects. Check your project permissions and OAuth/API scopes.'
         };
       }
 
@@ -116,13 +139,17 @@ export class JiraService {
         return {
           success: false,
           error: 'Authentication failed',
-          details: 'Invalid email or API token. Please check your credentials.'
+          details: this.authMode === 'oauth'
+            ? 'Jira OAuth token is invalid or expired. Please reconnect Atlassian.'
+            : 'Invalid email or API token. Please check your credentials.'
         };
       } else if (error.message.includes('404')) {
         return {
           success: false,
           error: 'Domain not found',
-          details: 'The Jira domain is incorrect. Make sure it\'s in the format: yourcompany.atlassian.net'
+          details: this.authMode === 'oauth'
+            ? 'No accessible Jira site found for this OAuth connection.'
+            : 'The Jira domain is incorrect. Make sure it\'s in the format: yourcompany.atlassian.net'
         };
       } else if (error.message.includes('fetch')) {
         return {
@@ -290,7 +317,11 @@ export class JiraService {
     // Jira will automatically set the reporter to the API user (the person whose credentials are used).
     const reporter = null;
     logToFile(`[Jira] Reporter field skipped (not supported by most Jira project configurations)`);
-    logToFile(`[Jira] Jira will use the API user as reporter: ${this.config.email}`);
+    if (this.authMode === 'oauth') {
+      logToFile('[Jira] Jira will use the OAuth-connected user as reporter');
+    } else {
+      logToFile(`[Jira] Jira will use the API user as reporter: ${(this.config as JiraApiTokenConfig).email}`);
+    }
 
     // Look up Pillar and Pod IDs from the field options
     let pillarField: { id: string } | undefined;
@@ -602,6 +633,17 @@ export class JiraService {
    * Get issue URL
    */
   getIssueUrl(issueKey: string): string {
-    return `https://${this.config.domain}/browse/${issueKey}`;
+    if (this.authMode === 'oauth') {
+      const oauthConfig = this.config as JiraOAuthConfig;
+      if (oauthConfig.siteUrl) {
+        return `${oauthConfig.siteUrl.replace(/\/$/, '')}/browse/${issueKey}`;
+      }
+      if (oauthConfig.domain) {
+        return `https://${oauthConfig.domain}/browse/${issueKey}`;
+      }
+      return issueKey;
+    }
+
+    return `https://${(this.config as JiraApiTokenConfig).domain}/browse/${issueKey}`;
   }
 }

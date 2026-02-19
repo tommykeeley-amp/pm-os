@@ -9,7 +9,7 @@ export interface ElectronAPI {
     addTask: (task: any) => Promise<any>;
     updateTask: (id: string, updates: any) => Promise<void>;
     deleteTask: (id: string) => Promise<void>;
-    startOAuthFlow: (provider: string) => Promise<any>;
+    startOAuthFlow: (provider: 'google' | 'slack' | 'jira' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => Promise<any>;
     getOAuthTokens: (provider: string) => Promise<any>;
     saveOAuthTokens: (provider: string, tokens: any) => Promise<void>;
     syncCalendar: (date?: string) => Promise<any>;
