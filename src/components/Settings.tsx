@@ -119,7 +119,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       id: 'jira' as const,
       name: 'Atlassian',
       description: 'Jira tickets & Confluence pages',
-      type: 'config' as const,
+      type: 'oauth' as const,
       connected: false,
     },
     {
@@ -194,6 +194,10 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       console.log(`[Settings] Provider: ${data?.provider || 'unknown'}`);
       console.log(`[Settings] ✓✓✓ OAuth flow completed successfully!`);
       console.log(`[Settings] Refreshing connection status...`);
+
+      if (data?.provider === 'jira') {
+        setSettings(prev => ({ ...prev, jiraEnabled: true }));
+      }
 
       checkConnections();
       setIsConnecting(null);
@@ -280,6 +284,14 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
         expiresAt: slackTokens.expiresAt
       });
 
+      console.log('[Settings] Fetching Jira tokens...');
+      const jiraTokens = await window.electronAPI.getOAuthTokens('jira');
+      console.log('[Settings] Jira tokens:', {
+        hasAccessToken: !!jiraTokens.accessToken,
+        hasRefreshToken: !!jiraTokens.refreshToken,
+        expiresAt: jiraTokens.expiresAt
+      });
+
       console.log('[Settings] Fetching user settings...');
       const userSettings = await window.electronAPI.getUserSettings();
       const jiraEnabled = !!userSettings?.jiraEnabled;
@@ -290,7 +302,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
       setIntegrations(prev => prev.map(integration => {
         const connected = integration.id === 'google' ? !!googleTokens.accessToken :
                          integration.id === 'slack' ? !!slackTokens.accessToken :
-                         integration.id === 'jira' ? jiraEnabled :
+                         integration.id === 'jira' ? !!jiraTokens.accessToken :
                          integration.id === 'obsidian' ? obsidianEnabled : false;
         console.log(`[Settings] ${integration.id}: ${connected ? 'CONNECTED' : 'DISCONNECTED'}`);
         return { ...integration, connected };
@@ -344,7 +356,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     await handleChange('jiraSystemPrompt', DEFAULT_JIRA_PROMPT);
   };
 
-  const handleConnect = async (integrationId: 'google' | 'slack') => {
+  const handleConnect = async (integrationId: 'google' | 'slack' | 'jira') => {
     console.log(`\n========== [Settings] OAuth Connect Clicked ==========`);
     console.log(`[Settings] Time: ${new Date().toISOString()}`);
     console.log(`[Settings] Provider: ${integrationId}`);
@@ -398,13 +410,17 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
     console.log(`========== [Settings] OAuth Connect Handler Done ==========\n`);
   };
 
-  const handleDisconnect = async (integrationId: 'google' | 'slack') => {
+  const handleDisconnect = async (integrationId: 'google' | 'slack' | 'jira') => {
     try {
       await window.electronAPI.saveOAuthTokens(integrationId, {
         accessToken: null,
         refreshToken: null,
         expiresAt: null,
       });
+
+      if (integrationId === 'jira') {
+        await handleChange('jiraEnabled', false);
+      }
 
       // Also clear scope version for Google to force re-authentication with new scopes
       if (integrationId === 'google') {
@@ -798,7 +814,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                   placeholder="your.email@company.com"
                 />
                 <p className="text-xs text-dark-text-muted mt-1">
-                  <strong>Important:</strong> Use the same email as your Slack account. This ensures Jira tickets created from Slack use YOUR credentials and show YOU as the reporter.
+                  <strong>Important:</strong> Connect Atlassian with your own account so Jira tickets created from Slack are attributed correctly.
                 </p>
               </div>
             </div>
@@ -907,13 +923,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           <button
                           onClick={async (e) => {
                             e.stopPropagation();
-                            if (integration.id === 'jira') {
-                              await handleChange('jiraEnabled', !integration.connected);
-                              if (integration.connected) {
-                                // Collapsing when turning off
-                                setJiraExpanded(false);
-                              }
-                            } else if (integration.id === 'obsidian') {
+                            if (integration.id === 'obsidian') {
                               await handleChange('obsidianEnabled', !integration.connected);
                               if (integration.connected) {
                                 // Collapsing when turning off
@@ -937,7 +947,6 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                         {integration.connected && (
                           <svg
                             className={`icon-xs text-dark-text-secondary transition-transform ${
-                              integration.id === 'jira' ? (jiraExpanded ? 'rotate-180' : '') :
                               integration.id === 'obsidian' ? (obsidianExpanded ? 'rotate-180' : '') : ''
                             }`}
                             fill="none"
@@ -960,7 +969,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDisconnect(integration.id as 'google' | 'slack');
+                              handleDisconnect(integration.id as 'google' | 'slack' | 'jira');
                             }}
                             className="text-xs text-dark-text-muted hover:text-dark-accent-danger transition-colors"
                           >
@@ -968,7 +977,8 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           </button>
                           <svg
                             className={`icon-xs text-dark-text-secondary transition-transform ${
-                              integration.id === 'slack' ? (slackExpanded ? 'rotate-180' : '') : ''
+                              integration.id === 'slack' ? (slackExpanded ? 'rotate-180' : '') :
+                              integration.id === 'jira' ? (jiraExpanded ? 'rotate-180' : '') : ''
                             }`}
                             fill="none"
                             stroke="currentColor"
@@ -979,7 +989,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           </div>
                         ) : (
                           <button
-                            onClick={() => handleConnect(integration.id as 'google' | 'slack')}
+                            onClick={() => handleConnect(integration.id as 'google' | 'slack' | 'jira')}
                             disabled={isConnecting === integration.id}
                             className="btn-primary btn-sm"
                           >
@@ -1007,47 +1017,59 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                               placeholder="yourcompany.atlassian.net"
                             />
                             <p className="text-xs text-dark-text-muted mt-1">
-                              Your Atlassian/Jira domain (without https://)
+                              Auto-detected from OAuth. You can override it if needed for issue links.
                             </p>
                           </div>
 
-                          <div>
-                            <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                              Jira Email
-                            </label>
-                            <input
-                              type="email"
-                              value={settings.jiraEmail || ''}
-                              onChange={(e) => handleChange('jiraEmail', e.target.value)}
-                              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                              placeholder="your.email@company.com"
-                            />
-                          </div>
+                          <p className="text-xs text-dark-text-muted -mt-1">
+                            Jira issue creation now uses OAuth. Manual API tokens are no longer required.
+                          </p>
 
-                          <div>
-                            <label className="block text-sm font-medium text-dark-text-secondary mb-2">
-                              Jira API Token
-                            </label>
-                            <input
-                              type="password"
-                              value={settings.jiraApiToken || ''}
-                              onChange={(e) => handleChange('jiraApiToken', e.target.value)}
-                              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
-                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
-                              placeholder="••••••••••••••••"
-                            />
-                            <p className="text-xs text-dark-text-muted mt-1">
-                              Generate from{' '}
-                              <a
-                                href="https://id.atlassian.com/manage-profile/security/api-tokens"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-dark-accent-primary hover:underline"
-                              >
-                                Atlassian API Tokens
-                              </a>
+                          <div className="border border-dark-border rounded-lg p-3 bg-dark-bg/40">
+                            <p className="text-xs text-dark-text-secondary mb-3">
+                              Legacy API-token fallback (optional, mainly for Confluence features):
                             </p>
+
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                                  Jira Email (Legacy)
+                                </label>
+                                <input
+                                  type="email"
+                                  value={settings.jiraEmail || ''}
+                                  onChange={(e) => handleChange('jiraEmail', e.target.value)}
+                                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                                  placeholder="your.email@company.com"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-dark-text-secondary mb-2">
+                                  Jira API Token (Legacy)
+                                </label>
+                                <input
+                                  type="password"
+                                  value={settings.jiraApiToken || ''}
+                                  onChange={(e) => handleChange('jiraApiToken', e.target.value)}
+                                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg
+                                       text-dark-text-primary focus:outline-none focus:ring-2 focus:ring-dark-accent-primary"
+                                  placeholder="••••••••••••••••"
+                                />
+                                <p className="text-xs text-dark-text-muted mt-1">
+                                  Generate from{' '}
+                                  <a
+                                    href="https://id.atlassian.com/manage-profile/security/api-tokens"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-dark-accent-primary hover:underline"
+                                  >
+                                    Atlassian API Tokens
+                                  </a>
+                                </p>
+                              </div>
+                            </div>
                           </div>
 
                           <div>
@@ -1191,7 +1213,7 @@ export default function Settings({ onClose, isPinned, onTogglePin }: SettingsPro
                           <div className="pt-4 border-t border-dark-border">
                             <h4 className="text-sm font-medium text-dark-text-primary mb-3">Confluence Settings</h4>
                             <p className="text-xs text-dark-text-secondary mb-3">
-                              Confluence uses the same credentials as Jira configured above.
+                              Confluence creation currently uses legacy Jira API-token credentials if provided.
                             </p>
                             <div className="space-y-4">
                               <div>

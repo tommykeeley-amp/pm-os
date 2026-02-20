@@ -24,21 +24,35 @@ interface CreateIssueRequest {
     issueType: string;
     priority?: string;
 }
-interface JiraConfig {
+interface JiraApiTokenConfig {
+    authType?: 'apiToken';
     domain: string;
     email: string;
     apiToken: string;
 }
+interface JiraOAuthConfig {
+    authType: 'oauth';
+    accessToken: string;
+    cloudId: string;
+    domain?: string;
+    siteUrl?: string;
+}
+type JiraConfig = JiraApiTokenConfig | JiraOAuthConfig;
 export declare class JiraService {
     private config;
     private baseUrl;
+    private authMode;
     constructor(config: JiraConfig);
     private getAuthHeader;
     private makeRequest;
     /**
      * Test connection to Jira
      */
-    testConnection(): Promise<boolean>;
+    testConnection(): Promise<{
+        success: boolean;
+        error?: string;
+        details?: string;
+    }>;
     /**
      * Get current user info
      */

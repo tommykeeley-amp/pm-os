@@ -101,8 +101,18 @@ console.log('NOTE: OAuth credentials are now server-side (Vercel)');
 console.log('Local .env credentials are OPTIONAL (only for token refresh)');
 console.log('GOOGLE_CLIENT_SECRET available:', !!process.env.GOOGLE_CLIENT_SECRET);
 console.log('SLACK_CLIENT_SECRET available:', !!process.env.SLACK_CLIENT_SECRET);
+console.log('ATLASSIAN_CLIENT_SECRET available:', !!process.env.ATLASSIAN_CLIENT_SECRET);
 console.log('OPENAI_API_KEY available:', !!process.env.OPENAI_API_KEY);
 console.log('================================');
+
+function normalizeOAuthBaseUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+const OAUTH_BASE_URL = normalizeOAuthBaseUrl(
+  process.env.OAUTH_BASE_URL || 'https://pm-os.vercel.app'
+);
+console.log('OAUTH_BASE_URL:', OAUTH_BASE_URL);
 
 const store = new Store();
 let mainWindow: BrowserWindow | null = null;
@@ -283,8 +293,8 @@ const integrationManager = new IntegrationManager(
 // Initialize MCP manager (will set parent window after mainWindow is created)
 let mcpManager: MCPManager;
 
-// Helper function to get Jira/Confluence credentials from settings or env
-function getJiraCredentials() {
+// Helper function to get Jira/Confluence API-token credentials from settings or env
+function getJiraApiTokenCredentials() {
   const userSettings = store.get('userSettings', {}) as any;
   return {
     domain: userSettings.jiraDomain || process.env.JIRA_DOMAIN,
@@ -293,27 +303,188 @@ function getJiraCredentials() {
   };
 }
 
-// Initialize Jira service if configured and enabled
 let jiraService: JiraService | null = null;
-const jiraCredentials = getJiraCredentials();
-const initialUserSettings = store.get('userSettings', {}) as any;
-if (jiraCredentials.domain && jiraCredentials.email && jiraCredentials.apiToken && initialUserSettings.jiraEnabled) {
-  jiraService = new JiraService({
-    domain: jiraCredentials.domain,
-    email: jiraCredentials.email,
-    apiToken: jiraCredentials.apiToken,
-  });
+let confluenceService: ConfluenceService | null = null;
+
+function getJiraOAuthCredentials() {
+  const siteUrl = store.get('jira_site_url') as string | undefined;
+  let domain = store.get('jira_domain') as string | undefined;
+
+  if (!domain && siteUrl) {
+    try {
+      domain = new URL(siteUrl).hostname;
+    } catch {
+      // Keep undefined if URL parsing fails
+    }
+  }
+
+  return {
+    accessToken: store.get('jira_access_token') as string | undefined,
+    refreshToken: store.get('jira_refresh_token') as string | undefined,
+    expiresAt: store.get('jira_expires_at') as number | undefined,
+    cloudId: store.get('jira_cloud_id') as string | undefined,
+    siteUrl,
+    domain,
+  };
 }
 
-// Initialize Confluence service if configured (uses same credentials as Jira)
-let confluenceService: ConfluenceService | null = null;
-if (jiraCredentials.domain && jiraCredentials.email && jiraCredentials.apiToken) {
-  confluenceService = new ConfluenceService({
-    domain: jiraCredentials.domain,
-    email: jiraCredentials.email,
-    apiToken: jiraCredentials.apiToken,
-  });
+function createJiraServiceFromStore(): JiraService | null {
+  const userSettings = store.get('userSettings', {}) as any;
+  const oauthCredentials = getJiraOAuthCredentials();
+  const legacyCredentials = getJiraApiTokenCredentials();
+
+  // Prefer OAuth when available
+  if (oauthCredentials.accessToken && oauthCredentials.cloudId) {
+    return new JiraService({
+      authType: 'oauth',
+      accessToken: oauthCredentials.accessToken,
+      cloudId: oauthCredentials.cloudId,
+      siteUrl: oauthCredentials.siteUrl,
+      domain: oauthCredentials.domain || userSettings.jiraDomain || legacyCredentials.domain,
+    });
+  }
+
+  // Legacy fallback: API token auth
+  if (legacyCredentials.domain && legacyCredentials.email && legacyCredentials.apiToken && userSettings.jiraEnabled) {
+    return new JiraService({
+      authType: 'apiToken',
+      domain: legacyCredentials.domain,
+      email: legacyCredentials.email,
+      apiToken: legacyCredentials.apiToken,
+    });
+  }
+
+  return null;
 }
+
+function createConfluenceServiceFromStore(): ConfluenceService | null {
+  const legacyCredentials = getJiraApiTokenCredentials();
+  if (legacyCredentials.domain && legacyCredentials.email && legacyCredentials.apiToken) {
+    return new ConfluenceService({
+      domain: legacyCredentials.domain,
+      email: legacyCredentials.email,
+      apiToken: legacyCredentials.apiToken,
+    });
+  }
+
+  return null;
+}
+
+function refreshAtlassianServices() {
+  jiraService = createJiraServiceFromStore();
+  confluenceService = createConfluenceServiceFromStore();
+}
+
+async function refreshJiraOAuthAccessToken(): Promise<boolean> {
+  const refreshToken = store.get('jira_refresh_token') as string | undefined;
+  if (!refreshToken) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(`${OAUTH_BASE_URL}/api/refresh-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        provider: 'jira',
+        refreshToken,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data?.tokens?.access_token) {
+      console.error('[Jira OAuth] Token refresh failed:', data);
+      return false;
+    }
+
+    const tokens = data.tokens;
+    store.set('jira_access_token', tokens.access_token);
+    if (tokens.refresh_token) {
+      store.set('jira_refresh_token', tokens.refresh_token);
+    }
+    if (tokens.expires_in) {
+      store.set('jira_expires_at', Date.now() + (tokens.expires_in * 1000));
+    }
+
+    const accessibleResources = Array.isArray(tokens.accessible_resources)
+      ? tokens.accessible_resources
+      : [];
+    const jiraResource = accessibleResources.find((resource: any) =>
+      Array.isArray(resource?.scopes) &&
+      resource.scopes.some((scope: string) => scope.includes('jira'))
+    ) || accessibleResources[0];
+
+    if (jiraResource?.id) {
+      store.set('jira_cloud_id', jiraResource.id);
+    }
+
+    if (jiraResource?.url) {
+      store.set('jira_site_url', jiraResource.url);
+      try {
+        const jiraDomain = new URL(jiraResource.url).hostname;
+        store.set('jira_domain', jiraDomain);
+
+        const userSettings = (store.get('userSettings', {}) as any) || {};
+        store.set('userSettings', {
+          ...userSettings,
+          jiraDomain,
+          jiraEnabled: true,
+        });
+      } catch {
+        // Ignore URL parsing errors
+      }
+    }
+
+    refreshAtlassianServices();
+    return true;
+  } catch (error) {
+    console.error('[Jira OAuth] Failed to refresh token:', error);
+    return false;
+  }
+}
+
+async function ensureJiraOAuthTokenValid(): Promise<void> {
+  const accessToken = store.get('jira_access_token') as string | undefined;
+  if (!accessToken) {
+    // Legacy API-token mode
+    return;
+  }
+
+  const expiresAt = store.get('jira_expires_at') as number | undefined;
+  if (!expiresAt) {
+    return;
+  }
+
+  const msRemaining = expiresAt - Date.now();
+  const refreshBufferMs = 2 * 60 * 1000; // refresh 2 minutes early
+  if (msRemaining > refreshBufferMs) {
+    return;
+  }
+
+  const refreshed = await refreshJiraOAuthAccessToken();
+  if (!refreshed && msRemaining <= 0) {
+    throw new Error('Jira OAuth token expired. Please reconnect Atlassian in Settings.');
+  }
+}
+
+async function getReadyJiraService(): Promise<JiraService> {
+  await ensureJiraOAuthTokenValid();
+
+  if (!jiraService) {
+    refreshAtlassianServices();
+  }
+
+  if (!jiraService) {
+    throw new Error('Jira not configured');
+  }
+
+  return jiraService;
+}
+
+// Initialize Jira and Confluence services on startup
+refreshAtlassianServices();
 
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
@@ -595,15 +766,15 @@ async function handleProtocolUrl(url: string) {
       return;
     }
 
-    // Fetch tokens from Vercel using session ID
+    // Fetch tokens from OAuth backend using session ID
     console.log('[Protocol] Step 2: Exchanging session ID for tokens...');
-    console.log('[Protocol] Calling Vercel API: /api/exchange-token');
+    console.log('[Protocol] Calling OAuth API: /api/exchange-token');
 
-    const tokenResponse = await fetch(`https://pm-os.vercel.app/api/exchange-token?sessionId=${sessionId}`);
+    const tokenResponse = await fetch(`${OAUTH_BASE_URL}/api/exchange-token?sessionId=${sessionId}`);
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      console.error('[Protocol] ❌ Failed to fetch tokens from Vercel');
+      console.error('[Protocol] ❌ Failed to fetch tokens from OAuth backend');
       console.error('[Protocol] HTTP Status:', tokenResponse.status);
       console.error('[Protocol] Response:', tokenData);
       throw new Error(tokenData.error || 'Failed to fetch tokens');
@@ -690,6 +861,64 @@ async function handleProtocolUrl(url: string) {
         console.error('[Protocol] Token structure received:', JSON.stringify(tokens, null, 2));
         throw new Error('No access token found in Slack response');
       }
+    } else if (provider === 'jira') {
+      console.log('[Protocol] Processing Jira/Atlassian tokens...');
+
+      const accessToken = tokens.access_token;
+      const refreshToken = tokens.refresh_token;
+      const expiresIn = tokens.expires_in;
+      const accessibleResources = Array.isArray(tokens.accessible_resources)
+        ? tokens.accessible_resources
+        : [];
+
+      if (!accessToken) {
+        throw new Error('No access token found in Jira response');
+      }
+
+      const jiraResource = accessibleResources.find((resource: any) =>
+        Array.isArray(resource?.scopes) &&
+        resource.scopes.some((scope: string) => scope.includes('jira'))
+      ) || accessibleResources[0];
+
+      if (!jiraResource?.id || !jiraResource?.url) {
+        throw new Error('No accessible Jira site found for this Atlassian account');
+      }
+
+      let jiraDomain: string | undefined;
+      try {
+        jiraDomain = new URL(jiraResource.url).hostname;
+      } catch {
+        // Keep undefined if parsing fails
+      }
+
+      console.log('[Protocol] Saving Jira OAuth tokens and resource metadata');
+      store.set('jira_access_token', accessToken);
+      if (refreshToken) {
+        store.set('jira_refresh_token', refreshToken);
+      }
+      if (expiresIn) {
+        store.set('jira_expires_at', Date.now() + (expiresIn * 1000));
+      }
+
+      store.set('jira_cloud_id', jiraResource.id);
+      store.set('jira_site_url', jiraResource.url);
+      if (jiraDomain) {
+        store.set('jira_domain', jiraDomain);
+      }
+
+      const userSettings = (store.get('userSettings', {}) as any) || {};
+      store.set('userSettings', {
+        ...userSettings,
+        jiraEnabled: true,
+        ...(jiraDomain ? { jiraDomain } : {}),
+      });
+
+      refreshAtlassianServices();
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[Protocol] ✓✓✓ Jira connection SUCCESSFUL (took ${elapsed}ms)`);
+    } else {
+      throw new Error(`Unsupported OAuth provider: ${provider}`);
     }
 
     // Notify the renderer process
@@ -1410,14 +1639,8 @@ function startExtensionSyncServer() {
       req.on('end', async () => {
         try {
           const { projectKey } = JSON.parse(body);
-
-          if (!jiraService) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, error: 'Jira not configured' }));
-            return;
-          }
-
-          const options = await jiraService.getPillarAndPodOptions(projectKey || 'AMP');
+          const readyJiraService = await getReadyJiraService();
+          const options = await readyJiraService.getPillarAndPodOptions(projectKey || 'AMP');
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true, ...options }));
@@ -1445,16 +1668,10 @@ function startExtensionSyncServer() {
           console.log('[Jira Create Direct] Received Jira creation request:', taskData.title);
 
           const userSettings = store.get('userSettings', {}) as any;
-
-          if (!jiraService) {
-            console.error('[Jira Create Direct] Jira service not configured');
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, error: 'Jira not configured' }));
-            return;
-          }
+          const readyJiraService = await getReadyJiraService();
 
           // Create the Jira ticket
-          const issue = await jiraService.createIssue({
+          const issue = await readyJiraService.createIssue({
             summary: taskData.title,
             description: taskData.description,
             projectKey: userSettings.jiraDefaultProject || 'AMP',
@@ -1467,7 +1684,7 @@ function startExtensionSyncServer() {
             pod: taskData.pod,
           });
 
-          const jiraUrl = jiraService.getIssueUrl(issue.key);
+          const jiraUrl = readyJiraService.getIssueUrl(issue.key);
           console.log('[Jira Create Direct] Jira ticket created:', issue.key);
 
           // Send confirmation reply in Slack
@@ -1704,15 +1921,20 @@ app.whenReady().then(async () => {
     log('[Main] Jira ticket creation requested: ' + request.summary);
     log('[Main] jiraService exists: ' + !!jiraService);
 
-    if (!jiraService) {
+    let readyJiraService: JiraService;
+    try {
+      readyJiraService = await getReadyJiraService();
+    } catch (error: any) {
       const userSettings = store.get('userSettings', {}) as any;
       log('[Main] Jira service not available. Settings: ' + JSON.stringify({
         jiraEnabled: userSettings.jiraEnabled,
         hasDomain: !!userSettings.jiraDomain,
         hasEmail: !!userSettings.jiraEmail,
         hasToken: !!userSettings.jiraApiToken,
+        hasOAuthToken: !!store.get('jira_access_token'),
+        hasCloudId: !!store.get('jira_cloud_id'),
       }));
-      throw new Error('Jira not configured or not enabled');
+      throw error;
     }
 
     const userSettings = store.get('userSettings', {}) as any;
@@ -1729,7 +1951,7 @@ app.whenReady().then(async () => {
       pod: request.pod,
     }));
 
-    const issue = await jiraService.createIssue({
+    const issue = await readyJiraService.createIssue({
       summary: request.summary,
       description: request.description,
       projectKey: userSettings.jiraDefaultProject || 'AMP',
@@ -1748,7 +1970,7 @@ app.whenReady().then(async () => {
 
     return {
       key: issue.key,
-      url: jiraService.getIssueUrl(issue.key),
+      url: readyJiraService.getIssueUrl(issue.key),
     };
   });
 
@@ -1763,6 +1985,7 @@ app.whenReady().then(async () => {
         hasDomain: !!userSettings.jiraDomain,
         hasEmail: !!userSettings.jiraEmail,
         hasToken: !!userSettings.jiraApiToken,
+        hasOAuthToken: !!store.get('jira_access_token'),
       });
       throw new Error('Confluence not configured (requires Jira credentials)');
     }
@@ -2022,31 +2245,10 @@ ipcMain.handle('save-user-settings', (_event, settings: any) => {
     }
   }
 
-  // If Jira/Confluence credentials or enabled state changed, reinitialize services
+  // Jira/Confluence credentials or Jira enabled state may have changed
   if (settings.jiraDomain !== undefined || settings.jiraEmail !== undefined ||
       settings.jiraApiToken !== undefined || settings.jiraEnabled !== undefined) {
-    const updatedSettings = store.get('userSettings', {}) as any;
-
-    // Reinitialize or clear Jira service based on enabled state
-    if (updatedSettings.jiraEnabled && updatedSettings.jiraDomain &&
-        updatedSettings.jiraEmail && updatedSettings.jiraApiToken) {
-      jiraService = new JiraService({
-        domain: updatedSettings.jiraDomain,
-        email: updatedSettings.jiraEmail,
-        apiToken: updatedSettings.jiraApiToken,
-      });
-
-      // Also reinitialize Confluence service (uses same credentials)
-      confluenceService = new ConfluenceService({
-        domain: updatedSettings.jiraDomain,
-        email: updatedSettings.jiraEmail,
-        apiToken: updatedSettings.jiraApiToken,
-      });
-    } else if (settings.jiraEnabled === false) {
-      // Disable services when toggled off
-      jiraService = null;
-      confluenceService = null;
-    }
+    refreshAtlassianServices();
   }
 });
 
@@ -2366,7 +2568,7 @@ ipcMain.handle('delete-task', (_event, id: string) => {
 });
 
 // OAuth Handlers
-ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => {
+ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'jira' | 'zoom' | 'amplitude' | 'granola' | 'clockwise') => {
   const startTime = Date.now();
   console.log(`\n========================================`);
   console.log(`[OAuth] START - ${new Date().toISOString()}`);
@@ -2381,16 +2583,16 @@ ipcMain.handle('start-oauth', async (_event, provider: 'google' | 'slack' | 'zoo
       // MCP servers typically handle OAuth through their web interfaces
       // These URLs will redirect users to authenticate and grant access
       const mcpUrls: Record<string, string> = {
-        amplitude: 'https://pm-os.vercel.app/api/oauth/amplitude/authorize',
-        granola: 'https://pm-os.vercel.app/api/oauth/granola/authorize',
-        clockwise: 'https://pm-os.vercel.app/api/oauth/clockwise/authorize',
+        amplitude: `${OAUTH_BASE_URL}/api/oauth/amplitude/authorize`,
+        granola: `${OAUTH_BASE_URL}/api/oauth/granola/authorize`,
+        clockwise: `${OAUTH_BASE_URL}/api/oauth/clockwise/authorize`,
       };
       authUrl = mcpUrls[provider];
       console.log(`[OAuth] MCP provider detected: ${provider}`);
       console.log(`[OAuth] Using MCP OAuth endpoint: ${authUrl}`);
     } else {
-      // Standard OAuth providers (Google, Slack, Zoom)
-      authUrl = `https://pm-os.vercel.app/api/oauth/${provider}/authorize`;
+      // Standard OAuth providers (Google, Slack, Jira, Zoom)
+      authUrl = `${OAUTH_BASE_URL}/api/oauth/${provider}/authorize`;
       console.log('[OAuth] Standard OAuth provider');
     }
 
@@ -2449,6 +2651,18 @@ ipcMain.handle('save-oauth-tokens', (_event, provider: string, tokens: any) => {
     store.delete(`${provider}_refresh_token`);
     store.delete(`${provider}_expires_at`);
     console.log(`[OAuth] Cleared all ${provider} tokens`);
+
+    if (provider === 'jira') {
+      store.delete('jira_cloud_id');
+      store.delete('jira_site_url');
+      store.delete('jira_domain');
+
+      const userSettings = (store.get('userSettings', {}) as any) || {};
+      store.set('userSettings', {
+        ...userSettings,
+        jiraEnabled: false,
+      });
+    }
   } else {
     // Save tokens normally
     store.set(`${provider}_access_token`, tokens.accessToken);
@@ -2458,6 +2672,10 @@ ipcMain.handle('save-oauth-tokens', (_event, provider: string, tokens: any) => {
     if (tokens.expiresAt) {
       store.set(`${provider}_expires_at`, tokens.expiresAt);
     }
+  }
+
+  if (provider === 'jira') {
+    refreshAtlassianServices();
   }
 });
 
@@ -2781,29 +2999,29 @@ ipcMain.handle('slack-send-reply', async (_event, channelId: string, threadTs: s
 
 // Jira Integration Handlers
 ipcMain.handle('jira-test-connection', async () => {
-  if (!jiraService) {
-    return { success: false, error: 'Jira not configured', details: 'Please configure Jira domain, email, and API token first.' };
-  }
-
   try {
-    return await jiraService.testConnection();
+    const readyJiraService = await getReadyJiraService();
+    return await readyJiraService.testConnection();
   } catch (error: any) {
+    if (error.message?.includes('Jira not configured')) {
+      return { success: false, error: 'Jira not configured', details: 'Please connect Atlassian from Settings first.' };
+    }
     return { success: false, error: 'Connection failed', details: error.message };
   }
 });
 
 ipcMain.handle('jira-get-projects', async () => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getProjects();
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getProjects();
 });
 
 ipcMain.handle('jira-get-issue-types', async (_event, projectKey: string) => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getIssueTypes(projectKey);
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getIssueTypes(projectKey);
 });
 
 ipcMain.handle('jira-create-issue', async (_event, request: any) => {
-  if (!jiraService) throw new Error('Jira not configured');
+  const readyJiraService = await getReadyJiraService();
 
   const userSettings = store.get('userSettings', {}) as any;
 
@@ -2867,7 +3085,7 @@ Examples:
     console.log('[Main] No OpenAI key, using raw summary');
   }
 
-  const issue = await jiraService.createIssue({
+  const issue = await readyJiraService.createIssue({
     summary: ticketSummary,
     description: request.description,
     projectKey: request.projectKey || userSettings.jiraDefaultProject || process.env.JIRA_DEFAULT_PROJECT || '',
@@ -2882,43 +3100,42 @@ Examples:
 
   return {
     key: issue.key,
-    url: jiraService.getIssueUrl(issue.key),
+    url: readyJiraService.getIssueUrl(issue.key),
   };
 });
 
 ipcMain.handle('jira-get-components', async (_event, projectKey: string) => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getComponents(projectKey);
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getComponents(projectKey);
 });
 
 ipcMain.handle('jira-get-sprints', async (_event, projectKey: string) => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getSprints(projectKey);
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getSprints(projectKey);
 });
 
 ipcMain.handle('jira-search-users', async (_event, projectKey: string, query: string) => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.searchAssignableUsers(projectKey, query);
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.searchAssignableUsers(projectKey, query);
 });
 
 ipcMain.handle('jira-get-my-issues', async () => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getMyIssues();
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getMyIssues();
 });
 
 ipcMain.handle('jira-get-create-metadata', async (_event, projectKey: string, issueType: string) => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getCreateMetadata(projectKey, issueType);
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getCreateMetadata(projectKey, issueType);
 });
 
 ipcMain.handle('jira-get-pillar-pod-options', async (_event, projectKey: string, issueType: string) => {
-  if (!jiraService) throw new Error('Jira not configured');
-  return await jiraService.getPillarAndPodOptions(projectKey, issueType);
+  const readyJiraService = await getReadyJiraService();
+  return await readyJiraService.getPillarAndPodOptions(projectKey, issueType);
 });
 
 ipcMain.handle('jira-is-configured', () => {
-  const userSettings = store.get('userSettings', {}) as any;
-  return !!userSettings.jiraEnabled && !!jiraService;
+  return !!jiraService;
 });
 
 // Confluence Handlers
