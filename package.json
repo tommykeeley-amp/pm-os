@@ -10,7 +10,8 @@
     "build:mcp": "tsc electron/pm-os-mcp-server.ts --outDir dist-electron --module commonjs --target es2020 --moduleResolution node --esModuleInterop true --skipLibCheck true && mv dist-electron/pm-os-mcp-server.js dist-electron/pm-os-mcp-server.cjs",
     "preview": "vite preview",
     "electron:dev": "npm run build:mcp && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build:mcp && vite build && electron-builder"
+    "electron:build": "npm run build:mcp && vite build && electron-builder",
+    "electron:build:team": "npm run build:mcp && vite build && electron-builder --config electron-builder.team.json"
   },
   "keywords": [
     "electron",

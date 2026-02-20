@@ -1,0 +1,16 @@
+{
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "mcp-servers/**/*",
+    "build/icon.png",
+    "interview-scorecard.md",
+    "!.env",
+    "!.env.*"
+  ],
+  "asarUnpack": [
+    "node_modules/node-pty/**/*",
+    "dist-electron/pm-os-mcp-server.cjs",
+    "mcp-servers/**/*"
+  ]
+}

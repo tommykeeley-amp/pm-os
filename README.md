@@ -231,6 +231,9 @@ The engine automatically:
 ```bash
 # Build the production app
 npm run electron:build
+
+# Build a team-safe package (excludes .env and .env.* from artifacts)
+npm run electron:build:team
 ```
 
 The built app will be in the `release/` directory.
